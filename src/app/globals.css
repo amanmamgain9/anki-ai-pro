@@ -1,0 +1,243 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+/* ── Light palette ─────────────────────────────────── */
+:root {
+  --color-bg: #faf8ff;
+  --color-bg-gradient: linear-gradient(145deg, #faf8ff 0%, #f0edff 50%, #faf8ff 100%);
+  --color-surface: #ffffff;
+  --color-surface-alt: #f0edff;
+  --color-border: #e0ddf0;
+  --color-border-strong: #c8c4e0;
+  --color-text: #1a1a2e;
+  --color-text-secondary: #5b5b80;
+  --color-text-tertiary: #8888a8;
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-accent-soft: rgba(124, 58, 237, 0.08);
+  --color-accent-text: #ffffff;
+  --color-accent-glow: rgba(124, 58, 237, 0.25);
+  --color-neon: #06b6d4;
+  --color-danger: #e11d48;
+  --color-danger-soft: rgba(225, 29, 72, 0.08);
+  --color-success: #059669;
+  --color-success-soft: rgba(5, 150, 105, 0.08);
+  --color-gradient-from: #7c3aed;
+  --color-gradient-to: #06b6d4;
+  --color-btn-gradient: linear-gradient(135deg, #7c3aed, #6d28d9);
+  --color-btn-gradient-hover: linear-gradient(135deg, #6d28d9, #5b21b6);
+}
+
+/* ── Dark palette (90s arcade) ─────────────────────── */
+.dark {
+  --color-bg: #0c0c1d;
+  --color-bg-gradient: linear-gradient(145deg, #0c0c1d 0%, #1a0a2e 40%, #0c1a2e 70%, #0c0c1d 100%);
+  --color-surface: #141428;
+  --color-surface-alt: #1c1c3a;
+  --color-border: #2d2d5e;
+  --color-border-strong: #4040a0;
+  --color-text: #ededff;
+  --color-text-secondary: #c8c8e6;
+  --color-text-tertiary: #a0a0cc;
+  --color-accent: #a855f7;
+  --color-accent-hover: #c084fc;
+  --color-accent-soft: rgba(168, 85, 247, 0.12);
+  --color-accent-text: #ffffff;
+  --color-accent-glow: rgba(168, 85, 247, 0.35);
+  --color-neon: #22d3ee;
+  --color-danger: #f472b6;
+  --color-danger-soft: rgba(244, 114, 182, 0.1);
+  --color-success: #22d3ee;
+  --color-success-soft: rgba(34, 211, 238, 0.1);
+  --color-gradient-from: #a855f7;
+  --color-gradient-to: #22d3ee;
+  --color-btn-gradient: linear-gradient(135deg, #7c3aed, #a855f7, #ec4899);
+  --color-btn-gradient-hover: linear-gradient(135deg, #a855f7, #c084fc, #f472b6);
+}
+
+/* ── Base ──────────────────────────────────────────── */
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: clamp(0.9375rem, 0.875rem + 0.25vw, 1.0625rem);
+  line-height: 1.6;
+  background: var(--color-bg-gradient);
+  background-attachment: fixed;
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Form controls ─────────────────────────────────── */
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft), 0 0 12px var(--color-accent-glow);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Utility classes ───────────────────────────────── */
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-gradient-from), var(--color-gradient-to));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1.125rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-accent-text);
+  background: var(--color-btn-gradient);
+  box-shadow: 0 2px 8px var(--color-accent-glow);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.btn-primary:hover {
+  background: var(--color-btn-gradient-hover);
+  box-shadow: 0 4px 20px var(--color-accent-glow);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  transform: translateY(0);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.btn-secondary:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  background: transparent;
+  transition: background 0.15s;
+}
+.btn-danger:hover {
+  background: var(--color-danger-soft);
+}
+
+.card-surface {
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card-surface:hover {
+  border-color: var(--color-border-strong);
+}
+
+.glow-hover:hover {
+  box-shadow: 0 0 20px var(--color-accent-glow), 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.scanline {
+  position: relative;
+}
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  border-radius: inherit;
+}
