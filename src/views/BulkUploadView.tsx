@@ -3,6 +3,11 @@
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import { toMarkdown } from "mdast-util-to-markdown";
+import { toString } from "mdast-util-to-string";
+import type { RootContent } from "mdast";
 import { useAppRouter } from "@/lib/app-router";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 
@@ -63,34 +68,54 @@ function detectFormat(text: string): "markdown" | "tsv" {
 
 function parseMarkdown(text: string): ParsedCard[] {
   const cards: ParsedCard[] = [];
-  const blocks = text.split(/^##\s+/m).filter((b) => b.trim());
+  const tree = unified().use(remarkParse).parse(text) as { children?: RootContent[] };
+  const nodes = tree.children ?? [];
 
-  for (const block of blocks) {
-    const lines = block.split("\n");
-    const front = (lines[0] ?? "").trim();
-    if (!front) continue;
+  let currentFront = "";
+  let currentBackNodes: RootContent[] = [];
 
-    const rest = lines.slice(1);
-    let back = "";
-    const tags: string[] = [];
+  const flush = () => {
+    const front = currentFront.trim();
+    if (!front) return;
 
-    const tagLineIdx = rest.findIndex((l) => /^tags:\s*/i.test(l.trim()));
+    const backRaw = toMarkdown({
+      type: "root",
+      children: currentBackNodes,
+    }).trim();
+    if (!backRaw) return;
+
+    const lines = backRaw.split("\n");
+    const tagLineIdx = lines.findIndex((l) => /^tags:\s*/i.test(l.trim()));
+    let tags: string[] = [];
     if (tagLineIdx >= 0) {
-      const tagLine = rest.splice(tagLineIdx, 1)[0];
-      tags.push(
-        ...tagLine
-          .replace(/^tags:\s*/i, "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-      );
+      tags = lines[tagLineIdx]
+        .replace(/^tags:\s*/i, "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      lines.splice(tagLineIdx, 1);
     }
 
-    back = rest.join("\n").trim();
-    if (!back) continue;
+    const back = lines.join("\n").trim();
+    if (!back) return;
 
     cards.push({ front, back, tags });
+  };
+
+  for (const node of nodes) {
+    if (node.type === "heading" && node.depth === 2) {
+      flush();
+      currentFront = toString(node).trim();
+      currentBackNodes = [];
+      continue;
+    }
+
+    // Ignore content before the first H2 card heading.
+    if (!currentFront) continue;
+    currentBackNodes.push(node);
   }
+
+  flush();
   return cards;
 }
 
