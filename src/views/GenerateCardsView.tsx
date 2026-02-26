@@ -2,7 +2,13 @@
 
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
-import { useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
 
@@ -22,6 +28,8 @@ type ChatMessage = {
   role: "assistant" | "user";
   text: string;
 };
+
+type GenerationPhase = "idle" | "thinking" | "generating" | "saving" | "done";
 
 const starterTopics = [
   "JavaScript closures",
@@ -65,10 +73,15 @@ export default function GenerateCardsView() {
   const [count, setCount] = useState(12);
   const [deckId, setDeckId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<GenerationPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [tips, setTips] = useState<string[]>([]);
   const [cards, setCards] = useState<GeneratedCard[]>([]);
+  const [lastRunTopic, setLastRunTopic] = useState("");
+  const [lastRunLevel, setLastRunLevel] = useState<Level | null>(null);
+  const [lastRunCount, setLastRunCount] = useState(0);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -84,6 +97,10 @@ export default function GenerateCardsView() {
   const readyToGenerate = topic.trim().length > 0 && !!level;
   const deckList = decks ?? [];
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, busy, phase]);
+
   function addMessage(role: ChatMessage["role"], text: string) {
     setMessages((prev) => [...prev, { id: uid(), role, text }]);
   }
@@ -91,6 +108,7 @@ export default function GenerateCardsView() {
   function applyTopic(nextTopic: string) {
     const clean = nextTopic.trim();
     if (!clean) return;
+    const changedTopic = clean !== topic;
     setTopic(clean);
     setTopicInput("");
     setSavedCount(0);
@@ -98,25 +116,36 @@ export default function GenerateCardsView() {
     setCards([]);
     setError(null);
     setLevel(null);
-    setMessages([
-      {
-        id: uid(),
-        role: "assistant",
-        text: zh
-          ? "告诉我你的学习主题。之后我只会问一个问题：你的水平。"
-          : "Tell me your topic. I will ask only one question after that: your level.",
-      },
+    setPhase("idle");
+    setMessages((prev) => [
+      ...prev,
       { id: uid(), role: "user", text: clean },
       {
         id: uid(),
         role: "assistant",
-        text: zh ? "你在这个主题上的水平是？" : "What is your level for this topic?",
+        text: changedTopic
+          ? zh
+            ? "收到。这个主题的水平是？"
+            : "Great. What's your level for this topic?"
+          : zh
+            ? "这个主题我记住了。请选择你的水平。"
+            : "Got it. Choose your level and I'll generate instantly.",
       },
     ]);
   }
 
-  async function generateAndSave(chosenLevel: Level, topicText: string) {
+  async function generateAndSave(
+    chosenLevel: Level,
+    topicText: string,
+    opts?: { nextCount?: number; guidance?: string; reason?: string },
+  ) {
+    const targetCount = opts?.nextCount ?? count;
+    const topicForModel = opts?.guidance
+      ? `${topicText}\n\nSpecial instruction: ${opts.guidance}`
+      : topicText;
+
     setBusy(true);
+    setPhase("thinking");
     setError(null);
     setSavedCount(0);
     setTips([]);
@@ -124,18 +153,19 @@ export default function GenerateCardsView() {
     addMessage(
       "assistant",
       zh
-        ? `正在为“${topicText}”（${chosenLevel}）生成 ${count} 张卡片...`
-        : `Generating ${count} cards for "${topicText}" (${chosenLevel})...`,
+        ? `${opts?.reason ? `${opts.reason}。` : ""}正在为“${topicText}”（${chosenLevel}）生成 ${targetCount} 张卡片...`
+        : `${opts?.reason ? `${opts.reason}. ` : ""}Generating ${targetCount} cards for "${topicText}" (${chosenLevel})...`,
     );
 
     try {
+      setPhase("generating");
       const response = await fetch("/api/ai/generate-cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: topicText,
+          topic: topicForModel,
           level: chosenLevel,
-          count,
+          count: targetCount,
         }),
       });
 
@@ -161,6 +191,7 @@ export default function GenerateCardsView() {
         throw new Error(zh ? "模型返回了空卡片" : "Model returned empty cards");
       }
 
+      setPhase("saving");
       const created = (await bulkCreate({
         deckId: deckId || undefined,
         cards: preparedCards.map((card) => ({
@@ -173,6 +204,10 @@ export default function GenerateCardsView() {
       setCards(preparedCards);
       setTips(payload.tips ?? []);
       setSavedCount(created);
+      setLastRunTopic(topicText);
+      setLastRunLevel(chosenLevel);
+      setLastRunCount(targetCount);
+      setPhase("done");
       addMessage(
         "assistant",
         zh
@@ -183,6 +218,7 @@ export default function GenerateCardsView() {
       const message =
         err instanceof Error ? err.message : zh ? "生成卡片失败" : "Failed to generate cards";
       setError(message);
+      setPhase("idle");
       addMessage("assistant", zh ? `生成失败：${message}` : `Generation failed: ${message}`);
     } finally {
       setBusy(false);
@@ -211,12 +247,56 @@ export default function GenerateCardsView() {
   }
 
   const statusText = useMemo(() => {
-    if (busy) return zh ? "正在生成卡片..." : "Generating cards...";
+    if (phase === "thinking") return zh ? "理解主题..." : "Understanding topic...";
+    if (phase === "generating") return zh ? "正在构建高质量卡片..." : "Crafting high-retention cards...";
+    if (phase === "saving") return zh ? "保存到你的题库..." : "Saving to your library...";
     if (savedCount > 0) return zh ? `已保存 ${savedCount} 张卡片` : `${savedCount} cards saved`;
     if (readyToGenerate) return zh ? "准备就绪" : "Ready";
     if (canAskLevel) return zh ? "请选择你的水平" : "Choose your level";
     return zh ? "等待输入主题" : "Waiting for topic";
-  }, [busy, savedCount, readyToGenerate, canAskLevel, zh]);
+  }, [phase, savedCount, readyToGenerate, canAskLevel, zh]);
+
+  const refineActions = useMemo(
+    () => [
+      {
+        key: "harder",
+        label: zh ? "更难" : "Make harder",
+        reason: zh ? "已按更高难度重生成" : "Regenerated with higher difficulty",
+        guidance: zh
+          ? "提高难度，增加更深层理解题和易错点。"
+          : "Increase difficulty, include deeper reasoning and edge cases.",
+      },
+      {
+        key: "easier",
+        label: zh ? "更简单" : "Make easier",
+        reason: zh ? "已按更易版本重生成" : "Regenerated in simpler form",
+        guidance: zh
+          ? "降低难度，优先基础概念，用更简洁语言。"
+          : "Lower difficulty, focus on fundamentals with simpler language.",
+      },
+      {
+        key: "examples",
+        label: zh ? "增加例子" : "Add examples",
+        reason: zh ? "已增加更多例子" : "Regenerated with concrete examples",
+        guidance: zh
+          ? "每张卡尽量给出一个简短真实例子。"
+          : "Include a short practical example in most card backs.",
+      },
+      {
+        key: "more",
+        label: zh ? "更多卡片" : "More cards",
+        reason: zh ? "已生成更多卡片" : "Regenerated with more cards",
+        nextCount: Math.min(28, Math.max(lastRunCount || count, count) + 4),
+      },
+      {
+        key: "fewer",
+        label: zh ? "更少卡片" : "Fewer cards",
+        reason: zh ? "已压缩为更少卡片" : "Regenerated with fewer cards",
+        nextCount: Math.max(6, Math.min(lastRunCount || count, count) - 4),
+      },
+    ],
+    [zh, count, lastRunCount],
+  );
 
   return (
     <div className="space-y-6">
@@ -267,42 +347,55 @@ export default function GenerateCardsView() {
                 {msg.text}
               </div>
             ))}
+            {busy && (
+              <div className="max-w-[90%] rounded-xl bg-[var(--color-surface-alt)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+                <span className="inline-block animate-pulse">
+                  {zh ? "正在处理..." : "Working..."}
+                </span>
+              </div>
+            )}
+            <div ref={chatEndRef} />
           </div>
 
           <div className="space-y-3 border-t border-[var(--color-border)] p-4">
-  {!topic && (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {(zh
-                    ? ["JavaScript 闭包", "操作系统内存管理", "机器学习概率基础", "中国近现代史基础"]
-                    : starterTopics).map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => applyTopic(preset)}
-                      className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)]"
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-                <form onSubmit={onSubmitTopic} className="flex gap-2">
-                  <input
-                    value={topicInput}
-                    onChange={(e) => setTopicInput(e.target.value)}
-                    placeholder={zh ? "主题（例如：SQL 连接、React Hooks、电化学）" : "Topic (example: SQL joins, React hooks, electrochemistry)"}
-                    className="flex-1"
-                    disabled={busy}
-                  />
+            {!topic && (
+              <div className="flex flex-wrap gap-2">
+                {(zh
+                  ? ["JavaScript 闭包", "操作系统内存管理", "机器学习概率基础", "中国近现代史基础"]
+                  : starterTopics).map((preset) => (
                   <button
-                    type="submit"
-                    className="btn-primary"
-                    disabled={busy || topicInput.trim().length < 2}
+                    key={preset}
+                    type="button"
+                    onClick={() => applyTopic(preset)}
+                    className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)]"
                   >
-                    {zh ? "发送" : "Send"}
+                    {preset}
                   </button>
-                </form>
-              </>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={onSubmitTopic} className="flex gap-2">
+              <input
+                value={topicInput}
+                onChange={(e) => setTopicInput(e.target.value)}
+                placeholder={zh ? "主题（例如：SQL 连接、React Hooks、电化学）" : "Topic (example: SQL joins, React hooks, electrochemistry)"}
+                className="flex-1"
+                disabled={busy}
+              />
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={busy || topicInput.trim().length < 2}
+              >
+                {zh ? "发送" : "Send"}
+              </button>
+            </form>
+
+            {topic && (
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                {zh ? `当前主题：${topic}` : `Current topic: ${topic}`}
+              </p>
             )}
 
             {canAskLevel && (
@@ -345,6 +438,18 @@ export default function GenerateCardsView() {
             <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
               {zh ? "选项" : "Options"}
             </p>
+            {topic && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-[0.7rem] font-semibold text-[var(--color-text-secondary)]">
+                  {zh ? "主题" : "Topic"}: {topic}
+                </span>
+                {level && (
+                  <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-[0.7rem] font-semibold text-[var(--color-text-secondary)]">
+                    {zh ? "水平" : "Level"}: {zh ? (level === "beginner" ? "初学" : level === "intermediate" ? "中级" : "高级") : level}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="mt-3 space-y-3">
               <label>
                 {zh ? "牌组" : "Deck"}
@@ -385,6 +490,21 @@ export default function GenerateCardsView() {
             <p className="mt-4 text-xs text-[var(--color-text-secondary)]">
               {zh ? "状态：" : "Status:"} <span className="font-semibold text-[var(--color-text)]">{statusText}</span>
             </p>
+            {(phase === "thinking" || phase === "generating" || phase === "saving") && (
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-alt)]">
+                <div
+                  className="h-full rounded-full bg-[var(--color-accent)] transition-all duration-500"
+                  style={{
+                    width:
+                      phase === "thinking"
+                        ? "33%"
+                        : phase === "generating"
+                          ? "68%"
+                          : "92%",
+                  }}
+                />
+              </div>
+            )}
             {error && <p className="mt-2 text-xs text-[var(--color-danger)]">{error}</p>}
             {readyToGenerate && !busy && (
               <button
@@ -396,13 +516,36 @@ export default function GenerateCardsView() {
               </button>
             )}
             {savedCount > 0 && (
-              <button
-                type="button"
-                onClick={() => navigate("/cards")}
-                className="btn-primary mt-2 w-full justify-center"
-              >
-                {zh ? "打开卡片" : "Open cards"}
-              </button>
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {refineActions.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      disabled={busy || !lastRunLevel || !lastRunTopic}
+                      onClick={() =>
+                        lastRunLevel &&
+                        lastRunTopic &&
+                        void generateAndSave(lastRunLevel, lastRunTopic, {
+                          guidance: action.guidance,
+                          reason: action.reason,
+                          nextCount: action.nextCount,
+                        })
+                      }
+                      className="rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)] disabled:opacity-50"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/cards")}
+                  className="btn-primary mt-3 w-full justify-center"
+                >
+                  {zh ? "打开卡片" : "Open cards"}
+                </button>
+              </>
             )}
           </div>
 
@@ -410,7 +553,13 @@ export default function GenerateCardsView() {
             <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
               {zh ? "输出预览" : "Output preview"}
             </p>
-            {cards.length === 0 ? (
+            {busy && cards.length === 0 ? (
+              <div className="mt-3 space-y-2">
+                <div className="h-10 animate-pulse rounded-md bg-[var(--color-surface-alt)]" />
+                <div className="h-10 animate-pulse rounded-md bg-[var(--color-surface-alt)]" />
+                <div className="h-10 animate-pulse rounded-md bg-[var(--color-surface-alt)]" />
+              </div>
+            ) : cards.length === 0 ? (
               <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
                 {zh ? "生成后的卡片会显示在这里（保存前后）。" : "Generated cards will appear here before/after save."}
               </p>
