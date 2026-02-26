@@ -8,11 +8,13 @@ import NewDeckView from "@/views/NewDeckView";
 import StudyView from "@/views/StudyView";
 import BulkUploadView from "@/views/BulkUploadView";
 import SettingsView from "@/views/SettingsView";
+import GenerateCardsView from "@/views/GenerateCardsView";
 
 export default function AppCatchAll() {
   const { pathname } = useAppRouter();
 
   if (pathname === "/cards/bulk" || pathname.startsWith("/cards/bulk?")) return <BulkUploadView />;
+  if (pathname === "/cards/generate" || pathname.startsWith("/cards/generate?")) return <GenerateCardsView />;
   if (pathname === "/cards/new" || pathname.startsWith("/cards/new?")) return <NewCardView />;
   if (pathname === "/decks/new" || pathname.startsWith("/decks/new?")) return <NewDeckView />;
   if (pathname === "/study" || pathname.startsWith("/study?")) {

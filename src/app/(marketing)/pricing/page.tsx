@@ -1,46 +1,44 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import LocaleSwitcher from "@/components/LocaleSwitcher";
+import MarketingFooter from "@/components/MarketingFooter";
+import { getServerDictionary } from "@/i18n/server";
 
-const tiers = [
-  {
-    name: "Free",
-    price: "$0",
-    desc: "Everything you need to start studying.",
-    features: ["Unlimited cards", "Markdown + Mermaid", "Real-time sync", "Deck management"],
-    cta: "Get started",
-    href: "/sign-up",
-    accent: false,
-  },
-  {
-    name: "Pro",
-    price: "$8",
-    desc: "Advanced tools for power users.",
-    features: ["Everything in Free", "AI-generated cards", "Import / export", "Priority support"],
-    cta: "Coming soon",
-    href: "#",
-    accent: true,
-  },
-];
+export default async function PricingPage() {
+  const { dict, locale } = await getServerDictionary();
+  const tiers = [
+    {
+      ...dict.marketing.pricing.tiers.free,
+      href: "/sign-in",
+      accent: false,
+    },
+    {
+      ...dict.marketing.pricing.tiers.pro,
+      href: "#",
+      accent: true,
+    },
+  ];
 
-export default function PricingPage() {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Link href="/" className="gradient-text text-lg font-bold tracking-tight">
-          ANKI CARDS
+          {dict.common.appName}
         </Link>
         <div className="flex items-center gap-2">
+          <LocaleSwitcher />
           <ThemeToggle />
-          <Link href="/sign-up" className="btn-primary">Get started</Link>
+          <Link href="/sign-in" className="btn-primary">{dict.common.getStarted}</Link>
         </div>
       </header>
 
       <section className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center px-4 py-16 sm:px-6">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Simple <span className="gradient-text">pricing</span>
+          {dict.marketing.pricing.title}{" "}
+          <span className="gradient-text">{dict.marketing.pricing.titleHighlight}</span>
         </h1>
         <p className="mt-3 max-w-md text-center text-base text-[var(--color-text-secondary)]">
-          Start free. Upgrade when you&rsquo;re ready.
+          {dict.marketing.pricing.subtitle}
         </p>
 
         <div className="mt-12 grid w-full max-w-2xl gap-5 sm:grid-cols-2">
@@ -59,7 +57,7 @@ export default function PricingPage() {
               <p className="mt-2 text-4xl font-bold tracking-tight">
                 {t.price}
                 {t.price !== "$0" && (
-                  <span className="text-sm font-medium text-[var(--color-text-secondary)]">/mo</span>
+                  <span className="text-sm font-medium text-[var(--color-text-secondary)]">{dict.marketing.pricing.perMonth}</span>
                 )}
               </p>
               <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{t.desc}</p>
@@ -91,6 +89,7 @@ export default function PricingPage() {
           ))}
         </div>
       </section>
+      <MarketingFooter locale={locale} />
     </div>
   );
 }

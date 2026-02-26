@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Space_Grotesk } from "next/font/google";
 import { Geist_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
+import { LocaleProvider } from "@/i18n/client";
+import { getServerLocale } from "@/i18n/server";
+import AuthSessionProvider from "@/components/AuthSessionProvider";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import "./globals.css";
 
@@ -32,13 +34,14 @@ const themeScript = `
 })();
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getServerLocale();
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale === "zh" ? "zh-CN" : "en"} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
@@ -46,9 +49,11 @@ export default function RootLayout({
         className={`${spaceGrotesk.variable} ${geistMono.variable} antialiased`}
         style={{ fontFamily: "var(--font-space-grotesk), var(--font-sans)" }}
       >
-        <ClerkProvider>
-          <ConvexClientProvider>{children}</ConvexClientProvider>
-        </ClerkProvider>
+        <LocaleProvider initialLocale={locale}>
+          <AuthSessionProvider>
+            <ConvexClientProvider>{children}</ConvexClientProvider>
+          </AuthSessionProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

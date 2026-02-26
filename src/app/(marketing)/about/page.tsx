@@ -1,62 +1,66 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import LocaleSwitcher from "@/components/LocaleSwitcher";
+import MarketingFooter from "@/components/MarketingFooter";
+import { getServerDictionary } from "@/i18n/server";
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const { dict, locale } = await getServerDictionary();
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Link href="/" className="gradient-text text-lg font-bold tracking-tight">
-          ANKI CARDS
+          {dict.common.appName}
         </Link>
         <div className="flex items-center gap-2">
+          <LocaleSwitcher />
           <ThemeToggle />
-          <Link href="/sign-up" className="btn-primary">Get started</Link>
+          <Link href="/sign-in" className="btn-primary">{dict.common.getStarted}</Link>
         </div>
       </header>
 
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-4 py-16 sm:px-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Designed for <span className="gradient-text">serious study</span>
+            {dict.marketing.about.title}{" "}
+            <span className="gradient-text">{dict.marketing.about.titleHighlight}</span>
           </h1>
           <p className="mt-3 max-w-xl text-base text-[var(--color-text-secondary)]">
-            Anki Flashcards helps you build recall with structured Markdown
-            notes, diagrams, and real-time collaboration.
+            {dict.marketing.about.intro}
           </p>
         </div>
 
         <div className="space-y-5">
           <div className="card-surface glow-hover p-6">
             <h2 className="text-sm font-bold uppercase tracking-wide">
-              Why Markdown?
+              {dict.marketing.about.whyTitle}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-              Markdown keeps your content portable and fast to edit. Pair it
-              with Mermaid and you get visual context right where you need it,
-              without leaving your study flow.
+              {dict.marketing.about.whyBody}
             </p>
           </div>
 
           <div className="card-surface glow-hover p-6">
             <h2 className="text-sm font-bold uppercase tracking-wide">
-              Real-time by default
+              {dict.marketing.about.realtimeTitle}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-              Convex provides WebSocket-based reactivity. Edit a card on your
-              laptop and see the change on your phone instantly.
+              {dict.marketing.about.realtimeBody}
             </p>
           </div>
         </div>
 
         <div className="flex gap-3">
           <Link href="/" className="btn-secondary">
-            ← Back home
+            ← {dict.marketing.about.backHome}
           </Link>
-          <Link href="/sign-up" className="btn-primary">
-            Create account
+          <Link href="/sign-in" className="btn-primary">
+            {dict.common.createAccount}
           </Link>
         </div>
       </section>
+      <MarketingFooter locale={locale} />
     </div>
   );
 }
