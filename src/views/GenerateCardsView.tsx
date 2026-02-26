@@ -54,7 +54,8 @@ function uid() {
 
 export default function GenerateCardsView() {
   const { navigate, back } = useAppRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const zh = locale === "zh";
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
   const bulkCreate = useMutation(api.flashcards.bulkCreate);
 
@@ -73,7 +74,9 @@ export default function GenerateCardsView() {
     {
       id: uid(),
       role: "assistant",
-      text: "Tell me your topic. I will ask only one question after that: your level.",
+      text: zh
+        ? "告诉我你的学习主题。之后我只会问一个问题：你的水平。"
+        : "Tell me your topic. I will ask only one question after that: your level.",
     },
   ]);
 
@@ -99,13 +102,15 @@ export default function GenerateCardsView() {
       {
         id: uid(),
         role: "assistant",
-        text: "Tell me your topic. I will ask only one question after that: your level.",
+        text: zh
+          ? "告诉我你的学习主题。之后我只会问一个问题：你的水平。"
+          : "Tell me your topic. I will ask only one question after that: your level.",
       },
       { id: uid(), role: "user", text: clean },
       {
         id: uid(),
         role: "assistant",
-        text: "What is your level for this topic?",
+        text: zh ? "你在这个主题上的水平是？" : "What is your level for this topic?",
       },
     ]);
   }
@@ -118,7 +123,9 @@ export default function GenerateCardsView() {
     setCards([]);
     addMessage(
       "assistant",
-      `Generating ${count} cards for "${topicText}" (${chosenLevel})...`,
+      zh
+        ? `正在为“${topicText}”（${chosenLevel}）生成 ${count} 张卡片...`
+        : `Generating ${count} cards for "${topicText}" (${chosenLevel})...`,
     );
 
     try {
@@ -139,7 +146,7 @@ export default function GenerateCardsView() {
       };
 
       if (!response.ok || !payload.cards || payload.cards.length === 0) {
-        throw new Error(payload.error ?? "Generation failed");
+        throw new Error(payload.error ?? (zh ? "生成失败" : "Generation failed"));
       }
 
       const preparedCards = payload.cards
@@ -151,7 +158,7 @@ export default function GenerateCardsView() {
         .filter((card) => card.front && card.back);
 
       if (preparedCards.length === 0) {
-        throw new Error("Model returned empty cards");
+        throw new Error(zh ? "模型返回了空卡片" : "Model returned empty cards");
       }
 
       const created = (await bulkCreate({
@@ -168,13 +175,15 @@ export default function GenerateCardsView() {
       setSavedCount(created);
       addMessage(
         "assistant",
-        `Done. Generated and saved ${created} cards. You can regenerate or open Cards.`,
+        zh
+          ? `完成。已生成并保存 ${created} 张卡片。你可以重新生成或打开卡片页。`
+          : `Done. Generated and saved ${created} cards. You can regenerate or open Cards.`,
       );
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to generate cards";
+        err instanceof Error ? err.message : zh ? "生成卡片失败" : "Failed to generate cards";
       setError(message);
-      addMessage("assistant", `Generation failed: ${message}`);
+      addMessage("assistant", zh ? `生成失败：${message}` : `Generation failed: ${message}`);
     } finally {
       setBusy(false);
     }
@@ -183,7 +192,16 @@ export default function GenerateCardsView() {
   function chooseLevel(chosen: Level) {
     if (!topic || busy) return;
     setLevel(chosen);
-    addMessage("user", levelOptions.find((opt) => opt.value === chosen)?.label ?? chosen);
+    addMessage(
+      "user",
+      zh
+        ? chosen === "beginner"
+          ? "初学"
+          : chosen === "intermediate"
+            ? "中级"
+            : "高级"
+        : levelOptions.find((opt) => opt.value === chosen)?.label ?? chosen,
+    );
     void generateAndSave(chosen, topic);
   }
 
@@ -193,12 +211,12 @@ export default function GenerateCardsView() {
   }
 
   const statusText = useMemo(() => {
-    if (busy) return "Generating cards...";
-    if (savedCount > 0) return `${savedCount} cards saved`;
-    if (readyToGenerate) return "Ready";
-    if (canAskLevel) return "Choose your level";
-    return "Waiting for topic";
-  }, [busy, savedCount, readyToGenerate, canAskLevel]);
+    if (busy) return zh ? "正在生成卡片..." : "Generating cards...";
+    if (savedCount > 0) return zh ? `已保存 ${savedCount} 张卡片` : `${savedCount} cards saved`;
+    if (readyToGenerate) return zh ? "准备就绪" : "Ready";
+    if (canAskLevel) return zh ? "请选择你的水平" : "Choose your level";
+    return zh ? "等待输入主题" : "Waiting for topic";
+  }, [busy, savedCount, readyToGenerate, canAskLevel, zh]);
 
   return (
     <div className="space-y-6">
@@ -233,7 +251,7 @@ export default function GenerateCardsView() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
         <div className="card-surface flex min-h-[30rem] flex-col overflow-hidden">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)] px-4 py-3 text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-            Chat
+            {zh ? "对话" : "Chat"}
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -252,10 +270,12 @@ export default function GenerateCardsView() {
           </div>
 
           <div className="space-y-3 border-t border-[var(--color-border)] p-4">
-            {!topic && (
+  {!topic && (
               <>
                 <div className="flex flex-wrap gap-2">
-                  {starterTopics.map((preset) => (
+                  {(zh
+                    ? ["JavaScript 闭包", "操作系统内存管理", "机器学习概率基础", "中国近现代史基础"]
+                    : starterTopics).map((preset) => (
                     <button
                       key={preset}
                       type="button"
@@ -270,7 +290,7 @@ export default function GenerateCardsView() {
                   <input
                     value={topicInput}
                     onChange={(e) => setTopicInput(e.target.value)}
-                    placeholder="Topic (example: SQL joins, React hooks, electrochemistry)"
+                    placeholder={zh ? "主题（例如：SQL 连接、React Hooks、电化学）" : "Topic (example: SQL joins, React hooks, electrochemistry)"}
                     className="flex-1"
                     disabled={busy}
                   />
@@ -279,7 +299,7 @@ export default function GenerateCardsView() {
                     className="btn-primary"
                     disabled={busy || topicInput.trim().length < 2}
                   >
-                    Send
+                    {zh ? "发送" : "Send"}
                   </button>
                 </form>
               </>
@@ -295,9 +315,23 @@ export default function GenerateCardsView() {
                     disabled={busy}
                     className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] px-3 py-2 text-left transition hover:border-[var(--color-border-strong)]"
                   >
-                    <p className="text-sm font-semibold">{opt.label}</p>
+                    <p className="text-sm font-semibold">
+                      {zh
+                        ? opt.value === "beginner"
+                          ? "初学"
+                          : opt.value === "intermediate"
+                            ? "中级"
+                            : "高级"
+                        : opt.label}
+                    </p>
                     <p className="text-xs text-[var(--color-text-secondary)]">
-                      {opt.hint}
+                      {zh
+                        ? opt.value === "beginner"
+                          ? "语言更简单，重基础"
+                          : opt.value === "intermediate"
+                            ? "概念 + 应用题"
+                            : "偏考试与边界场景"
+                        : opt.hint}
                     </p>
                   </button>
                 ))}
@@ -309,17 +343,17 @@ export default function GenerateCardsView() {
         <div className="space-y-4">
           <div className="card-surface p-4">
             <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-              Options
+              {zh ? "选项" : "Options"}
             </p>
             <div className="mt-3 space-y-3">
               <label>
-                Deck
+                {zh ? "牌组" : "Deck"}
                 <select
                   value={deckId}
                   onChange={(e) => setDeckId(e.target.value)}
                   disabled={busy}
                 >
-                  <option value="">No deck</option>
+                  <option value="">{zh ? "无牌组" : "No deck"}</option>
                   {deckList.map((deck) => (
                     <option key={deck._id} value={deck._id}>
                       {deck.name}
@@ -328,7 +362,7 @@ export default function GenerateCardsView() {
                 </select>
               </label>
               <div>
-                <p className="mb-1 text-sm font-medium">Card count</p>
+                <p className="mb-1 text-sm font-medium">{zh ? "卡片数量" : "Card count"}</p>
                 <div className="flex flex-wrap gap-2">
                   {[8, 12, 16, 20].map((n) => (
                     <button
@@ -349,7 +383,7 @@ export default function GenerateCardsView() {
               </div>
             </div>
             <p className="mt-4 text-xs text-[var(--color-text-secondary)]">
-              Status: <span className="font-semibold text-[var(--color-text)]">{statusText}</span>
+              {zh ? "状态：" : "Status:"} <span className="font-semibold text-[var(--color-text)]">{statusText}</span>
             </p>
             {error && <p className="mt-2 text-xs text-[var(--color-danger)]">{error}</p>}
             {readyToGenerate && !busy && (
@@ -358,7 +392,7 @@ export default function GenerateCardsView() {
                 onClick={() => level && void generateAndSave(level, topic)}
                 className="btn-secondary mt-3 w-full justify-center"
               >
-                Regenerate
+                {zh ? "重新生成" : "Regenerate"}
               </button>
             )}
             {savedCount > 0 && (
@@ -367,18 +401,18 @@ export default function GenerateCardsView() {
                 onClick={() => navigate("/cards")}
                 className="btn-primary mt-2 w-full justify-center"
               >
-                Open cards
+                {zh ? "打开卡片" : "Open cards"}
               </button>
             )}
           </div>
 
           <div className="card-surface p-4">
             <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-              Output preview
+              {zh ? "输出预览" : "Output preview"}
             </p>
             {cards.length === 0 ? (
               <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
-                Generated cards will appear here before/after save.
+                {zh ? "生成后的卡片会显示在这里（保存前后）。" : "Generated cards will appear here before/after save."}
               </p>
             ) : (
               <div className="mt-3 space-y-3">
@@ -388,7 +422,7 @@ export default function GenerateCardsView() {
                     className="rounded-lg border border-[var(--color-border)] p-3"
                   >
                     <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-                      Card {idx + 1}
+                      {zh ? `卡片 ${idx + 1}` : `Card ${idx + 1}`}
                     </p>
                     <p className="mt-1 text-sm font-semibold">{card.front}</p>
                     <p className="mt-1 line-clamp-3 text-xs text-[var(--color-text-secondary)]">
@@ -399,7 +433,7 @@ export default function GenerateCardsView() {
                 {tips.length > 0 && (
                   <div className="rounded-lg border border-[var(--color-border)] p-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-                      Study tips
+                      {zh ? "学习建议" : "Study tips"}
                     </p>
                     <ul className="mt-2 space-y-1 text-xs text-[var(--color-text-secondary)]">
                       {tips.map((tip, idx) => (

@@ -4,22 +4,25 @@ import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useState } from "react";
 import { AppLink, useAppRouter } from "@/lib/app-router";
+import { useI18n } from "@/i18n/client";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 
 const api = anyApi;
 
 type Deck = { _id: string; name: string };
-
-const RATINGS = [
-  { label: "Again", quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: "Forgot it" },
-  { label: "Hard", quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: "Struggled" },
-  { label: "Good", quality: 2, color: "#10b981", border: "rgba(16,185,129,0.45)", desc: "Got it" },
-  { label: "Easy", quality: 3, color: "#8b5cf6", border: "rgba(139,92,246,0.45)", desc: "Instant" },
-] as const;
+type DueCard = { _id: string; front: string; back: string };
 
 export default function StudyView() {
+  const { locale } = useI18n();
+  const zh = locale === "zh";
   const { searchParams, navigate } = useAppRouter();
   const deckId = searchParams.get("deck") || undefined;
+  const ratings = [
+    { label: zh ? "重来" : "Again", quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: zh ? "忘记了" : "Forgot it" },
+    { label: zh ? "困难" : "Hard", quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: zh ? "有点吃力" : "Struggled" },
+    { label: zh ? "良好" : "Good", quality: 2, color: "#10b981", border: "rgba(16,185,129,0.45)", desc: zh ? "答对了" : "Got it" },
+    { label: zh ? "简单" : "Easy", quality: 3, color: "#8b5cf6", border: "rgba(139,92,246,0.45)", desc: zh ? "秒答" : "Instant" },
+  ] as const;
 
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
   const [studyAll, setStudyAll] = useState(false);
@@ -31,7 +34,7 @@ export default function StudyView() {
   const dueData = useQuery(
     api.study.getDueCards,
     deckId ? { deckId, all: studyAll || undefined } : "skip",
-  ) as { due: any[]; total: number; reviewed: number } | undefined;
+  ) as { due: DueCard[]; total: number; reviewed: number } | undefined;
   const statsAllDecks = useQuery(api.study.getSessionStats, {}) as
     | { total: number; newCount: number; dueCount: number; reviewedToday: number }
     | undefined;
@@ -39,7 +42,7 @@ export default function StudyView() {
 
   const currentCard = dueData?.due[0] ?? null;
   const remaining = dueData ? dueData.due.length : 0;
-  const deckName = deckId ? decks?.find((d) => d._id === deckId)?.name ?? "Deck" : "All cards";
+  const deckName = deckId ? decks?.find((d) => d._id === deckId)?.name ?? (zh ? "牌组" : "Deck") : (zh ? "全部卡片" : "All cards");
 
   const handleRate = useCallback(async (quality: number) => {
     if (!currentCard || animating) return;
@@ -60,10 +63,10 @@ export default function StudyView() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            <span className="gradient-text">Study</span>
+            <span className="gradient-text">{zh ? "学习" : "Study"}</span>
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            Pick a deck to start a study session.
+            {zh ? "选择一个牌组开始学习。" : "Pick a deck to start a study session."}
           </p>
         </div>
 
@@ -72,29 +75,29 @@ export default function StudyView() {
           <div className="grid grid-cols-3 gap-3">
             <div className="card-surface p-4 text-center">
               <p className="text-2xl font-bold text-[var(--color-accent)]">{statsAllDecks.newCount}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">New</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{zh ? "新卡" : "New"}</p>
             </div>
             <div className="card-surface p-4 text-center">
               <p className="text-2xl font-bold text-amber-500">{statsAllDecks.dueCount}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">Due</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{zh ? "到期" : "Due"}</p>
             </div>
             <div className="card-surface p-4 text-center">
               <p className="text-2xl font-bold text-[var(--color-success)]">{statsAllDecks.reviewedToday}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">Today</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{zh ? "今日" : "Today"}</p>
             </div>
           </div>
         )}
 
         {/* Deck list */}
-        {!decks && <p className="text-sm text-[var(--color-text-secondary)]">Loading decks...</p>}
+        {!decks && <p className="text-sm text-[var(--color-text-secondary)]">{zh ? "正在加载牌组..." : "Loading decks..."}</p>}
 
         {decks && decks.length === 0 && (
           <div className="card-surface flex flex-col items-center px-6 py-16 text-center">
-            <h3 className="text-base font-bold">No decks yet</h3>
+            <h3 className="text-base font-bold">{zh ? "还没有牌组" : "No decks yet"}</h3>
             <p className="mt-1 max-w-xs text-sm text-[var(--color-text-secondary)]">
-              Create a deck and add some cards before you can study.
+              {zh ? "请先创建牌组并添加卡片，再开始学习。" : "Create a deck and add some cards before you can study."}
             </p>
-            <AppLink href="/decks/new" className="btn-primary mt-5">Create deck</AppLink>
+            <AppLink href="/decks/new" className="btn-primary mt-5">{zh ? "创建牌组" : "Create deck"}</AppLink>
           </div>
         )}
 
@@ -114,7 +117,7 @@ export default function StudyView() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{deck.name}</p>
-                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">Tap to study</p>
+                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{zh ? "点击开始学习" : "Tap to study"}</p>
                 </div>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                   className="shrink-0 text-[var(--color-text-tertiary)] transition group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]">
@@ -138,13 +141,13 @@ export default function StudyView() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
           </AppLink>
           <div>
-            <h1 className="text-lg font-bold tracking-tight"><span className="gradient-text">Study</span></h1>
+            <h1 className="text-lg font-bold tracking-tight"><span className="gradient-text">{zh ? "学习" : "Study"}</span></h1>
             <p className="text-xs text-[var(--color-text-secondary)]">{deckName}</p>
           </div>
         </div>
         <div className="flex items-center gap-4 text-sm">
-          <span className="font-semibold text-[var(--color-success)]">{sessionDone} done</span>
-          <span className="text-[var(--color-text-secondary)]">{remaining} remaining</span>
+          <span className="font-semibold text-[var(--color-success)]">{sessionDone} {zh ? "已完成" : "done"}</span>
+          <span className="text-[var(--color-text-secondary)]">{remaining} {zh ? "剩余" : "remaining"}</span>
         </div>
       </div>
 
@@ -156,21 +159,23 @@ export default function StudyView() {
       )}
 
       <div className="flex flex-1 flex-col items-center justify-center">
-        {!dueData && <p className="text-[var(--color-text-secondary)]">Loading cards...</p>}
+        {!dueData && <p className="text-[var(--color-text-secondary)]">{zh ? "正在加载卡片..." : "Loading cards..."}</p>}
 
         {dueData && remaining === 0 && (
           <div className="card-surface mx-auto flex w-full max-w-lg flex-col items-center px-6 py-16 text-center">
             <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-success-soft)]">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
-            <h2 className="text-xl font-bold">Session complete!</h2>
+            <h2 className="text-xl font-bold">{zh ? "本轮学习完成！" : "Session complete!"}</h2>
             <p className="mt-2 text-[var(--color-text-secondary)]">
-              You reviewed <strong className="text-[var(--color-text)]">{sessionDone}</strong> card{sessionDone !== 1 ? "s" : ""} this session.
-              {dueData.total > 0 && ` ${dueData.reviewed + sessionDone} of ${dueData.total} mastered.`}
+              {zh ? "你在本轮学习中复习了 " : "You reviewed "}
+              <strong className="text-[var(--color-text)]">{sessionDone}</strong>
+              {zh ? " 张卡片。" : ` card${sessionDone !== 1 ? "s" : ""} this session.`}
+              {dueData.total > 0 && (zh ? ` 已掌握 ${dueData.reviewed + sessionDone}/${dueData.total}。` : ` ${dueData.reviewed + sessionDone} of ${dueData.total} mastered.`)}
             </p>
             <div className="mt-6 flex gap-2">
-              <AppLink href="/study" className="btn-secondary">Pick another deck</AppLink>
-              <button type="button" onClick={() => { setStudyAll(true); setSessionDone(0); setFlipped(false); }} className="btn-primary">Study again</button>
+              <AppLink href="/study" className="btn-secondary">{zh ? "选择其他牌组" : "Pick another deck"}</AppLink>
+              <button type="button" onClick={() => { setStudyAll(true); setSessionDone(0); setFlipped(false); }} className="btn-primary">{zh ? "再学一轮" : "Study again"}</button>
             </div>
           </div>
         )}
@@ -181,17 +186,17 @@ export default function StudyView() {
               className="card-surface glow-hover scanline group w-full cursor-pointer px-6 py-10 text-left transition-all sm:px-10 sm:py-14"
               style={{ minHeight: "16rem", boxShadow: flipped ? "0 0 30px var(--color-accent-glow)" : undefined }}>
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{flipped ? "Back" : "Front"}</span>
-                <span className="text-xs text-[var(--color-text-secondary)]">Tap to flip</span>
+                <span className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{flipped ? (zh ? "背面" : "Back") : (zh ? "正面" : "Front")}</span>
+                <span className="text-xs text-[var(--color-text-secondary)]">{zh ? "点击翻面" : "Tap to flip"}</span>
               </div>
               <div className="prose-lg"><MarkdownRenderer content={flipped ? currentCard.back : currentCard.front} /></div>
             </button>
 
             {flipped && (
               <div className="mt-5 space-y-3">
-                <p className="text-center text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">How well did you know it?</p>
+                <p className="text-center text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "你掌握得如何？" : "How well did you know it?"}</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {RATINGS.map((r) => (
+                  {ratings.map((r) => (
                     <button key={r.quality} type="button" disabled={animating} onClick={() => handleRate(r.quality)}
                       className="card-surface flex flex-col items-center gap-1 px-4 py-3 transition hover:border-[var(--color-border-strong)] disabled:opacity-50"
                       style={{ borderColor: animating ? undefined : r.border }}>
@@ -203,7 +208,7 @@ export default function StudyView() {
               </div>
             )}
 
-            {!flipped && <p className="mt-4 text-center text-sm text-[var(--color-text-secondary)]">Think about the answer, then tap the card to reveal.</p>}
+            {!flipped && <p className="mt-4 text-center text-sm text-[var(--color-text-secondary)]">{zh ? "先想答案，然后点击卡片查看。" : "Think about the answer, then tap the card to reveal."}</p>}
           </div>
         )}
       </div>

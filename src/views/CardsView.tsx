@@ -13,7 +13,8 @@ type Deck = { _id: string; name: string; description?: string };
 type Card = { _id: string; deckId?: string; front: string; back: string; tags: string[] };
 
 export default function CardsView() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const zh = locale === "zh";
   const [deckFilter, setDeckFilter] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showBack, setShowBack] = useState(false);
@@ -45,7 +46,7 @@ export default function CardsView() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight"><span className="gradient-text">{t("app.cards.title")}</span></h1>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {cards ? `${cardsList.length} card${cardsList.length !== 1 ? "s" : ""}` : t("app.cards.loading")}
+            {cards ? (zh ? `${cardsList.length} 张卡片` : `${cardsList.length} card${cardsList.length !== 1 ? "s" : ""}`) : t("app.cards.loading")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

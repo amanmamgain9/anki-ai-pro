@@ -1,17 +1,138 @@
 "use client";
 
-import { UserProfile } from "@clerk/nextjs";
+import { anyApi } from "convex/server";
+import { useQuery } from "convex/react";
+import Link from "next/link";
+import { signOut, useSession } from "next-auth/react";
+import { useState } from "react";
+import { useI18n } from "@/i18n/client";
+
+const api = anyApi;
 
 export default function SettingsView() {
+  const { locale } = useI18n();
+  const zh = locale === "zh";
+  const { data: session } = useSession();
+  const billing = useQuery(api.billing.getMyBilling);
+  const [busyAction, setBusyAction] = useState<"monthly" | "yearly" | "portal" | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(null);
+
+  async function startCheckout(plan: "monthly" | "yearly") {
+    setBillingError(null);
+    setBusyAction(plan);
+    try {
+      const response = await fetch("/api/paddle/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const payload = (await response.json()) as { checkoutUrl?: string; error?: string };
+      if (!response.ok || !payload.checkoutUrl) {
+        throw new Error(payload.error ?? "Failed to create Paddle checkout");
+      }
+      window.location.href = payload.checkoutUrl;
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Checkout failed");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function openPortal() {
+    setBillingError(null);
+    setBusyAction("portal");
+    try {
+      const response = await fetch("/api/paddle/portal", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as { portalUrl?: string; error?: string };
+      if (!response.ok || !payload.portalUrl) {
+        throw new Error(payload.error ?? "Failed to open customer portal");
+      }
+      window.location.href = payload.portalUrl;
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : "Portal failed");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight"><span className="gradient-text">Settings</span></h1>
-        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">Manage your account and preferences.</p>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="gradient-text">{zh ? "设置" : "Settings"}</span></h1>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{zh ? "管理你的账户和偏好设置。" : "Manage your account and preferences."}</p>
       </div>
-      <>
-        <UserProfile routing="hash" appearance={{ elements: { rootBox: "w-full", card: "shadow-none border-0 bg-transparent", navbar: "hidden", pageScrollBox: "p-5" } }} />
-      </>
+      <div className="card-surface p-5">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "账户" : "Account"}</h2>
+        <p className="mt-3 text-sm">
+          <span className="font-semibold">{zh ? "姓名：" : "Name:"}</span> {session?.user?.name ?? (zh ? "Google 用户" : "Google User")}
+        </p>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+          <span className="font-semibold text-[var(--color-text)]">{zh ? "邮箱：" : "Email:"}</span> {session?.user?.email ?? (zh ? "不可用" : "Not available")}
+        </p>
+        <button
+          type="button"
+          onClick={() => signOut({ callbackUrl: "/" })}
+          className="btn-secondary mt-4"
+        >
+          {zh ? "退出登录" : "Sign out"}
+        </button>
+      </div>
+      <div className="card-surface p-5">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "计费" : "Billing"}</h2>
+        <p className="mt-3 text-sm">
+          <span className="font-semibold">{zh ? "套餐：" : "Plan:"}</span>{" "}
+          {billing?.isActive ? (zh ? "专业版" : "Pro") : (zh ? "免费版" : "Free")}
+        </p>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+          <span className="font-semibold text-[var(--color-text)]">{zh ? "订阅状态：" : "Subscription status:"}</span>{" "}
+          {billing?.subscriptionStatus ?? (zh ? "无" : "none")}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => startCheckout("monthly")}
+            className="btn-primary"
+            disabled={busyAction !== null}
+          >
+            {busyAction === "monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "升级月付" : "Upgrade monthly")}
+          </button>
+          <button
+            type="button"
+            onClick={() => startCheckout("yearly")}
+            className="btn-secondary"
+            disabled={busyAction !== null}
+          >
+            {busyAction === "yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "升级年付" : "Upgrade yearly")}
+          </button>
+          <button
+            type="button"
+            onClick={openPortal}
+            className="btn-secondary"
+            disabled={busyAction !== null || !billing?.paddleCustomerId}
+          >
+            {busyAction === "portal" ? (zh ? "打开中..." : "Opening...") : (zh ? "管理账单" : "Manage billing")}
+          </button>
+        </div>
+        {billingError && (
+          <p className="mt-3 text-sm text-[var(--color-danger)]">{billingError}</p>
+        )}
+      </div>
+      <div className="card-surface p-5">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "法律" : "Legal"}</h2>
+        <div className="mt-3 flex flex-wrap gap-3 text-sm">
+          <Link href="/terms" className="text-[var(--color-accent)] hover:underline">
+            {zh ? "服务条款" : "Terms of Service"}
+          </Link>
+          <Link href="/privacy" className="text-[var(--color-accent)] hover:underline">
+            {zh ? "隐私政策" : "Privacy Notice"}
+          </Link>
+          <Link href="/refund-policy" className="text-[var(--color-accent)] hover:underline">
+            {zh ? "退款政策" : "Refund Policy"}
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
