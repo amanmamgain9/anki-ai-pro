@@ -1,7 +1,18 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 const DAY_MS = 86_400_000;
+
+async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
+  const identity = await ctx.auth.getUserIdentity();
+  return identity?.subject ?? null;
+}
+
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
+  const userId = await getUserId(ctx);
+  if (!userId) throw new ConvexError("Unauthorized");
+  return userId;
+}
 
 /**
  * SM-2 spaced repetition algorithm.
@@ -39,17 +50,29 @@ export const getDueCards = queryGeneric({
     deckId: v.optional(v.id("decks")),
     all: v.optional(v.boolean()),
   },
-  handler: async ({ db }, { deckId, all }) => {
+  handler: async (ctx, { deckId, all }) => {
+    const userId = await getUserId(ctx);
+    if (!userId) return { due: [], total: 0, reviewed: 0 };
+    const { db } = ctx;
     const now = Date.now();
 
     let cardsQuery;
     if (deckId) {
+      const deck = await db.get(deckId);
+      if (!deck || deck.userId !== userId) {
+        return { due: [], total: 0, reviewed: 0 };
+      }
       cardsQuery = db
         .query("cards")
-        .withIndex("by_deck_updatedAt", (q: any) => q.eq("deckId", deckId))
+        .withIndex("by_user_deck_updatedAt", (q: any) =>
+          q.eq("userId", userId).eq("deckId", deckId),
+        )
         .collect();
     } else {
-      cardsQuery = db.query("cards").withIndex("by_updatedAt").collect();
+      cardsQuery = db
+        .query("cards")
+        .withIndex("by_user_updatedAt", (q: any) => q.eq("userId", userId))
+        .collect();
     }
 
     const cards = await cardsQuery;
@@ -103,7 +126,15 @@ export const recordReview = mutationGeneric({
     cardId: v.id("cards"),
     quality: v.number(),
   },
-  handler: async ({ db }, { cardId, quality }) => {
+  handler: async (ctx, { cardId, quality }) => {
+    const userId = await requireUserId(ctx);
+    const { db } = ctx;
+
+    const card = await db.get(cardId);
+    if (!card || card.userId !== userId) {
+      throw new Error("Card not found");
+    }
+
     const now = Date.now();
     const q = Math.max(0, Math.min(3, Math.round(quality)));
 
@@ -133,6 +164,7 @@ export const recordReview = mutationGeneric({
       });
     } else {
       await db.insert("cardProgress", {
+        userId,
         cardId,
         easeFactor: next.easeFactor,
         interval: next.interval,
@@ -150,18 +182,30 @@ export const getSessionStats = queryGeneric({
   args: {
     deckId: v.optional(v.id("decks")),
   },
-  handler: async ({ db }, { deckId }) => {
+  handler: async (ctx, { deckId }) => {
+    const userId = await getUserId(ctx);
+    if (!userId) return { total: 0, newCount: 0, dueCount: 0, reviewedToday: 0 };
+    const { db } = ctx;
     const now = Date.now();
     const todayStart = now - (now % DAY_MS);
 
     let cardsQuery;
     if (deckId) {
+      const deck = await db.get(deckId);
+      if (!deck || deck.userId !== userId) {
+        return { total: 0, newCount: 0, dueCount: 0, reviewedToday: 0 };
+      }
       cardsQuery = db
         .query("cards")
-        .withIndex("by_deck_updatedAt", (q: any) => q.eq("deckId", deckId))
+        .withIndex("by_user_deck_updatedAt", (q: any) =>
+          q.eq("userId", userId).eq("deckId", deckId),
+        )
         .collect();
     } else {
-      cardsQuery = db.query("cards").withIndex("by_updatedAt").collect();
+      cardsQuery = db
+        .query("cards")
+        .withIndex("by_user_updatedAt", (q: any) => q.eq("userId", userId))
+        .collect();
     }
     const cards = await cardsQuery;
 

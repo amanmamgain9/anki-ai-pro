@@ -25,7 +25,6 @@ const responseSchema = z.object({
     )
     .min(1)
     .max(30),
-  tips: z.array(z.string().trim().min(1).max(220)).max(5).default([]),
 });
 
 function normalizeCards(
@@ -59,16 +58,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const apiKey = process.env.KIMI_API_KEY;
-  const baseURL = process.env.KIMI_BASE_URL ?? "https://api.groq.com/openai/v1";
+  const apiKey = process.env.GROQ_API_KEY ?? process.env.KIMI_API_KEY;
+  const baseURL =
+    process.env.GROQ_BASE_URL ??
+    process.env.KIMI_BASE_URL ??
+    "https://api.groq.com/openai/v1";
   const model =
-    process.env.KIMI_MODEL ?? "moonshotai/kimi-k2-instruct-0905";
+    process.env.GROQ_MODEL ??
+    process.env.KIMI_MODEL ??
+    "moonshotai/kimi-k2-instruct-0905";
 
   if (!apiKey) {
     return NextResponse.json(
       {
         error:
-          "Missing KIMI_API_KEY in server environment. Set KIMI_API_KEY, KIMI_BASE_URL, and KIMI_MODEL.",
+          "Missing GROQ_API_KEY in server environment. Set GROQ_API_KEY, GROQ_BASE_URL, and GROQ_MODEL.",
       },
       { status: 500 },
     );
@@ -108,7 +112,6 @@ export async function POST(req: Request) {
           `Target card count: ${targetCount}`,
           "Generate practical cards that progress from fundamentals to stronger recall.",
           "Each card must have front, back, and optional tags.",
-          "Return 2-5 short study tips in tips.",
         ].join("\n"),
       ),
     ]);
@@ -118,11 +121,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       title: output.title.trim(),
       cards,
-      tips: (output.tips ?? []).map((tip) => tip.trim()).filter(Boolean),
       model,
     });
   } catch (error) {
-    console.error("Kimi generation failed", error);
+    console.error("Groq generation failed", error);
     return NextResponse.json(
       { error: "Failed to generate cards from LLM" },
       { status: 502 },

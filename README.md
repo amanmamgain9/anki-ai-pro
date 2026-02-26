@@ -11,7 +11,7 @@ Markdown and Mermaid diagram support.
 - Create, edit, delete, and preview flashcards
 - Decks for grouping related cards
 - Google OAuth authentication (Auth.js) with protected app routes
-- AI card generation chat (topic + level) powered by Kimi via LangChain
+- AI card generation chat (topic + level) powered by Groq (Kimi model) via LangChain
 - Built-in localization support (English + Chinese toggle)
 
 ## Getting Started
@@ -110,12 +110,12 @@ Set the webhook forward secret in Convex env too (must match `.env.local`):
 npx convex env set PADDLE_WEBHOOK_FORWARD_SECRET your-shared-secret
 ```
 
-Set up Kimi for AI card generation (Groq OpenAI-compatible endpoint):
+Set up Groq for AI card generation (OpenAI-compatible endpoint):
 
 ```bash
-KIMI_API_KEY=your-groq-api-key
-KIMI_BASE_URL=https://api.groq.com/openai/v1
-KIMI_MODEL=moonshotai/kimi-k2-instruct-0905
+GROQ_API_KEY=your-groq-api-key
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
 ```
 
 Use the env template as a checklist:

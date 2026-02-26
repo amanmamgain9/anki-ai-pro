@@ -1,5 +1,5 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 const sampleCards = [
   {
@@ -14,21 +14,40 @@ const sampleCards = [
   },
 ];
 
+async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
+  const identity = await ctx.auth.getUserIdentity();
+  return identity?.subject ?? null;
+}
+
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
+  const userId = await getUserId(ctx);
+  if (!userId) throw new ConvexError("Unauthorized");
+  return userId;
+}
+
 export const list = queryGeneric({
   args: {
     deckId: v.optional(v.id("decks")),
   },
-  handler: async ({ db }, { deckId }) => {
+  handler: async (ctx, { deckId }) => {
+    const userId = await getUserId(ctx);
+    if (!userId) return [];
+    const { db } = ctx;
+
     if (deckId) {
+      const deck = await db.get(deckId);
+      if (!deck || deck.userId !== userId) return [];
       return await db
         .query("cards")
-        .withIndex("by_deck_updatedAt", (q) => q.eq("deckId", deckId))
+        .withIndex("by_user_deck_updatedAt", (q: any) =>
+          q.eq("userId", userId).eq("deckId", deckId),
+        )
         .order("desc")
         .take(200);
     }
     return await db
       .query("cards")
-      .withIndex("by_updatedAt")
+      .withIndex("by_user_updatedAt", (q: any) => q.eq("userId", userId))
       .order("desc")
       .take(200);
   },
@@ -41,13 +60,25 @@ export const create = mutationGeneric({
     back: v.string(),
     tags: v.optional(v.array(v.string())),
   },
-  handler: async ({ db }, { deckId, front, back, tags }) => {
+  handler: async (ctx, { deckId, front, back, tags }) => {
+    const userId = await requireUserId(ctx);
+    const { db } = ctx;
+
+    if (deckId) {
+      const deck = await db.get(deckId);
+      if (!deck || deck.userId !== userId) {
+        throw new Error("Deck not found");
+      }
+    }
+
     const now = Date.now();
     const cleanedTags =
       tags
         ?.map((tag) => tag.trim())
         .filter((tag) => tag.length > 0) ?? [];
+
     return await db.insert("cards", {
+      userId,
       deckId,
       front: front.trim(),
       back: back.trim(),
@@ -66,18 +97,46 @@ export const update = mutationGeneric({
     back: v.string(),
     tags: v.optional(v.array(v.string())),
   },
-  handler: async ({ db }, { id, deckId, front, back, tags }) => {
+  handler: async (ctx, { id, deckId, front, back, tags }) => {
+    const userId = await requireUserId(ctx);
+    const { db } = ctx;
+
+    const card = await db.get(id);
+    if (!card || card.userId !== userId) {
+      throw new Error("Card not found");
+    }
+    if (deckId) {
+      const deck = await db.get(deckId);
+      if (!deck || deck.userId !== userId) {
+        throw new Error("Deck not found");
+      }
+    }
+
     const cleanedTags =
       tags
         ?.map((tag) => tag.trim())
         .filter((tag) => tag.length > 0) ?? [];
+
+    const now = Date.now();
     await db.patch(id, {
       deckId,
       front: front.trim(),
       back: back.trim(),
       tags: cleanedTags,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+
+    const links = await db
+      .query("cardChatLinks")
+      .withIndex("by_cardId", (q: any) => q.eq("cardId", id))
+      .collect();
+    for (const link of links) {
+      if (link.userId !== userId) continue;
+      await db.patch(link._id, {
+        manuallyModified: true,
+        updatedAt: now,
+      });
+    }
   },
 });
 
@@ -85,7 +144,30 @@ export const remove = mutationGeneric({
   args: {
     id: v.id("cards"),
   },
-  handler: async ({ db }, { id }) => {
+  handler: async (ctx, { id }) => {
+    const userId = await requireUserId(ctx);
+    const { db } = ctx;
+
+    const card = await db.get(id);
+    if (!card || card.userId !== userId) {
+      throw new Error("Card not found");
+    }
+
+    const progress = await db
+      .query("cardProgress")
+      .withIndex("by_cardId", (q) => q.eq("cardId", id))
+      .first();
+    if (progress) await db.delete(progress._id);
+
+    const links = await db
+      .query("cardChatLinks")
+      .withIndex("by_cardId", (q: any) => q.eq("cardId", id))
+      .collect();
+    for (const link of links) {
+      if (link.userId !== userId) continue;
+      await db.delete(link._id);
+    }
+
     await db.delete(id);
   },
 });
@@ -101,7 +183,17 @@ export const bulkCreate = mutationGeneric({
       }),
     ),
   },
-  handler: async ({ db }, { deckId, cards }) => {
+  handler: async (ctx, { deckId, cards }) => {
+    const userId = await requireUserId(ctx);
+    const { db } = ctx;
+
+    if (deckId) {
+      const deck = await db.get(deckId);
+      if (!deck || deck.userId !== userId) {
+        throw new Error("Deck not found");
+      }
+    }
+
     const now = Date.now();
     let created = 0;
     for (const [i, card] of cards.entries()) {
@@ -110,6 +202,7 @@ export const bulkCreate = mutationGeneric({
           ?.map((t) => t.trim())
           .filter((t) => t.length > 0) ?? [];
       await db.insert("cards", {
+        userId,
         deckId,
         front: card.front.trim(),
         back: card.back.trim(),
@@ -124,9 +217,13 @@ export const bulkCreate = mutationGeneric({
 });
 
 export const seed = mutationGeneric({
-  handler: async ({ db }) => {
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const { db } = ctx;
+
     const now = Date.now();
     const deckId = await db.insert("decks", {
+      userId,
       name: "Sample Deck",
       description: "Example cards with Markdown + Mermaid.",
       createdAt: now,
@@ -136,6 +233,7 @@ export const seed = mutationGeneric({
     for (const [index, card] of sampleCards.entries()) {
       await db.insert("cards", {
         ...card,
+        userId,
         deckId,
         createdAt: now + index,
         updatedAt: now + index,

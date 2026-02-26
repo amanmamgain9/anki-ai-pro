@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import ThemeToggle from "@/components/ThemeToggle";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import UserSync from "@/components/UserSync";
+import GenerateChatsSidebar from "@/components/GenerateChatsSidebar";
 import { AppRouterProvider, AppLink, useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
 
@@ -74,64 +75,96 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useAppRouter();
   const { t } = useI18n();
+  const isGenerateFocusRoute =
+    pathname === "/cards/generate" || pathname.startsWith("/cards/generate?");
 
   return (
-    <div className="flex min-h-dvh flex-col lg:flex-row">
+    <div className="flex h-dvh overflow-hidden flex-col lg:flex-row">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex lg:w-56 lg:shrink-0 lg:flex-col lg:gap-6 lg:border-r lg:border-[var(--color-border)] lg:bg-[var(--color-surface)] lg:p-5">
-        <AppLink href="/cards" className="gradient-text text-lg font-bold tracking-tight">
-          ANKI CARDS
-        </AppLink>
+      {!isGenerateFocusRoute && (
+        <aside
+          className="relative hidden h-full min-h-0 overflow-hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-6 lg:border-r lg:border-[var(--color-border)] lg:p-5"
+          style={{
+            background:
+              "radial-gradient(120% 80% at 0% 0%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent 58%), radial-gradient(120% 90% at 100% 100%, color-mix(in oklab, var(--color-accent) 10%, transparent), transparent 62%), var(--color-surface)",
+          }}
+        >
+          <div className="pointer-events-none absolute -left-16 -top-24 h-44 w-44 rounded-full bg-[var(--color-accent-soft)] blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 right-0 h-40 w-40 rounded-full bg-[var(--color-surface-alt)] blur-3xl" />
 
-        <nav className="flex flex-1 flex-col gap-1">
-          {navItems.map(({ href, labelKey, icon: Icon }) => {
-            const active = isActiveRoute(pathname, href);
-            return (
-              <AppLink key={href} href={href}
-                className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
-                  active ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
-                }`}
-                style={active ? { boxShadow: "inset 3px 0 0 var(--color-accent)" } : undefined}>
-                <Icon active={active} />
-                {t(labelKey)}
-              </AppLink>
-            );
-          })}
-        </nav>
+          <AppLink href="/cards" className="gradient-text relative z-10 text-lg font-bold tracking-tight">
+            ANKI CARDS
+          </AppLink>
 
-        <div className="flex items-center gap-2 border-t border-[var(--color-border)] pt-5">
-          <AccountButton compact />
-          <span className="flex-1 text-xs text-[var(--color-text-tertiary)]">{t("app.account")}</span>
-          <LocaleSwitcher />
-          <ThemeToggle />
-        </div>
-      </aside>
+          <nav className="ios-scroll relative z-10 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+            {navItems.map(({ href, labelKey, icon: Icon }) => {
+              const active = isActiveRoute(pathname, href);
+              return (
+                <AppLink
+                  key={href}
+                  href={href}
+                  className={`group flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-all duration-200 ${
+                    active
+                      ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                      : "border-transparent text-[var(--color-text-secondary)] hover:-translate-y-[1px] hover:border-[var(--color-border)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+                  }`}
+                  style={
+                    active
+                      ? {
+                          boxShadow:
+                            "inset 2px 0 0 var(--color-accent), 0 10px 26px color-mix(in oklab, var(--color-accent) 16%, transparent)",
+                        }
+                      : undefined
+                  }
+                >
+                  <Icon active={active} />
+                  {t(labelKey)}
+                </AppLink>
+              );
+            })}
+          </nav>
+
+          <div className="relative z-10 flex items-center gap-2 border-t border-[var(--color-border)] pt-5">
+            <AccountButton compact />
+            <span className="flex-1 text-xs text-[var(--color-text-tertiary)]">{t("app.account")}</span>
+            <LocaleSwitcher />
+            <ThemeToggle />
+          </div>
+        </aside>
+      )}
+      {isGenerateFocusRoute && <GenerateChatsSidebar />}
 
       {/* Main content */}
-      <main className="flex-1 overflow-x-hidden pb-20 lg:pb-0">
-        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+      <main
+        className={`ios-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [padding-bottom:env(safe-area-inset-bottom)] ${
+          isGenerateFocusRoute ? "pb-0" : "pb-20 lg:pb-0"
+        }`}
+      >
+        <div className={`${isGenerateFocusRoute ? "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10" : "mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10"}`}>
           {children}
         </div>
       </main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex items-center border-t border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl lg:hidden">
-        {navItems.map(({ href, labelKey, icon: Icon }) => {
-          const active = isActiveRoute(pathname, href);
-          return (
-            <AppLink key={href} href={href}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.625rem] font-bold uppercase tracking-wider transition ${
-                active ? "text-[var(--color-accent)]" : "text-[var(--color-text-tertiary)]"
-              }`}>
-              <Icon active={active} />
-              {t(labelKey)}
-            </AppLink>
-          );
-        })}
-        <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><LocaleSwitcher /></div>
-        <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><ThemeToggle /></div>
-        <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><AccountButton /></div>
-      </nav>
+      {!isGenerateFocusRoute && (
+        <nav className="fixed inset-x-0 bottom-0 z-50 flex items-center border-t border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl lg:hidden">
+          {navItems.map(({ href, labelKey, icon: Icon }) => {
+            const active = isActiveRoute(pathname, href);
+            return (
+              <AppLink key={href} href={href}
+                className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.625rem] font-bold uppercase tracking-wider transition ${
+                  active ? "text-[var(--color-accent)]" : "text-[var(--color-text-tertiary)]"
+                }`}>
+                <Icon active={active} />
+                {t(labelKey)}
+              </AppLink>
+            );
+          })}
+          <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><LocaleSwitcher /></div>
+          <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><ThemeToggle /></div>
+          <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><AccountButton /></div>
+        </nav>
+      )}
     </div>
   );
 }

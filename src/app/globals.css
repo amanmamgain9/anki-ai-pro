@@ -91,6 +91,11 @@ a {
   text-decoration: none;
 }
 
+.ios-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 /* ── Form controls ─────────────────────────────────── */
 
 input,
