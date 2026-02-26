@@ -265,9 +265,10 @@ export const upsertDraft = mutationGeneric({
         throw new ConvexError("Chat not found");
       }
       if (existing.status === "committed") {
-        throw new ConvexError("Chat is already committed");
+        targetChatId = undefined;
       }
-    } else {
+    }
+    if (!targetChatId) {
       targetChatId = await db.insert("chats", {
         userId,
         status: "active",

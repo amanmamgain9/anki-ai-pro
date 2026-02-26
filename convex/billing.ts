@@ -124,6 +124,90 @@ export const setMyPaddleCustomerId = mutationGeneric({
   },
 });
 
+export const getMyOnboardingState = queryGeneric({
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return {
+        isAuthenticated: false,
+        hasCompletedOnboarding: false,
+      };
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
+      .first();
+
+    return {
+      isAuthenticated: true,
+      hasCompletedOnboarding: Boolean(user?.onboardingCompletedAt),
+      onboardingCompletedAt: user?.onboardingCompletedAt ?? null,
+    };
+  },
+});
+
+export const markOnboardingComplete = mutationGeneric({
+  handler: async (ctx) => {
+    const identity = await requireIdentity(ctx);
+    const now = Date.now();
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    if (!user.onboardingCompletedAt) {
+      await ctx.db.patch(user._id, {
+        onboardingCompletedAt: now,
+        updatedAt: now,
+        lastSeenAt: now,
+      });
+    } else {
+      await ctx.db.patch(user._id, {
+        updatedAt: now,
+        lastSeenAt: now,
+      });
+    }
+
+    return {
+      userId: user._id,
+      onboardingCompletedAt: user.onboardingCompletedAt ?? now,
+    };
+  },
+});
+
+export const resetMyOnboardingForTesting = mutationGeneric({
+  handler: async (ctx) => {
+    const identity = await requireIdentity(ctx);
+    const now = Date.now();
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    // Keep value numeric to satisfy schema while evaluating falsey in onboarding checks.
+    await ctx.db.patch(user._id, {
+      onboardingCompletedAt: 0,
+      updatedAt: now,
+      lastSeenAt: now,
+    });
+
+    return {
+      userId: user._id,
+      onboardingCompletedAt: 0,
+      hasCompletedOnboarding: false,
+    };
+  },
+});
+
 export const getMyBilling = queryGeneric({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();

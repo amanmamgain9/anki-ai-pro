@@ -8,7 +8,7 @@ import { useI18n } from "@/i18n/client";
 
 export default function SignInPage() {
   const search = useSearchParams();
-  const callbackUrl = search.get("callbackUrl") || "/cards";
+  const callbackUrl = search.get("callbackUrl") || "/cards/generate";
   const { t } = useI18n();
 
   return (

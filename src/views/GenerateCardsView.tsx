@@ -36,6 +36,25 @@ type ChatMessage = {
   text: string;
 };
 
+type SnapshotCard = {
+  front: string;
+  back: string;
+  tags: string[];
+  manuallyModified: boolean;
+};
+
+type SnapshotPayload = {
+  topic: string;
+  level?: Level;
+  count: number;
+  saveMode: SaveMode;
+  deckId?: any;
+  autoDeckName?: string;
+  cards: SnapshotCard[];
+  messages: Array<{ role: "assistant" | "user"; text: string }>;
+  workspace: Workspace;
+};
+
 type ChatAction =
   | { kind: "setCount"; value: number }
   | { kind: "setSaveAuto"; name?: string }
@@ -170,18 +189,78 @@ function IconTune({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+function GenerationDeckAnimation({
+  zh,
+  phase,
+}: {
+  zh: boolean;
+  phase: GenerationPhase;
+}) {
+  const title =
+    phase === "saving"
+      ? zh
+        ? "即将开始学习"
+        : "Almost ready to study"
+      : zh
+        ? "正在为你制作卡片"
+        : "Crafting your cards";
+  const subtitle =
+    phase === "saving"
+      ? zh
+        ? "正在保存卡片并打开学习模式..."
+        : "Saving cards and opening study mode..."
+      : zh
+        ? "AI 正在按子主题构建你的第一套牌组..."
+        : "AI is building your first deck by subtopic...";
+
+  return (
+    <div className="onboarding-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
+      <div className="onboarding-deck relative h-56 w-72">
+        <div className="onboarding-deck-card onboarding-deck-card-1" />
+        <div className="onboarding-deck-card onboarding-deck-card-2" />
+        <div className="onboarding-deck-card onboarding-deck-card-3" />
+        <div className="onboarding-deck-card onboarding-deck-card-4" />
+        <div className="onboarding-deck-card onboarding-deck-card-5" />
+      </div>
+      <div className="absolute bottom-[18vh] text-center">
+        <p className="text-lg font-bold tracking-tight text-[var(--color-text)]">{title}</p>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function GenerateCardsView() {
   const { navigate, back, searchParams } = useAppRouter();
   const { t, locale } = useI18n();
   const zh = locale === "zh";
 
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
+  const onboardingState = useQuery(api.billing.getMyOnboardingState) as
+    | { hasCompletedOnboarding: boolean }
+    | undefined;
   const upsertDraft = useMutation(api.chats.upsertDraft);
   const commitChat = useMutation(api.chats.commit);
   const discardChat = useMutation(api.chats.discard);
+  const markOnboardingComplete = useMutation(api.billing.markOnboardingComplete);
 
   const requestedChatId = searchParams.get("chat");
   const wantsNew = searchParams.get("new") === "1";
+  const forceOnboarding = searchParams.get("onboarding") === "1";
+  const isOnboardingFlow =
+    forceOnboarding || onboardingState?.hasCompletedOnboarding === false;
+
+  const buildGenerateRoute = useCallback(
+    (options?: { chatId?: string; wantsNew?: boolean }) => {
+      const query = new URLSearchParams();
+      if (options?.chatId) query.set("chat", options.chatId);
+      if (options?.wantsNew) query.set("new", "1");
+      if (forceOnboarding) query.set("onboarding", "1");
+      const next = query.toString();
+      return next ? `/cards/generate?${next}` : "/cards/generate";
+    },
+    [forceOnboarding],
+  );
 
   const chatDoc = useQuery(
     api.chats.get,
@@ -236,6 +315,7 @@ export default function GenerateCardsView() {
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const loadedChatIdRef = useRef<string | null>(null);
+  const pendingChatIdRef = useRef<string | null>(null);
   const mountedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -256,6 +336,7 @@ export default function GenerateCardsView() {
     setSavedCount(0);
     setCommitBusy(false);
     setDraftDirty(false);
+    pendingChatIdRef.current = null;
     setMessages([{ id: uid(), role: "assistant", text: introText(zh) }]);
   }, [zh]);
 
@@ -273,7 +354,7 @@ export default function GenerateCardsView() {
     if (wantsNew) {
       loadedChatIdRef.current = null;
       resetLocal();
-      navigate("/cards/generate");
+      navigate(buildGenerateRoute());
       return;
     }
 
@@ -313,32 +394,42 @@ export default function GenerateCardsView() {
     setPhase("idle");
     setError(null);
     setDraftDirty(true);
+    pendingChatIdRef.current = requestedChatId;
 
     loadedChatIdRef.current = requestedChatId;
-  }, [requestedChatId, wantsNew, chatDoc, navigate, resetLocal, zh]);
+  }, [requestedChatId, wantsNew, chatDoc, navigate, resetLocal, zh, buildGenerateRoute]);
 
   function addMessage(role: ChatMessage["role"], text: string) {
     setMessages((prev) => [...prev, { id: uid(), role, text }]);
   }
 
-  const buildSnapshotPayload = useCallback(() => {
-    return {
-      topic,
-      level: level ?? undefined,
-      count,
-      saveMode,
-      deckId: saveMode === "existing" && deckId ? (deckId as any) : undefined,
-      autoDeckName: autoDeckName.trim() || undefined,
-      cards: cards.map((card) => ({
-        front: card.front.trim(),
-        back: card.back.trim(),
-        tags: card.tags,
-        manuallyModified: Boolean(card.manuallyModified),
-      })),
-      messages: messages.map((msg) => ({ role: msg.role, text: msg.text })),
-      workspace,
-    };
-  }, [topic, level, count, saveMode, deckId, autoDeckName, cards, messages, workspace]);
+  const buildSnapshotPayload = useCallback(
+    (overrides: Partial<SnapshotPayload> = {}): SnapshotPayload => {
+      const baseSnapshot: SnapshotPayload = {
+        topic,
+        level: level ?? undefined,
+        count,
+        saveMode,
+        deckId: saveMode === "existing" && deckId ? (deckId as any) : undefined,
+        autoDeckName: autoDeckName.trim() || undefined,
+        cards: cards.map((card) => ({
+          front: card.front.trim(),
+          back: card.back.trim(),
+          tags: card.tags,
+          manuallyModified: Boolean(card.manuallyModified),
+        })),
+        messages: messages.map((msg) => ({ role: msg.role, text: msg.text })),
+        workspace,
+      };
+      return {
+        ...baseSnapshot,
+        ...overrides,
+        cards: overrides.cards ?? baseSnapshot.cards,
+        messages: overrides.messages ?? baseSnapshot.messages,
+      };
+    },
+    [topic, level, count, saveMode, deckId, autoDeckName, cards, messages, workspace],
+  );
 
   useEffect(() => {
     if (!mountedRef.current) return;
@@ -360,8 +451,12 @@ export default function GenerateCardsView() {
             snapshot: buildSnapshotPayload(),
           })) as string;
 
-          if (!requestedChatId) {
-            navigate(`/cards/generate?chat=${encodeURIComponent(nextId)}`);
+          const nextChatId = String(nextId);
+          pendingChatIdRef.current = nextChatId;
+          if (!requestedChatId || nextChatId !== requestedChatId) {
+            if (!isOnboardingFlow || nextChatId !== requestedChatId) {
+              navigate(buildGenerateRoute({ chatId: String(nextId) }));
+            }
           }
         } catch (err) {
           console.error("Failed to autosave chat draft", err);
@@ -388,7 +483,9 @@ export default function GenerateCardsView() {
     requestedChatId,
     upsertDraft,
     navigate,
+    buildGenerateRoute,
     buildSnapshotPayload,
+    isOnboardingFlow,
     savedCount,
     draftDirty,
   ]);
@@ -485,9 +582,31 @@ export default function GenerateCardsView() {
       addMessage(
         "assistant",
         zh
-          ? `草稿完成，共 ${preparedCards.length} 张。你可以去编辑器手动改，也可以继续对话让我改。`
-          : `Draft ready with ${preparedCards.length} cards. Edit manually in the editor, or keep refining here in chat.`,
+          ? `草稿完成，共 ${preparedCards.length} 张。正在保存到题库并进入学习...`
+          : `Draft ready with ${preparedCards.length} cards. Saving to your library and opening study...`,
       );
+
+      const generationSnapshot = buildSnapshotPayload({
+        level: chosenLevel,
+        count: targetCount,
+        autoDeckName:
+          saveMode === "auto"
+            ? autoDeckName.trim() || defaultDeckName(topic.trim(), zh)
+            : undefined,
+        cards: preparedCards.map((card) => ({
+          front: card.front.trim(),
+          back: card.back.trim(),
+          tags: card.tags,
+          manuallyModified: Boolean(card.manuallyModified),
+        })),
+        workspace: "editor",
+      });
+      await commitDraft({
+        snapshot: generationSnapshot,
+        redirectToStudy: true,
+        suppressSavedMessage: true,
+        markOnboardingComplete: isOnboardingFlow,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : zh ? "生成失败" : "Generation failed";
       setError(message);
@@ -616,9 +735,15 @@ export default function GenerateCardsView() {
     await generateDraft(chosen, { reason: zh ? "极速模式" : "Quick mode" });
   }
 
-  async function commitDraft() {
-    if (!cards.length || commitBusy) return;
-    if (saveMode === "existing" && !deckId) {
+  async function commitDraft(options?: {
+    snapshot?: SnapshotPayload;
+    redirectToStudy?: boolean;
+    suppressSavedMessage?: boolean;
+    markOnboardingComplete?: boolean;
+  }) {
+    const snapshot = options?.snapshot ?? buildSnapshotPayload();
+    if (!snapshot.cards.length || commitBusy) return;
+    if (snapshot.saveMode === "existing" && !snapshot.deckId) {
       const message = zh
         ? "请先指定要保存的牌组，或切换为自动建牌组。"
         : "Choose a destination deck first, or switch to auto-create deck.";
@@ -631,28 +756,46 @@ export default function GenerateCardsView() {
     setError(null);
 
     try {
-      let chatId = requestedChatId;
+      let chatId = pendingChatIdRef.current ?? requestedChatId;
       if (!chatId) {
         chatId = (await upsertDraft({
-          snapshot: buildSnapshotPayload(),
+          snapshot,
         })) as string;
+        pendingChatIdRef.current = String(chatId);
+        if (!options?.redirectToStudy) {
+          navigate(buildGenerateRoute({ chatId: String(chatId) }));
+        }
       }
 
       setPhase("saving");
       const result = (await commitChat({
         id: chatId as any,
-        snapshot: buildSnapshotPayload(),
+        snapshot,
       })) as { created: number; deckId?: string };
 
       setSavedCount(result.created);
       setDraftDirty(false);
       setPhase("done");
-      addMessage(
-        "assistant",
-        zh
-          ? `已保存 ${result.created} 张卡片到你的题库。`
-          : `Saved ${result.created} cards to your library.`,
-      );
+      if (options?.markOnboardingComplete) {
+        await markOnboardingComplete({});
+      }
+      if (options?.redirectToStudy && result.deckId) {
+        const query = new URLSearchParams();
+        query.set("deck", String(result.deckId));
+        query.set("launch", "1");
+        query.set("chat", String(chatId));
+        query.set("mode", "linear");
+        navigate(`/study?${query.toString()}`);
+        return;
+      }
+      if (!options?.suppressSavedMessage) {
+        addMessage(
+          "assistant",
+          zh
+            ? `已保存 ${result.created} 张卡片到你的题库。`
+            : `Saved ${result.created} cards to your library.`,
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : zh ? "保存失败" : "Save failed";
       setError(message);
@@ -670,7 +813,7 @@ export default function GenerateCardsView() {
       } catch (err) {
         console.error("Failed to discard chat", err);
       }
-      navigate("/cards/generate?new=1");
+      navigate(buildGenerateRoute({ wantsNew: true }));
       return;
     }
     resetLocal();
@@ -897,6 +1040,13 @@ export default function GenerateCardsView() {
     [zh],
   );
 
+  const showGenerationAnimation =
+    busy ||
+    commitBusy ||
+    phase === "thinking" ||
+    phase === "generating" ||
+    phase === "saving";
+
   if (!topic.trim()) {
     return (
       <div className="space-y-8">
@@ -917,7 +1067,14 @@ export default function GenerateCardsView() {
 
         <div className="mx-auto w-full max-w-3xl pt-10">
           <p className="mb-6 text-center text-3xl font-semibold tracking-tight text-[var(--color-text)] md:text-4xl">
-            {zh ? "今天想学什么？" : "What do you want to learn today?"}
+            {zh
+              ? "今天想学什么？"
+              : "What do you want to learn today?"}
+          </p>
+          <p className="mb-6 text-center text-sm text-[var(--color-text-secondary)]">
+            {zh
+              ? "输入主题后我会先生成草稿，你可以继续对话修改，或直接开始学习。"
+              : "Type a topic and I will generate a draft. You can refine in chat, or jump straight into study."}
           </p>
 
           <form
@@ -927,7 +1084,11 @@ export default function GenerateCardsView() {
             <input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder={zh ? "输入主题（比如：细胞生物学）" : "Type a topic (e.g. cell biology)"}
+              placeholder={
+                zh
+                  ? "输入主题（比如：细胞生物学）"
+                  : "Type a topic (e.g. cell biology)"
+              }
               className="w-full border-0 bg-transparent px-2 py-2 text-base focus:ring-0"
               disabled={busy}
             />
@@ -957,6 +1118,7 @@ export default function GenerateCardsView() {
 
   return (
     <div className="space-y-5">
+      {showGenerationAnimation && <GenerationDeckAnimation zh={zh} phase={phase} />}
       <div className="flex items-center gap-3">
         <button
           type="button"

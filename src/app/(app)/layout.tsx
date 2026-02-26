@@ -40,7 +40,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (status !== "unauthenticated") return;
-    const callbackUrl = initialPath || "/cards";
+    const callbackUrl =
+      !initialPath || initialPath === "/cards"
+        ? "/cards/generate"
+        : initialPath;
     router.replace(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }, [initialPath, router, status]);
 
