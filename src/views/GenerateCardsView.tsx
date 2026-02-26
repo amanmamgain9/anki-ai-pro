@@ -14,7 +14,7 @@ import { useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
 
 const api = anyApi;
-const DEFAULT_COUNT = 12;
+const DEFAULT_COUNT = 20;
 const DEFAULT_LEVEL: Level = "intermediate";
 
 type Deck = { _id: string; name: string };
@@ -1185,7 +1185,7 @@ export default function GenerateCardsView() {
                   <label>
                     {zh ? "默认卡片数" : "Default card count"}
                     <div className="mt-1.5 flex flex-wrap gap-2">
-                      {[8, 12, 16, 20].map((n) => (
+                      {[12, 20, 24, 30].map((n) => (
                         <button
                           key={n}
                           type="button"

@@ -52,7 +52,7 @@ function sanitizeSnapshot(
 ) {
   const topic = snapshot.topic.trim();
   const level = snapshot.level;
-  const count = Math.max(4, Math.min(30, Math.round(snapshot.count || 12)));
+  const count = Math.max(4, Math.min(30, Math.round(snapshot.count || 20)));
   const saveMode = snapshot.saveMode;
   const autoDeckName = snapshot.autoDeckName?.trim() || undefined;
 
@@ -222,7 +222,7 @@ export const get = queryGeneric({
       status: chat.status,
       topic: chat.topic ?? "",
       level: chat.level,
-      count: chat.count ?? 12,
+      count: chat.count ?? 20,
       saveMode: chat.saveMode === "existing" ? "existing" : "auto",
       deckId: chat.deckId,
       autoDeckName: chat.autoDeckName ?? "",

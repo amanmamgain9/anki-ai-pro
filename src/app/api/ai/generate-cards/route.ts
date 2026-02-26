@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 
 export const runtime = "nodejs";
+const DEFAULT_TARGET_COUNT = 20;
 
 const requestSchema = z.object({
   topic: z.string().trim().min(2).max(140),
@@ -13,31 +14,93 @@ const requestSchema = z.object({
   count: z.number().int().min(4).max(30).optional(),
 });
 
+const coveragePlanSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  subtopics: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(100),
+        weight: z.number().int().min(1).max(10),
+        focus: z.string().trim().min(1).max(220),
+      }),
+    )
+    .min(3)
+    .max(8),
+});
+
 const responseSchema = z.object({
   title: z.string().trim().min(1).max(120),
   cards: z
     .array(
       z.object({
+        subtopic: z.string().trim().min(1).max(100),
         front: z.string().trim().min(1).max(300),
         back: z.string().trim().min(1).max(4000),
-        tags: z.array(z.string().trim().min(1).max(30)).max(8).default([]),
       }),
     )
     .min(1)
     .max(30),
 });
 
+function buildCoverageTargets(
+  subtopics: Array<{ name: string; weight: number; focus: string }>,
+  count: number,
+) {
+  const cleaned = subtopics
+    .map((subtopic) => ({
+      name: subtopic.name.trim(),
+      weight: Math.max(1, Math.min(10, Math.round(subtopic.weight || 1))),
+      focus: subtopic.focus.trim(),
+    }))
+    .filter((subtopic) => subtopic.name.length > 0 && subtopic.focus.length > 0)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, Math.min(count, 8));
+
+  if (cleaned.length === 0) {
+    return [{ name: "Core concepts", focus: "Foundations and core recall", target: count }];
+  }
+
+  const totalWeight = cleaned.reduce((sum, subtopic) => sum + subtopic.weight, 0) || cleaned.length;
+  const targets = cleaned.map((subtopic) => {
+    const raw = (subtopic.weight / totalWeight) * count;
+    const target = Math.max(1, Math.floor(raw));
+    return {
+      ...subtopic,
+      target,
+      remainder: raw - target,
+    };
+  });
+
+  let assigned = targets.reduce((sum, subtopic) => sum + subtopic.target, 0);
+
+  while (assigned < count) {
+    const candidate = targets
+      .slice()
+      .sort((a, b) => b.remainder - a.remainder || b.weight - a.weight)[assigned % targets.length];
+    candidate.target += 1;
+    assigned += 1;
+  }
+
+  while (assigned > count) {
+    const candidate = targets
+      .slice()
+      .sort((a, b) => a.remainder - b.remainder || a.weight - b.weight)
+      .find((subtopic) => subtopic.target > 1);
+    if (!candidate) break;
+    candidate.target -= 1;
+    assigned -= 1;
+  }
+
+  return targets.map(({ name, focus, target }) => ({ name, focus, target }));
+}
+
 function normalizeCards(
-  cards: Array<{ front: string; back: string; tags?: string[] }>,
+  cards: Array<{ subtopic: string; front: string; back: string }>,
 ) {
   return cards.map((card) => ({
+    subtopic: card.subtopic.trim(),
     front: card.front.trim(),
     back: card.back.trim(),
-    tags:
-      card.tags
-        ?.map((tag) => tag.trim().toLowerCase())
-        .filter(Boolean)
-        .slice(0, 8) ?? [],
   }));
 }
 
@@ -78,7 +141,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const targetCount = parsedRequest.count ?? 12;
+  const targetCount = parsedRequest.count ?? DEFAULT_TARGET_COUNT;
 
   const llm = new ChatOpenAI({
     apiKey,
@@ -89,20 +152,21 @@ export async function POST(req: Request) {
     configuration: { baseURL },
   });
 
+  const planner = llm.withStructuredOutput(coveragePlanSchema, {
+    name: "anki_coverage_plan",
+  });
   const structured = llm.withStructuredOutput(responseSchema, {
     name: "anki_generation_result",
   });
 
   try {
-    const output = await structured.invoke([
+    const coveragePlan = await planner.invoke([
       new SystemMessage(
         [
-          "You generate high-quality Anki flashcards in markdown.",
-          "Output must strictly match the JSON schema provided by the tool.",
-          "Card fronts should be concise prompts/questions.",
-          "Card backs should be clear, accurate, and can include markdown bullet points or short examples.",
-          "Avoid fluff. Focus on retention and exam-style recall.",
-          "Do not include duplicate cards.",
+          "You design syllabus coverage plans for Anki generation.",
+          "Return strictly valid JSON matching the schema.",
+          "Choose subtopics that span fundamentals, process understanding, and applied recall.",
+          "Weights should represent relative card volume.",
         ].join(" "),
       ),
       new HumanMessage(
@@ -110,17 +174,54 @@ export async function POST(req: Request) {
           `Topic: ${parsedRequest.topic}`,
           `Learner level: ${parsedRequest.level}`,
           `Target card count: ${targetCount}`,
-          "Generate practical cards that progress from fundamentals to stronger recall.",
-          "Each card must have front, back, and optional tags.",
+          "Create a balanced subtopic plan with 3-8 subtopics.",
+          "Each subtopic must include a short focus note and weight (1-10).",
         ].join("\n"),
       ),
     ]);
 
-    const cards = normalizeCards(output.cards);
+    const coverageTargets = buildCoverageTargets(coveragePlan.subtopics, targetCount);
+    const coverageLines = coverageTargets.map(
+      (subtopic, index) =>
+        `${index + 1}. ${subtopic.name} -> ${subtopic.target} cards. Focus: ${subtopic.focus}`,
+    );
+
+    const output = await structured.invoke([
+      new SystemMessage(
+        [
+          "You generate high-quality Anki flashcards in markdown.",
+          "Output must strictly match the JSON schema provided by the tool.",
+          "Every card must map to one of the provided subtopics.",
+          "Card fronts should be concise prompts/questions.",
+          "Card backs should be clear, accurate, and can include markdown bullet points or short examples.",
+          "Avoid fluff. Focus on retention and exam-style recall.",
+          "Do not include duplicate cards or overlapping cards.",
+          "Respect the requested subtopic card counts for coverage.",
+        ].join(" "),
+      ),
+      new HumanMessage(
+        [
+          `Coverage title: ${coveragePlan.title}`,
+          `Topic: ${parsedRequest.topic}`,
+          `Learner level: ${parsedRequest.level}`,
+          `Target card count: ${targetCount}`,
+          "Subtopic coverage targets:",
+          ...coverageLines,
+          "Generate cards that progress from fundamentals to stronger recall.",
+          "Each card must have subtopic, front, and back.",
+          "Return exactly the target number of cards.",
+        ].join("\n"),
+      ),
+    ]);
+
+    const cards = normalizeCards(output.cards)
+      .slice(0, targetCount)
+      .map(({ front, back }) => ({ front, back, tags: [] as string[] }));
 
     return NextResponse.json({
       title: output.title.trim(),
       cards,
+      coverage: coverageTargets,
       model,
     });
   } catch (error) {
