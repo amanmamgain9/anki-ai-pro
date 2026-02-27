@@ -22,6 +22,12 @@ export default async function MarketingHome() {
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="8" y="14" width="7" height="7" rx="1" /><path d="M6.5 10v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10" /><path d="M11.5 12.5V14" />
         </svg>
+      ) : index === 2 ? (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+          <path d="M8 10h8" />
+          <path d="M8 14h5" />
+        </svg>
       ) : (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
@@ -97,7 +103,7 @@ export default async function MarketingHome() {
 
       {/* ── Features ────────────────────────────────── */}
       <section className="mx-auto w-full max-w-5xl px-4 pb-24 sm:px-6">
-        <div className="grid gap-5 sm:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((f) => (
             <div
               key={f.title}

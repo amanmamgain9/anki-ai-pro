@@ -34,7 +34,7 @@ export const dictionaries = {
         badge: "Open-source study tool",
         titleTop: "Study smarter with",
         titleHighlight: "Markdown cards.",
-        desc: "Create richly formatted flashcards, render diagrams inline, and sync changes in real time across all your devices.",
+        desc: "Create richly formatted flashcards, chat with each card through an AI tutor, and save markdown summaries with diagrams for later review.",
         getStartedFree: "Get started free",
         learnMore: "Learn more",
         openApp: "Open app",
@@ -47,6 +47,10 @@ export const dictionaries = {
           {
             title: "Mermaid diagrams",
             desc: "Flowcharts, sequence diagrams, and architecture sketches inline.",
+          },
+          {
+            title: "Card tutor chat",
+            desc: "Ask questions directly from Study, keep full per-card chat history, and end with a markdown summary.",
           },
           {
             title: "Real-time sync",
@@ -172,7 +176,7 @@ export const dictionaries = {
         badge: "开源学习工具",
         titleTop: "用以下方式更高效学习",
         titleHighlight: "Markdown 卡片",
-        desc: "创建高质量格式化闪卡，内联渲染图表，并在所有设备间实时同步。",
+        desc: "创建高质量格式化闪卡，针对每张卡片与 AI 导师对话，并保存含图表的 Markdown 总结，便于后续复习。",
         getStartedFree: "免费开始",
         learnMore: "了解更多",
         openApp: "打开应用",
@@ -185,6 +189,10 @@ export const dictionaries = {
           {
             title: "Mermaid 图表",
             desc: "可直接写流程图、时序图和架构图，不用离开编辑器。",
+          },
+          {
+            title: "卡片导师对话",
+            desc: "在学习页直接提问，按卡片保存完整历史，并一键生成 Markdown 总结。",
           },
           {
             title: "实时同步",
