@@ -96,6 +96,30 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_chat_order", ["chatId", "order"]),
 
+  cardStudyChats: defineTable({
+    userId: v.string(),
+    cardId: v.id("cards"),
+    status: v.string(),
+    title: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    messageCount: v.number(),
+    lastMessagePreview: v.optional(v.string()),
+    finishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_card_updatedAt", ["cardId", "updatedAt"])
+    .index("by_user_updatedAt", ["userId", "updatedAt"]),
+
+  cardStudyMessages: defineTable({
+    userId: v.string(),
+    chatId: v.id("cardStudyChats"),
+    role: v.string(),
+    content: v.string(),
+    order: v.number(),
+    createdAt: v.number(),
+  }).index("by_chat_order", ["chatId", "order"]),
+
   chatCards: defineTable({
     userId: v.string(),
     chatId: v.id("chats"),
@@ -131,4 +155,15 @@ export default defineSchema({
   })
     .index("by_cardId", ["cardId"])
     .index("by_user_dueAt", ["userId", "dueAt"]),
+
+  reviewEvents: defineTable({
+    userId: v.string(),
+    cardId: v.id("cards"),
+    deckId: v.optional(v.id("decks")),
+    quality: v.number(),
+    reviewedAt: v.number(),
+    dayStart: v.number(),
+  })
+    .index("by_user_reviewedAt", ["userId", "reviewedAt"])
+    .index("by_user_dayStart", ["userId", "dayStart"]),
 });

@@ -2,7 +2,7 @@
 
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLink, useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
@@ -11,13 +11,80 @@ const api = anyApi;
 
 type Deck = { _id: string; name: string };
 type DueCard = { _id: string; front: string; back: string };
-type Card = { _id: string; deckId?: string; front: string; back: string; tags: string[] };
+type Card = { _id: string; front: string; back: string };
 type StudyMode = "smart" | "linear";
+type HeatCell = { dayStart: number; count: number };
+type HeatmapData = {
+  days: HeatCell[];
+  startDay: number;
+  endDay: number;
+  maxCount: number;
+  totalReviews: number;
+  activeDays: number;
+  currentStreak: number;
+  longestStreak: number;
+};
+type TutorChatMeta = {
+  _id: string;
+  status: string;
+  title: string | null;
+  summary: string | null;
+  hasSummary: boolean;
+  messageCount: number;
+  lastMessagePreview: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+type TutorChatDetail = {
+  chat: {
+    _id: string;
+    status: string;
+    title: string | null;
+    summary: string | null;
+    messageCount: number;
+    createdAt: number;
+    updatedAt: number;
+  };
+  messages: Array<{
+    _id: string;
+    role: "user" | "assistant";
+    content: string;
+    order: number;
+    createdAt: number;
+  }>;
+};
+
+function heatLevel(count: number, maxCount: number) {
+  if (count <= 0) return 0;
+  if (maxCount <= 1) return 4;
+  const ratio = count / maxCount;
+  if (ratio <= 0.25) return 1;
+  if (ratio <= 0.5) return 2;
+  if (ratio <= 0.75) return 3;
+  return 4;
+}
+
+function heatColor(level: number) {
+  if (level === 0) return "color-mix(in srgb, var(--color-surface-alt) 88%, #000 12%)";
+  if (level === 1) return "color-mix(in srgb, var(--color-accent) 24%, var(--color-surface-alt) 76%)";
+  if (level === 2) return "color-mix(in srgb, var(--color-accent) 45%, var(--color-surface-alt) 55%)";
+  if (level === 3) return "color-mix(in srgb, var(--color-accent) 68%, var(--color-surface-alt) 32%)";
+  return "color-mix(in srgb, var(--color-accent) 88%, #fff 12%)";
+}
+
+function formatDateTime(ts: number, zh: boolean) {
+  return new Date(ts).toLocaleString(zh ? "zh-CN" : "en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function StudyView() {
   const { locale } = useI18n();
   const zh = locale === "zh";
-  const { searchParams, navigate } = useAppRouter();
+  const { searchParams, navigate, replace } = useAppRouter();
   const deckId = searchParams.get("deck") || undefined;
   const sourceChatId = searchParams.get("chat") || undefined;
   const modeParam = searchParams.get("mode");
@@ -39,16 +106,17 @@ export default function StudyView() {
   const [animating, setAnimating] = useState(false);
   const [sessionDone, setSessionDone] = useState(0);
   const [linearIndex, setLinearIndex] = useState(0);
-  const [showQuickView, setShowQuickView] = useState(false);
   const [showAllView, setShowAllView] = useState(false);
-  const [quickEditOpen, setQuickEditOpen] = useState(false);
-  const [quickEditBusy, setQuickEditBusy] = useState(false);
-  const [quickEditError, setQuickEditError] = useState<string | null>(null);
-  const [editFront, setEditFront] = useState("");
-  const [editBack, setEditBack] = useState("");
+  const [showTutorPanel, setShowTutorPanel] = useState(false);
+  const [selectedTutorChatId, setSelectedTutorChatId] = useState<string | null>(null);
+  const [tutorInput, setTutorInput] = useState("");
+  const [tutorBusy, setTutorBusy] = useState(false);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [tutorError, setTutorError] = useState<string | null>(null);
   const [showLaunchOverlay, setShowLaunchOverlay] = useState(shouldLaunchIntro);
   const [launchLeaving, setLaunchLeaving] = useState(false);
   const launchStartedAtRef = useRef<number>(0);
+  const tutorScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Only fetch the active study source based on mode
   const dueData = useQuery(
@@ -102,21 +170,27 @@ export default function StudyView() {
   const statsAllDecks = useQuery(api.study.getSessionStats, {}) as
     | { total: number; newCount: number; dueCount: number; reviewedToday: number }
     | undefined;
+  const heatmap = useQuery(api.study.getReviewHeatmap, { sinceUserCreated: true }) as
+    | HeatmapData
+    | undefined;
   const recordReview = useMutation(api.study.recordReview);
-  const updateCard = useMutation(api.flashcards.update);
+  const startTutorChat = useMutation(api.cardChats.start);
+  const appendTutorTurn = useMutation(api.cardChats.appendTurn);
+  const completeTutorChat = useMutation(api.cardChats.complete);
 
   const linearCards = linearData?.due ?? [];
   const allCardsList = allCards ?? [];
   const currentCard = isLinearMode
     ? linearCards[linearIndex] ?? null
     : dueData?.due[0] ?? null;
-  const currentFullCard = currentCard
-    ? allCardsList.find((card) => card._id === currentCard._id) ?? null
-    : null;
-  const quickQueue =
-    (isLinearMode
-      ? linearCards.slice(linearIndex, linearIndex + 8)
-      : (dueData?.due ?? []).slice(0, 8)) ?? [];
+  const tutorChats = useQuery(
+    api.cardChats.listForCard,
+    currentCard ? { cardId: currentCard._id as any } : "skip",
+  ) as TutorChatMeta[] | undefined;
+  const tutorChatDetail = useQuery(
+    api.cardChats.get,
+    selectedTutorChatId ? { id: selectedTutorChatId as any } : "skip",
+  ) as TutorChatDetail | undefined;
   const remaining = isLinearMode
     ? Math.max(0, linearCards.length - linearIndex)
     : dueData
@@ -132,12 +206,200 @@ export default function StudyView() {
       : ((activeData.reviewed + sessionDone) / activeData.total) * 100
     : 0;
 
+  const heatWeeks = useMemo(() => {
+    if (!heatmap?.days?.length) return [] as Array<Array<HeatCell | null>>;
+    const startWeekday = new Date(heatmap.days[0].dayStart).getUTCDay();
+    const padded: Array<HeatCell | null> = [
+      ...Array.from({ length: startWeekday }, () => null),
+      ...heatmap.days,
+    ];
+    while (padded.length % 7 !== 0) padded.push(null);
+    const weeks: Array<Array<HeatCell | null>> = [];
+    for (let i = 0; i < padded.length; i += 7) {
+      weeks.push(padded.slice(i, i + 7));
+    }
+    return weeks;
+  }, [heatmap]);
+
+  const heatmapRangeLabel = useMemo(() => {
+    if (!heatmap) return zh ? "正在加载热力图..." : "Loading heatmap...";
+    const startLabel = new Date(heatmap.startDay).toLocaleDateString(
+      zh ? "zh-CN" : "en-US",
+      { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" },
+    );
+    const trackedDays = Math.max(1, heatmap.days.length);
+    if (zh) {
+      return `从 ${startLabel} 开始 • ${trackedDays} 天`;
+    }
+    return `Since ${startLabel} • ${trackedDays} day${trackedDays === 1 ? "" : "s"}`;
+  }, [heatmap, zh]);
+
   useEffect(() => {
-    if (!currentCard) return;
-    setEditFront(currentCard.front);
-    setEditBack(currentCard.back);
-    setQuickEditError(null);
-  }, [currentCard?._id, currentCard?.front, currentCard?.back]);
+    setSelectedTutorChatId(null);
+    setTutorInput("");
+    setTutorError(null);
+  }, [currentCard?._id]);
+
+  useEffect(() => {
+    if (!tutorChats) return;
+    if (tutorChats.length === 0) {
+      setSelectedTutorChatId(null);
+      return;
+    }
+    if (!selectedTutorChatId) {
+      setSelectedTutorChatId(String(tutorChats[0]._id));
+      return;
+    }
+    if (!tutorChats.find((chat) => String(chat._id) === String(selectedTutorChatId))) {
+      setSelectedTutorChatId(String(tutorChats[0]._id));
+    }
+  }, [tutorChats, selectedTutorChatId]);
+
+  useEffect(() => {
+    if (!showTutorPanel) return;
+    const el = tutorScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [showTutorPanel, tutorChatDetail?.messages.length, tutorChatDetail?.chat.summary]);
+
+  const ensureTutorChatId = useCallback(async () => {
+    if (selectedTutorChatId) return selectedTutorChatId;
+    if (!currentCard) return null;
+    const started = (await startTutorChat({
+      cardId: currentCard._id as any,
+    })) as { id: string };
+    const id = String(started.id);
+    setSelectedTutorChatId(id);
+    return id;
+  }, [selectedTutorChatId, currentCard, startTutorChat]);
+
+  const startFreshTutorChat = useCallback(async () => {
+    if (!currentCard || tutorBusy || summaryBusy) return;
+    setTutorError(null);
+    const started = (await startTutorChat({
+      cardId: currentCard._id as any,
+    })) as { id: string };
+    setSelectedTutorChatId(String(started.id));
+    setTutorInput("");
+  }, [currentCard, tutorBusy, summaryBusy, startTutorChat]);
+
+  const sendTutorMessage = useCallback(async () => {
+    if (!currentCard || tutorBusy) return;
+    const message = tutorInput.trim();
+    if (!message) return;
+
+    setTutorBusy(true);
+    setTutorError(null);
+    try {
+      const chatId = await ensureTutorChatId();
+      if (!chatId) return;
+      const history = tutorChatDetail?.messages?.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })) ?? [];
+
+      const response = await fetch("/api/ai/card-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          card: {
+            front: currentCard.front,
+            back: currentCard.back,
+          },
+          messages: history,
+          userMessage: message,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        reply?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.reply) {
+        throw new Error(payload.error ?? (zh ? "导师回复失败" : "Tutor response failed"));
+      }
+
+      await appendTutorTurn({
+        id: chatId as any,
+        userMessage: message,
+        assistantMessage: payload.reply,
+      });
+      setTutorInput("");
+    } catch (err) {
+      const messageText =
+        err instanceof Error ? err.message : zh ? "发送失败" : "Failed to send";
+      setTutorError(messageText);
+    } finally {
+      setTutorBusy(false);
+    }
+  }, [
+    currentCard,
+    tutorBusy,
+    tutorInput,
+    ensureTutorChatId,
+    tutorChatDetail?.messages,
+    appendTutorTurn,
+    zh,
+  ]);
+
+  const finishTutorChat = useCallback(async () => {
+    if (!currentCard || summaryBusy) return;
+    const chatId = await ensureTutorChatId();
+    if (!chatId) return;
+    const history = tutorChatDetail?.messages ?? [];
+    if (history.length < 2) {
+      setTutorError(zh ? "至少完成一轮问答后再总结。" : "Have at least one Q&A turn before summarizing.");
+      return;
+    }
+
+    setSummaryBusy(true);
+    setTutorError(null);
+    try {
+      const response = await fetch("/api/ai/card-chat-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          card: {
+            front: currentCard.front,
+            back: currentCard.back,
+          },
+          messages: history.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        summary?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.summary) {
+        throw new Error(payload.error ?? (zh ? "总结失败" : "Failed to summarize chat"));
+      }
+      await completeTutorChat({
+        id: chatId as any,
+        summary: payload.summary,
+      });
+    } catch (err) {
+      const messageText =
+        err instanceof Error ? err.message : zh ? "总结失败" : "Failed to summarize";
+      setTutorError(messageText);
+    } finally {
+      setSummaryBusy(false);
+    }
+  }, [currentCard, summaryBusy, ensureTutorChatId, tutorChatDetail?.messages, completeTutorChat, zh]);
+
+  const selectedTutorChatMeta = tutorChats?.find(
+    (chat) => String(chat._id) === String(selectedTutorChatId),
+  ) ?? null;
+
+  useEffect(() => {
+    if (!shouldLaunchIntro) return;
+    const query = new URLSearchParams(searchParams.toString());
+    if (!query.has("launch")) return;
+    query.delete("launch");
+    const next = query.toString();
+    replace(next ? `/study?${next}` : "/study");
+  }, [replace, searchParams, shouldLaunchIntro]);
 
   const setMode = useCallback(
     (nextMode: StudyMode) => {
@@ -169,36 +431,6 @@ export default function StudyView() {
     if (!animating) setFlipped((f) => !f);
   }, [animating]);
 
-  const saveQuickEdit = useCallback(async () => {
-    if (!currentCard || quickEditBusy) return;
-    const front = editFront.trim();
-    const back = editBack.trim();
-    const nextDeckId = currentFullCard?.deckId ?? deckId;
-    const nextTags = currentFullCard?.tags ?? ((currentCard as any).tags ?? []);
-    if (!front || !back) {
-      setQuickEditError(zh ? "正反面都不能为空。" : "Front and back cannot be empty.");
-      return;
-    }
-    setQuickEditBusy(true);
-    setQuickEditError(null);
-    try {
-      await updateCard({
-        id: currentCard._id as any,
-        deckId: nextDeckId ? (nextDeckId as any) : undefined,
-        front,
-        back,
-        tags: nextTags,
-      });
-      setQuickEditOpen(false);
-      setFlipped(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : zh ? "保存失败" : "Save failed";
-      setQuickEditError(message);
-    } finally {
-      setQuickEditBusy(false);
-    }
-  }, [currentCard, quickEditBusy, editFront, editBack, updateCard, currentFullCard, deckId, zh]);
-
   // ── Deck picker (no deck selected) ───────────────
   if (!deckId) {
     return (
@@ -229,6 +461,84 @@ export default function StudyView() {
             </div>
           </div>
         )}
+
+        <div className="card-surface overflow-hidden p-4">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold">{zh ? "学习一致性热力图" : "Review consistency heatmap"}</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                {heatmapRangeLabel}
+              </p>
+            </div>
+            {heatmap && (
+              <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
+                <span>
+                  {zh ? "当前连续" : "Current streak"}{" "}
+                  <strong className="text-[var(--color-text)]">{heatmap.currentStreak}</strong>
+                </span>
+                <span>
+                  {zh ? "最长连续" : "Longest streak"}{" "}
+                  <strong className="text-[var(--color-text)]">{heatmap.longestStreak}</strong>
+                </span>
+                <span>
+                  {zh ? "总复习" : "Total reviews"}{" "}
+                  <strong className="text-[var(--color-text)]">{heatmap.totalReviews}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
+          {!heatmap && (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {zh ? "正在加载热力图..." : "Loading heatmap..."}
+            </p>
+          )}
+
+          {heatmap && heatWeeks.length > 0 && (
+            <div className="overflow-x-auto pb-1">
+              <div className="flex min-w-max items-start gap-2">
+                <div className="grid grid-rows-7 gap-1 pt-[1px] text-[10px] text-[var(--color-text-tertiary)]">
+                  {(zh ? ["日", "一", "二", "三", "四", "五", "六"] : ["S", "M", "T", "W", "T", "F", "S"]).map((d, idx) => (
+                    <div key={`${idx}-${d}`} className="h-3">{d}</div>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  {heatWeeks.map((week, weekIdx) => (
+                    <div key={weekIdx} className="grid grid-rows-7 gap-1">
+                      {week.map((cell, dayIdx) => {
+                        if (!cell) {
+                          return (
+                            <div
+                              key={`${weekIdx}-${dayIdx}`}
+                              className="h-3 w-3 rounded-[3px] bg-transparent"
+                            />
+                          );
+                        }
+                        const level = heatLevel(cell.count, heatmap.maxCount);
+                        const dateLabel = new Date(cell.dayStart).toLocaleDateString(
+                          zh ? "zh-CN" : "en-US",
+                          { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" },
+                        );
+                        return (
+                          <div
+                            key={`${weekIdx}-${dayIdx}`}
+                            className="h-3 w-3 rounded-[3px] border border-[var(--color-border)]/65"
+                            style={{ backgroundColor: heatColor(level) }}
+                            title={
+                              zh
+                                ? `${dateLabel}：${cell.count} 次复习`
+                                : `${dateLabel}: ${cell.count} review${cell.count === 1 ? "" : "s"}`
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Deck list */}
         {!decks && <p className="text-sm text-[var(--color-text-secondary)]">{zh ? "正在加载牌组..." : "Loading decks..."}</p>}
@@ -317,13 +627,6 @@ export default function StudyView() {
           )}
           <button
             type="button"
-            onClick={() => setShowQuickView((prev) => !prev)}
-            className="btn-secondary !px-3 !py-1.5 !text-xs"
-          >
-            {showQuickView ? (zh ? "关闭速览" : "Hide quick view") : (zh ? "快速预览" : "Quick view")}
-          </button>
-          <button
-            type="button"
             onClick={() => setShowAllView((prev) => !prev)}
             className="btn-secondary !px-3 !py-1.5 !text-xs"
           >
@@ -331,11 +634,11 @@ export default function StudyView() {
           </button>
           <button
             type="button"
-            disabled={!currentCard || quickEditBusy}
-            onClick={() => setQuickEditOpen((prev) => !prev)}
+            onClick={() => setShowTutorPanel(true)}
+            disabled={!currentCard}
             className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
           >
-            {quickEditOpen ? (zh ? "关闭快改" : "Hide quick edit") : (zh ? "快速编辑" : "Quick edit")}
+            {zh ? "卡片导师" : "Tutor chat"}
           </button>
           <AppLink href={deckId ? `/cards?deck=${deckId}` : "/cards"} className="btn-secondary !px-3 !py-1.5 !text-xs">
             {zh ? "编辑全部" : "Edit all"}
@@ -373,31 +676,6 @@ export default function StudyView() {
         <div className="mb-6 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-alt)]">
           <div className="h-full rounded-full transition-all duration-500"
             style={{ width: `${Math.min(100, progressPct)}%`, background: "linear-gradient(90deg, var(--color-gradient-from), var(--color-gradient-to))" }} />
-        </div>
-      )}
-
-      {showQuickView && quickQueue.length > 0 && (
-        <div className="card-surface mb-4 p-4">
-          <div className="mb-2 text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-            {zh ? "快速预览" : "Quick view"}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {quickQueue.map((card, idx) => (
-              <button
-                key={`${card._id}-${idx}`}
-                type="button"
-                disabled={!isLinearMode}
-                onClick={() => {
-                  if (!isLinearMode) return;
-                  setLinearIndex((prev) => prev + idx);
-                  setFlipped(false);
-                }}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-xs text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)] disabled:cursor-default"
-              >
-                <p className="line-clamp-2 text-[var(--color-text)]">{card.front.split("\n")[0].replace(/^#+\s*/, "")}</p>
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
@@ -485,57 +763,6 @@ export default function StudyView() {
               </div>
             </button>
 
-            {quickEditOpen && currentCard && (
-              <div className="card-surface mt-3 space-y-3 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-                  {zh ? "快速编辑当前卡片" : "Quick edit current card"}
-                </p>
-                <label>
-                  {zh ? "正面" : "Front"}
-                  <textarea
-                    rows={3}
-                    value={editFront}
-                    onChange={(e) => setEditFront(e.target.value)}
-                    disabled={quickEditBusy}
-                  />
-                </label>
-                <label>
-                  {zh ? "背面" : "Back"}
-                  <textarea
-                    rows={6}
-                    value={editBack}
-                    onChange={(e) => setEditBack(e.target.value)}
-                    disabled={quickEditBusy}
-                  />
-                </label>
-                {quickEditError && (
-                  <p className="text-sm text-[var(--color-danger)]">{quickEditError}</p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void saveQuickEdit()}
-                    disabled={quickEditBusy}
-                    className="btn-primary !text-xs"
-                  >
-                    {quickEditBusy
-                      ? (zh ? "保存中..." : "Saving...")
-                      : (zh ? "保存修改" : "Save changes")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuickEditOpen(false);
-                      setQuickEditError(null);
-                    }}
-                    className="btn-secondary !text-xs"
-                  >
-                    {zh ? "取消" : "Cancel"}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {flipped && (
               <div className="mt-5 space-y-3">
                 <p className="text-center text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "你掌握得如何？" : "How well did you know it?"}</p>
@@ -556,6 +783,175 @@ export default function StudyView() {
           </div>
         )}
       </div>
+
+      {showTutorPanel && currentCard && (
+        <>
+          <button
+            type="button"
+            aria-label={zh ? "关闭导师面板" : "Close tutor panel"}
+            onClick={() => setShowTutorPanel(false)}
+            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
+          />
+          <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[46rem] flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+              <div>
+                <p className="text-sm font-bold">{zh ? "卡片导师对话" : "Card tutor chat"}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-[var(--color-text-secondary)]">
+                  {currentCard.front.split("\n")[0].replace(/^#+\s*/, "")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTutorPanel(false)}
+                className="btn-secondary !px-2.5 !py-1 text-xs"
+              >
+                {zh ? "关闭" : "Close"}
+              </button>
+            </div>
+
+            <div className="border-b border-[var(--color-border)] px-4 py-2.5">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                  {zh ? "该卡片历史对话" : "Chat history for this card"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void startFreshTutorChat()}
+                  disabled={tutorBusy || summaryBusy}
+                  className="btn-secondary !px-2.5 !py-1 !text-xs disabled:opacity-50"
+                >
+                  {zh ? "新建" : "New"}
+                </button>
+              </div>
+              {!tutorChats && (
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  {zh ? "正在加载历史..." : "Loading history..."}
+                </p>
+              )}
+              {tutorChats && tutorChats.length === 0 && (
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  {zh ? "还没有历史对话。" : "No chat history yet."}
+                </p>
+              )}
+              {tutorChats && tutorChats.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {tutorChats.map((chat) => {
+                    const active = String(chat._id) === String(selectedTutorChatId);
+                    return (
+                      <button
+                        key={String(chat._id)}
+                        type="button"
+                        onClick={() => setSelectedTutorChatId(String(chat._id))}
+                        className={`min-w-36 rounded-lg border px-2.5 py-2 text-left text-xs transition ${
+                          active
+                            ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface-alt)] hover:border-[var(--color-border-strong)]"
+                        }`}
+                      >
+                        <p className="line-clamp-1 font-semibold text-[var(--color-text)]">
+                          {chat.title || (zh ? "未命名对话" : "Untitled chat")}
+                        </p>
+                        <p className="mt-1 line-clamp-1 text-[var(--color-text-secondary)]">
+                          {chat.lastMessagePreview || (zh ? "尚无消息" : "No messages yet")}
+                        </p>
+                        <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">
+                          {formatDateTime(chat.updatedAt, zh)}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div ref={tutorScrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+              {!selectedTutorChatId && (
+                <div className="card-surface p-4 text-sm text-[var(--color-text-secondary)]">
+                  {zh ? "点击“新建”开始这张卡片的导师对话。" : "Click “New” to start a tutor chat for this card."}
+                </div>
+              )}
+
+              {selectedTutorChatId && tutorChatDetail && tutorChatDetail.messages.length === 0 && (
+                <div className="card-surface p-4 text-sm text-[var(--color-text-secondary)]">
+                  {zh ? "发一条消息开始提问。" : "Send a message to start asking questions."}
+                </div>
+              )}
+
+              {tutorChatDetail?.messages.map((msg) => (
+                <div
+                  key={msg._id}
+                  className={`rounded-xl border px-3 py-2 ${
+                    msg.role === "user"
+                      ? "ml-8 border-[var(--color-border-strong)] bg-[var(--color-surface-alt)]"
+                      : "mr-8 border-[var(--color-border)] bg-[var(--color-surface)]"
+                  }`}
+                >
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    {msg.role === "user" ? (zh ? "你" : "You") : (zh ? "导师" : "Tutor")}
+                  </p>
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm max-w-none">
+                      <MarkdownRenderer content={msg.content} />
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm text-[var(--color-text)]">{msg.content}</p>
+                  )}
+                </div>
+              ))}
+
+              {selectedTutorChatMeta?.summary && (
+                <div className="card-surface border-[var(--color-accent)]/40 p-4">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--color-accent)]">
+                    {zh ? "学习总结" : "Study summary"}
+                  </p>
+                  <div className="prose prose-sm max-w-none">
+                    <MarkdownRenderer content={selectedTutorChatMeta.summary} />
+                  </div>
+                </div>
+              )}
+
+              {tutorError && (
+                <p className="text-sm text-[var(--color-danger)]">{tutorError}</p>
+              )}
+            </div>
+
+            <div className="border-t border-[var(--color-border)] px-4 py-3">
+              <textarea
+                value={tutorInput}
+                onChange={(e) => setTutorInput(e.target.value)}
+                rows={3}
+                placeholder={zh ? "问导师：这张卡片我哪里没理解透？" : "Ask the tutor: what am I missing on this card?"}
+                disabled={tutorBusy || summaryBusy}
+              />
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => void finishTutorChat()}
+                  disabled={
+                    summaryBusy ||
+                    tutorBusy ||
+                    !selectedTutorChatId ||
+                    (tutorChatDetail?.messages.length ?? 0) < 2
+                  }
+                  className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
+                >
+                  {summaryBusy
+                    ? (zh ? "总结中..." : "Summarizing...")
+                    : (zh ? "结束并生成总结" : "Finish & summarize")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sendTutorMessage()}
+                  disabled={tutorBusy || summaryBusy || !tutorInput.trim()}
+                  className="btn-primary !px-3 !py-1.5 !text-xs disabled:opacity-50"
+                >
+                  {tutorBusy ? (zh ? "发送中..." : "Sending...") : (zh ? "发送" : "Send")}
+                </button>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   );
 }

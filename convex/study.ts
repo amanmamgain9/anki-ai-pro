@@ -3,6 +3,10 @@ import { ConvexError, v } from "convex/values";
 
 const DAY_MS = 86_400_000;
 
+function dayStart(ts: number) {
+  return ts - (ts % DAY_MS);
+}
+
 async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
   const identity = await ctx.auth.getUserIdentity();
   return identity?.subject ?? null;
@@ -281,6 +285,15 @@ export const recordReview = mutationGeneric({
       });
     }
 
+    await db.insert("reviewEvents", {
+      userId,
+      cardId,
+      deckId: card.deckId,
+      quality: q,
+      reviewedAt: now,
+      dayStart: dayStart(now),
+    });
+
     return { nextDueAt: dueAt, interval: next.interval };
   },
 });
@@ -320,5 +333,121 @@ export const getSessionStats = queryGeneric({
     }
 
     return { total: cards.length, newCount, dueCount, reviewedToday };
+  },
+});
+
+export const getReviewHeatmap = queryGeneric({
+  args: {
+    days: v.optional(v.number()),
+    sinceUserCreated: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { days, sinceUserCreated }) => {
+    const userId = await getUserId(ctx);
+    const fallbackSpanDays = Math.max(28, Math.min(366, Math.floor(days ?? 182)));
+    if (!userId) {
+      const now = Date.now();
+      const todayStart = dayStart(now);
+      const start = todayStart - (fallbackSpanDays - 1) * DAY_MS;
+      return {
+        days: [] as Array<{ dayStart: number; count: number }>,
+        startDay: start,
+        endDay: todayStart,
+        maxCount: 0,
+        totalReviews: 0,
+        activeDays: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+      };
+    }
+
+    const now = Date.now();
+    const todayStart = dayStart(now);
+    let start = todayStart - (fallbackSpanDays - 1) * DAY_MS;
+
+    if (sinceUserCreated) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_externalId", (q: any) => q.eq("externalId", userId))
+        .first();
+      if (user?.createdAt) {
+        start = dayStart(user.createdAt);
+      }
+    }
+
+    if (start > todayStart) {
+      start = todayStart;
+    }
+
+    const spanDays = Math.max(1, Math.floor((todayStart - start) / DAY_MS) + 1);
+
+    const events = await ctx.db
+      .query("reviewEvents")
+      .withIndex("by_user_reviewedAt", (q: any) =>
+        q.eq("userId", userId).gte("reviewedAt", start).lte("reviewedAt", now),
+      )
+      .collect();
+
+    const countsByDay = new Map<number, number>();
+    for (const event of events) {
+      const key = event.dayStart ?? dayStart(event.reviewedAt);
+      countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+    }
+
+    // Backward compatibility: before `reviewEvents` existed we only had
+    // card-level `lastReviewedAt`. Use it as a coarse fallback.
+    if (events.length === 0) {
+      const progress = await ctx.db
+        .query("cardProgress")
+        .withIndex("by_user_dueAt", (q: any) => q.eq("userId", userId))
+        .collect();
+      for (const row of progress) {
+        if (!row.lastReviewedAt) continue;
+        if (row.lastReviewedAt < start || row.lastReviewedAt > now) continue;
+        const key = dayStart(row.lastReviewedAt);
+        countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+      }
+    }
+
+    const cells: Array<{ dayStart: number; count: number }> = [];
+    let maxCount = 0;
+    let totalReviews = 0;
+    let activeDays = 0;
+
+    for (let i = 0; i < spanDays; i++) {
+      const key = start + i * DAY_MS;
+      const count = countsByDay.get(key) ?? 0;
+      cells.push({ dayStart: key, count });
+      if (count > maxCount) maxCount = count;
+      totalReviews += count;
+      if (count > 0) activeDays += 1;
+    }
+
+    let currentStreak = 0;
+    for (let i = cells.length - 1; i >= 0; i--) {
+      if (cells[i].count > 0) currentStreak += 1;
+      else break;
+    }
+
+    let longestStreak = 0;
+    let running = 0;
+    for (const cell of cells) {
+      if (cell.count > 0) {
+        running += 1;
+        if (running > longestStreak) longestStreak = running;
+      } else {
+        running = 0;
+      }
+    }
+
+    return {
+      days: cells,
+      startDay: start,
+      endDay: todayStart,
+      maxCount,
+      totalReviews,
+      activeDays,
+      currentStreak,
+      longestStreak,
+    };
   },
 });

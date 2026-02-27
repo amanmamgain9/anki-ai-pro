@@ -13,6 +13,7 @@ type RouterCtx = {
   pathname: string;
   searchParams: URLSearchParams;
   navigate: (to: string) => void;
+  replace: (to: string) => void;
   back: () => void;
 };
 
@@ -20,6 +21,7 @@ const Ctx = createContext<RouterCtx>({
   pathname: "/cards",
   searchParams: new URLSearchParams(),
   navigate: () => {},
+  replace: () => {},
   back: () => {},
 });
 
@@ -42,6 +44,11 @@ function getSnapshot() {
 
 function navigate(to: string) {
   history.pushState(null, "", to);
+  listeners.forEach((fn) => fn());
+}
+
+function replace(to: string) {
+  history.replaceState(null, "", to);
   listeners.forEach((fn) => fn());
 }
 
@@ -74,6 +81,7 @@ export function AppRouterProvider({
         pathname,
         searchParams: new URLSearchParams(search),
         navigate,
+        replace,
         back,
       }}
     >
