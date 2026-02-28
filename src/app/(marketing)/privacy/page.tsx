@@ -99,8 +99,8 @@ export default async function PrivacyPage() {
             </h2>
             <p className="mt-2">
               {zh ? "如有隐私相关请求或问题，请联系：" : "For privacy requests or questions, contact:"}{" "}
-              <a href="mailto:support@aiankipro.com" className="text-[var(--color-accent)] hover:underline">
-                support@aiankipro.com
+              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
+                planmyworkday@gmail.com
               </a>
             </p>
           </section>

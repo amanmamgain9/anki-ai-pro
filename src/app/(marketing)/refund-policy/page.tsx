@@ -60,29 +60,29 @@ export default async function RefundPolicyPage() {
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "3. 首次购买退款" : "3. Initial Purchase Refunds"}
+              {zh ? "3. 不退款政策" : "3. No Refund Policy"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "若这是你首次购买付费订阅且对服务不满意，可在购买后 7 天内申请退款。"
-                : "If this is your first paid subscription and you are not satisfied, you may request a refund within 7 days of purchase."}
+                ? "所有订阅费用均不退款，包括部分周期未使用部分。"
+                : "All subscription payments are non-refundable, including unused portions of a billing period."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "4. 续费退款" : "4. Renewal Refunds"}
+              {zh ? "4. 取消订阅" : "4. Cancellation"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "续费款项通常不予退款，法律另有规定的除外。"
-                : "Renewal payments are generally non-refundable, except where required by applicable law."}
+                ? "你可以随时取消订阅。取消后当前计费周期内仍可继续使用，随后不再自动续费。"
+                : "You may cancel your subscription at any time. Access continues until the current billing period ends, and then it will not renew automatically."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "5. 如何申请退款" : "5. How to Request a Refund"}
+              {zh ? "5. 法律例外与账单支持" : "5. Legal Exceptions and Billing Support"}
             </h2>
             <p className="mt-2">
               {zh ? "请发送邮件至 " : "Email "}{" "}
@@ -90,8 +90,8 @@ export default async function RefundPolicyPage() {
                 support@aiankipro.com
               </a>{" "}
               {zh
-                ? "并附上账户邮箱与 Paddle 收据详情。我们通常会在 3 个工作日内回复。"
-                : "with your account email and Paddle receipt details. We typically respond within 3 business days."}
+                ? "获取账单协助。若适用法律要求退款，我们会依法处理。"
+                : "for billing assistance. Where refunds are required by applicable law, we will honor those requirements."}
             </p>
           </section>
         </div>
