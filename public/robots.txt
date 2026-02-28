@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Keep auth and app-internal routes out of search indexing
+Disallow: /api/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /cards
+Disallow: /decks
+Disallow: /study
+Disallow: /settings
+
+Sitemap: https://aiankipro.com/sitemap.xml
