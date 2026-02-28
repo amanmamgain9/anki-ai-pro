@@ -11,3 +11,8 @@ Disallow: /study
 Disallow: /settings
 
 Sitemap: https://aiankipro.com/sitemap.xml
+
+# LLM-specific discovery files
+# (non-standard but increasingly used by some AI crawlers)
+# https://aiankipro.com/llms.txt
+# https://aiankipro.com/llms-full.txt

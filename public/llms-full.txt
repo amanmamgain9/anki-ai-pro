@@ -1,0 +1,48 @@
+# ANKI CARDS - LLM Context (Full)
+
+Site: https://aiankipro.com
+
+## What This Product Is
+
+ANKI CARDS is a web app for learning with flashcards. It combines:
+
+- Markdown-first card authoring
+- Deck organization
+- Study workflows with review scheduling
+- AI-assisted card generation
+- Per-card AI tutor chat with saved history and summaries
+
+## Primary User Flows
+
+1. Sign in
+2. Create a deck or generate cards from a topic
+3. Study cards and rate recall quality
+4. Use tutor chat on difficult cards
+5. Continue improving content over time
+
+## Key Public URLs
+
+- Home: https://aiankipro.com/
+- About: https://aiankipro.com/about
+- Pricing: https://aiankipro.com/pricing
+- Contact: https://aiankipro.com/contact
+- Terms: https://aiankipro.com/terms
+- Privacy: https://aiankipro.com/privacy
+- Refund Policy: https://aiankipro.com/refund-policy
+- Sitemap: https://aiankipro.com/sitemap.xml
+- Robots: https://aiankipro.com/robots.txt
+
+## Legal/Policy Notes
+
+- Payments are handled by Paddle.
+- Privacy and legal/support contacts are described on public legal pages.
+- Refund and billing terms are defined on the Refund Policy and Terms pages.
+
+## Content/Indexing Guidance
+
+- Public marketing and legal pages are intended for crawling.
+- Signed-in product pages are user-specific and should remain non-indexed.
+
+## Canonical Short File
+
+- https://aiankipro.com/llms.txt
