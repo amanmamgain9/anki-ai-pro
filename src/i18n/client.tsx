@@ -6,7 +6,7 @@ import { dictionaries, normalizeLocale, type Locale } from "@/i18n/messages";
 type LocaleContextValue = {
   locale: Locale;
   setLocale: (next: Locale) => void;
-  t: (path: string) => string;
+  t: (path: string, params?: Record<string, string | number>) => string;
 };
 
 const LocaleContext = createContext<LocaleContextValue>({
@@ -40,11 +40,24 @@ export function LocaleProvider({
   }, []);
 
   const t = useCallback(
-    (path: string) => {
+    (path: string, params?: Record<string, string | number>) => {
       const current = readPathValue(dictionaries[locale], path);
-      if (typeof current === "string") return current;
+      if (typeof current === "string") {
+        if (!params) return current;
+        return current.replace(/\{(\w+)\}/g, (_match, key: string) => {
+          const value = params[key];
+          return value === undefined ? `{${key}}` : String(value);
+        });
+      }
       const fallback = readPathValue(dictionaries.en, path);
-      return typeof fallback === "string" ? fallback : path;
+      if (typeof fallback === "string") {
+        if (!params) return fallback;
+        return fallback.replace(/\{(\w+)\}/g, (_match, key: string) => {
+          const value = params[key];
+          return value === undefined ? `{${key}}` : String(value);
+        });
+      }
+      return path;
     },
     [locale],
   );

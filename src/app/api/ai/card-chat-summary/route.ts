@@ -20,6 +20,10 @@ const requestSchema = z.object({
   messages: z.array(messageSchema).min(2).max(60),
 });
 
+function clampText(value: string, max: number) {
+  return value.length <= max ? value : value.slice(0, max);
+}
+
 function contentToText(content: unknown) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -78,8 +82,13 @@ export async function POST(req: Request) {
   });
 
   const transcript = parsed.messages
-    .map((msg) => `${msg.role === "assistant" ? "Tutor" : "Learner"}: ${msg.content}`)
+    .slice(-20)
+    .map((msg) =>
+      `${msg.role === "assistant" ? "Tutor" : "Learner"}: ${clampText(msg.content, 2000)}`,
+    )
     .join("\n\n");
+  const cardFront = clampText(parsed.card.front, 500);
+  const cardBack = clampText(parsed.card.back, 4000);
 
   try {
     const response = await llm.invoke([
@@ -94,8 +103,8 @@ export async function POST(req: Request) {
       new HumanMessage(
         [
           "Card context:",
-          `Front: ${parsed.card.front}`,
-          `Back: ${parsed.card.back}`,
+          `Front: ${cardFront}`,
+          `Back: ${cardBack}`,
           "",
           "Tutor conversation transcript:",
           transcript,
@@ -120,8 +129,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ summary, model });
   } catch (error) {
     console.error("Card tutor summary failed", error);
+    const errorMessage =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to generate chat summary";
     return NextResponse.json(
-      { error: "Failed to generate chat summary" },
+      { error: errorMessage },
       { status: 502 },
     );
   }

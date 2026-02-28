@@ -21,6 +21,10 @@ const requestSchema = z.object({
   userMessage: z.string().trim().min(1).max(6000),
 });
 
+function clampText(value: string, max: number) {
+  return value.length <= max ? value : value.slice(0, max);
+}
+
 function contentToText(content: unknown) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -78,7 +82,16 @@ export async function POST(req: Request) {
     configuration: { baseURL },
   });
 
-  const history = parsed.messages.slice(-24);
+  const history = parsed.messages
+    .slice(-12)
+    .map((msg) => ({
+      role: msg.role,
+      content: clampText(msg.content, 2000),
+    }));
+  const cardFront = clampText(parsed.card.front, 500);
+  const cardBack = clampText(parsed.card.back, 4000);
+  const userMessage = clampText(parsed.userMessage, 2000);
+
   try {
     const response = await llm.invoke([
       new SystemMessage(
@@ -93,8 +106,8 @@ export async function POST(req: Request) {
       new HumanMessage(
         [
           "Current card context:",
-          `Front: ${parsed.card.front}`,
-          `Back: ${parsed.card.back}`,
+          `Front: ${cardFront}`,
+          `Back: ${cardBack}`,
           "Tutor this specific card.",
         ].join("\n"),
       ),
@@ -103,7 +116,7 @@ export async function POST(req: Request) {
           ? new AIMessage(msg.content)
           : new HumanMessage(msg.content),
       ),
-      new HumanMessage(parsed.userMessage),
+      new HumanMessage(userMessage),
     ]);
 
     const reply = contentToText(response.content).trim();
@@ -117,8 +130,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply, model });
   } catch (error) {
     console.error("Card tutor chat failed", error);
+    const errorMessage =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to generate tutor response";
     return NextResponse.json(
-      { error: "Failed to generate tutor response" },
+      { error: errorMessage },
       { status: 502 },
     );
   }

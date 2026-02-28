@@ -72,8 +72,8 @@ function heatColor(level: number) {
   return "color-mix(in srgb, var(--color-accent) 88%, #fff 12%)";
 }
 
-function formatDateTime(ts: number, zh: boolean) {
-  return new Date(ts).toLocaleString(zh ? "zh-CN" : "en-US", {
+function formatDateTime(ts: number, locale: string) {
+  return new Date(ts).toLocaleString(locale, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -82,8 +82,7 @@ function formatDateTime(ts: number, zh: boolean) {
 }
 
 export default function StudyView() {
-  const { locale } = useI18n();
-  const zh = locale === "zh";
+  const { locale, t } = useI18n();
   const { searchParams, navigate, replace } = useAppRouter();
   const deckId = searchParams.get("deck") || undefined;
   const sourceChatId = searchParams.get("chat") || undefined;
@@ -94,10 +93,10 @@ export default function StudyView() {
   const isLinearMode = mode === "linear";
   const shouldLaunchIntro = searchParams.get("launch") === "1";
   const ratings = [
-    { label: zh ? "重来" : "Again", quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: zh ? "忘记了" : "Forgot it" },
-    { label: zh ? "困难" : "Hard", quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: zh ? "有点吃力" : "Struggled" },
-    { label: zh ? "良好" : "Good", quality: 2, color: "#10b981", border: "rgba(16,185,129,0.45)", desc: zh ? "答对了" : "Got it" },
-    { label: zh ? "简单" : "Easy", quality: 3, color: "#8b5cf6", border: "rgba(139,92,246,0.45)", desc: zh ? "秒答" : "Instant" },
+    { label: t("app.study.ratings.again.label"), quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: t("app.study.ratings.again.desc") },
+    { label: t("app.study.ratings.hard.label"), quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: t("app.study.ratings.hard.desc") },
+    { label: t("app.study.ratings.good.label"), quality: 2, color: "#10b981", border: "rgba(16,185,129,0.45)", desc: t("app.study.ratings.good.desc") },
+    { label: t("app.study.ratings.easy.label"), quality: 3, color: "#8b5cf6", border: "rgba(139,92,246,0.45)", desc: t("app.study.ratings.easy.desc") },
   ] as const;
 
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
@@ -112,11 +111,14 @@ export default function StudyView() {
   const [tutorInput, setTutorInput] = useState("");
   const [tutorBusy, setTutorBusy] = useState(false);
   const [summaryBusy, setSummaryBusy] = useState(false);
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
+  const [assistantTyping, setAssistantTyping] = useState(false);
   const [tutorError, setTutorError] = useState<string | null>(null);
   const [showLaunchOverlay, setShowLaunchOverlay] = useState(shouldLaunchIntro);
   const [launchLeaving, setLaunchLeaving] = useState(false);
   const launchStartedAtRef = useRef<number>(0);
   const tutorScrollRef = useRef<HTMLDivElement | null>(null);
+  const closeAfterReplyRef = useRef(false);
 
   // Only fetch the active study source based on mode
   const dueData = useQuery(
@@ -197,8 +199,8 @@ export default function StudyView() {
       ? dueData.due.length
       : 0;
   const deckName = deckId
-    ? decks?.find((d) => d._id === deckId)?.name ?? (zh ? "牌组" : "Deck")
-    : (zh ? "全部卡片" : "All cards");
+    ? decks?.find((d) => d._id === deckId)?.name ?? t("app.study.deckFallback")
+    : t("app.study.allCardsDeckName");
 
   const progressPct = activeData?.total
     ? isLinearMode
@@ -222,22 +224,25 @@ export default function StudyView() {
   }, [heatmap]);
 
   const heatmapRangeLabel = useMemo(() => {
-    if (!heatmap) return zh ? "正在加载热力图..." : "Loading heatmap...";
+    if (!heatmap) return t("app.study.heatmap.loading");
     const startLabel = new Date(heatmap.startDay).toLocaleDateString(
-      zh ? "zh-CN" : "en-US",
+      locale,
       { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" },
     );
     const trackedDays = Math.max(1, heatmap.days.length);
-    if (zh) {
-      return `从 ${startLabel} 开始 • ${trackedDays} 天`;
-    }
-    return `Since ${startLabel} • ${trackedDays} day${trackedDays === 1 ? "" : "s"}`;
-  }, [heatmap, zh]);
+    const dayLabel = trackedDays === 1
+      ? t("app.study.heatmap.daySingular")
+      : t("app.study.heatmap.dayPlural");
+    return t("app.study.heatmap.range", { start: startLabel, days: trackedDays, dayLabel });
+  }, [heatmap, locale, t]);
 
   useEffect(() => {
     setSelectedTutorChatId(null);
     setTutorInput("");
     setTutorError(null);
+    setPendingUserMessage(null);
+    setAssistantTyping(false);
+    closeAfterReplyRef.current = false;
   }, [currentCard?._id]);
 
   useEffect(() => {
@@ -283,16 +288,93 @@ export default function StudyView() {
     setTutorInput("");
   }, [currentCard, tutorBusy, summaryBusy, startTutorChat]);
 
-  const sendTutorMessage = useCallback(async () => {
+  const summarizeSelectedTutorChat = useCallback(async (
+    silent: boolean,
+    options?: {
+      chatId?: string;
+      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+    },
+  ) => {
+    const activeChatId = options?.chatId ?? selectedTutorChatId;
+    if (!currentCard || summaryBusy || !activeChatId) return;
+    const history = options?.messages ?? tutorChatDetail?.messages ?? [];
+    const existingSummary = Boolean(tutorChatDetail?.chat.summary);
+    if (existingSummary || history.length < 2) return;
+
+    setSummaryBusy(true);
+    if (!silent) setTutorError(null);
+    try {
+      const response = await fetch("/api/ai/card-chat-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          card: {
+            front: currentCard.front,
+            back: currentCard.back,
+          },
+          messages: history.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        summary?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.summary) {
+        throw new Error(payload.error ?? t("app.study.tutor.errors.summaryFailed"));
+      }
+      await completeTutorChat({
+        id: activeChatId as any,
+        summary: payload.summary,
+      });
+    } catch (err) {
+      const messageText =
+        err instanceof Error ? err.message : t("app.study.tutor.errors.summaryFailed");
+      if (silent) {
+        console.error("Auto summary on close failed", err);
+      } else {
+        setTutorError(messageText);
+      }
+    } finally {
+      setSummaryBusy(false);
+    }
+  }, [
+    currentCard,
+    summaryBusy,
+    selectedTutorChatId,
+    tutorChatDetail?.messages,
+    tutorChatDetail?.chat.summary,
+    t,
+    completeTutorChat,
+  ]);
+
+  const closeTutorPanel = useCallback(() => {
+    if (tutorBusy) {
+      closeAfterReplyRef.current = true;
+      setShowTutorPanel(false);
+      return;
+    }
+    void summarizeSelectedTutorChat(true);
+    setShowTutorPanel(false);
+  }, [tutorBusy, summarizeSelectedTutorChat]);
+
+  const sendTutorMessage = useCallback(async (presetMessage?: string) => {
     if (!currentCard || tutorBusy) return;
-    const message = tutorInput.trim();
+    const message = (presetMessage ?? tutorInput).trim();
     if (!message) return;
 
     setTutorBusy(true);
+    setPendingUserMessage(message);
+    setAssistantTyping(true);
     setTutorError(null);
+    let chatIdUsed: string | null = null;
+    let forcedSummaryMessages: Array<{ role: "user" | "assistant"; content: string }> | null = null;
     try {
       const chatId = await ensureTutorChatId();
       if (!chatId) return;
+      chatIdUsed = String(chatId);
       const history = tutorChatDetail?.messages?.map((msg) => ({
         role: msg.role,
         content: msg.content,
@@ -315,7 +397,7 @@ export default function StudyView() {
         error?: string;
       };
       if (!response.ok || !payload.reply) {
-        throw new Error(payload.error ?? (zh ? "导师回复失败" : "Tutor response failed"));
+        throw new Error(payload.error ?? t("app.study.tutor.errors.replyFailed"));
       }
 
       await appendTutorTurn({
@@ -323,13 +405,31 @@ export default function StudyView() {
         userMessage: message,
         assistantMessage: payload.reply,
       });
-      setTutorInput("");
+      forcedSummaryMessages = [
+        ...history,
+        { role: "user", content: message },
+        { role: "assistant", content: payload.reply },
+      ];
+      if (!presetMessage) {
+        setTutorInput("");
+      }
     } catch (err) {
       const messageText =
-        err instanceof Error ? err.message : zh ? "发送失败" : "Failed to send";
+        err instanceof Error ? err.message : t("app.study.tutor.errors.sendFailed");
       setTutorError(messageText);
     } finally {
+      setPendingUserMessage(null);
+      setAssistantTyping(false);
       setTutorBusy(false);
+      if (closeAfterReplyRef.current) {
+        closeAfterReplyRef.current = false;
+        void summarizeSelectedTutorChat(
+          true,
+          chatIdUsed && forcedSummaryMessages
+            ? { chatId: chatIdUsed, messages: forcedSummaryMessages }
+            : undefined,
+        );
+      }
     }
   }, [
     currentCard,
@@ -338,59 +438,37 @@ export default function StudyView() {
     ensureTutorChatId,
     tutorChatDetail?.messages,
     appendTutorTurn,
-    zh,
+    t,
+    summarizeSelectedTutorChat,
   ]);
 
   const finishTutorChat = useCallback(async () => {
-    if (!currentCard || summaryBusy) return;
-    const chatId = await ensureTutorChatId();
-    if (!chatId) return;
-    const history = tutorChatDetail?.messages ?? [];
-    if (history.length < 2) {
-      setTutorError(zh ? "至少完成一轮问答后再总结。" : "Have at least one Q&A turn before summarizing.");
+    if (!selectedTutorChatId) {
+      setTutorError(t("app.study.tutor.errors.needMessageBeforeSummary"));
       return;
     }
-
-    setSummaryBusy(true);
-    setTutorError(null);
-    try {
-      const response = await fetch("/api/ai/card-chat-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          card: {
-            front: currentCard.front,
-            back: currentCard.back,
-          },
-          messages: history.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-        }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        summary?: string;
-        error?: string;
-      };
-      if (!response.ok || !payload.summary) {
-        throw new Error(payload.error ?? (zh ? "总结失败" : "Failed to summarize chat"));
-      }
-      await completeTutorChat({
-        id: chatId as any,
-        summary: payload.summary,
-      });
-    } catch (err) {
-      const messageText =
-        err instanceof Error ? err.message : zh ? "总结失败" : "Failed to summarize";
-      setTutorError(messageText);
-    } finally {
-      setSummaryBusy(false);
+    const historyCount = tutorChatDetail?.messages.length ?? 0;
+    if (historyCount < 2) {
+      setTutorError(t("app.study.tutor.errors.needQATurnBeforeSummary"));
+      return;
     }
-  }, [currentCard, summaryBusy, ensureTutorChatId, tutorChatDetail?.messages, completeTutorChat, zh]);
+    await summarizeSelectedTutorChat(false);
+  }, [selectedTutorChatId, summarizeSelectedTutorChat, tutorChatDetail?.messages.length, t]);
 
   const selectedTutorChatMeta = tutorChats?.find(
     (chat) => String(chat._id) === String(selectedTutorChatId),
   ) ?? null;
+  const tutorSessionCount = tutorChats?.length ?? 0;
+  const hasTutorHistory = tutorSessionCount > 0;
+  const latestSummaryChat =
+    tutorChats?.find((chat) => Boolean(chat.hasSummary)) ?? null;
+  const hasTutorSummary = Boolean(latestSummaryChat);
+  const openLatestSummary = useCallback(() => {
+    if (!latestSummaryChat) return;
+    setSelectedTutorChatId(String(latestSummaryChat._id));
+    setShowTutorPanel(true);
+  }, [latestSummaryChat]);
+  const tutorStarterPrompt = t("app.study.tutor.starterPrompt");
 
   useEffect(() => {
     if (!shouldLaunchIntro) return;
@@ -437,10 +515,10 @@ export default function StudyView() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            <span className="gradient-text">{zh ? "学习" : "Study"}</span>
+            <span className="gradient-text">{t("app.study.title")}</span>
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {zh ? "选择一个牌组开始学习。" : "Pick a deck to start a study session."}
+            {t("app.study.pickDeckDesc")}
           </p>
         </div>
 
@@ -449,15 +527,15 @@ export default function StudyView() {
           <div className="grid grid-cols-3 gap-3">
             <div className="card-surface p-4 text-center">
               <p className="text-2xl font-bold text-[var(--color-accent)]">{statsAllDecks.newCount}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{zh ? "新卡" : "New"}</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{t("app.study.stats.new")}</p>
             </div>
             <div className="card-surface p-4 text-center">
               <p className="text-2xl font-bold text-amber-500">{statsAllDecks.dueCount}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{zh ? "到期" : "Due"}</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{t("app.study.stats.due")}</p>
             </div>
             <div className="card-surface p-4 text-center">
               <p className="text-2xl font-bold text-[var(--color-success)]">{statsAllDecks.reviewedToday}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{zh ? "今日" : "Today"}</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">{t("app.study.stats.today")}</p>
             </div>
           </div>
         )}
@@ -465,7 +543,7 @@ export default function StudyView() {
         <div className="card-surface overflow-hidden p-4">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-sm font-bold">{zh ? "学习一致性热力图" : "Review consistency heatmap"}</p>
+              <p className="text-sm font-bold">{t("app.study.heatmap.title")}</p>
               <p className="text-xs text-[var(--color-text-secondary)]">
                 {heatmapRangeLabel}
               </p>
@@ -473,15 +551,15 @@ export default function StudyView() {
             {heatmap && (
               <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-secondary)]">
                 <span>
-                  {zh ? "当前连续" : "Current streak"}{" "}
+                  {t("app.study.heatmap.currentStreak")}{" "}
                   <strong className="text-[var(--color-text)]">{heatmap.currentStreak}</strong>
                 </span>
                 <span>
-                  {zh ? "最长连续" : "Longest streak"}{" "}
+                  {t("app.study.heatmap.longestStreak")}{" "}
                   <strong className="text-[var(--color-text)]">{heatmap.longestStreak}</strong>
                 </span>
                 <span>
-                  {zh ? "总复习" : "Total reviews"}{" "}
+                  {t("app.study.heatmap.totalReviews")}{" "}
                   <strong className="text-[var(--color-text)]">{heatmap.totalReviews}</strong>
                 </span>
               </div>
@@ -490,7 +568,7 @@ export default function StudyView() {
 
           {!heatmap && (
             <p className="text-sm text-[var(--color-text-secondary)]">
-              {zh ? "正在加载热力图..." : "Loading heatmap..."}
+              {t("app.study.heatmap.loading")}
             </p>
           )}
 
@@ -498,7 +576,7 @@ export default function StudyView() {
             <div className="overflow-x-auto pb-1">
               <div className="flex min-w-max items-start gap-2">
                 <div className="grid grid-rows-7 gap-1 pt-[1px] text-[10px] text-[var(--color-text-tertiary)]">
-                  {(zh ? ["日", "一", "二", "三", "四", "五", "六"] : ["S", "M", "T", "W", "T", "F", "S"]).map((d, idx) => (
+                  {t("app.study.heatmap.weekdaysCompact").split(",").map((d, idx) => (
                     <div key={`${idx}-${d}`} className="h-3">{d}</div>
                   ))}
                 </div>
@@ -516,19 +594,18 @@ export default function StudyView() {
                         }
                         const level = heatLevel(cell.count, heatmap.maxCount);
                         const dateLabel = new Date(cell.dayStart).toLocaleDateString(
-                          zh ? "zh-CN" : "en-US",
+                          locale,
                           { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" },
                         );
+                        const reviewLabel = cell.count === 1
+                          ? t("app.study.heatmap.reviewSingular")
+                          : t("app.study.heatmap.reviewPlural");
                         return (
                           <div
                             key={`${weekIdx}-${dayIdx}`}
                             className="h-3 w-3 rounded-[3px] border border-[var(--color-border)]/65"
                             style={{ backgroundColor: heatColor(level) }}
-                            title={
-                              zh
-                                ? `${dateLabel}：${cell.count} 次复习`
-                                : `${dateLabel}: ${cell.count} review${cell.count === 1 ? "" : "s"}`
-                            }
+                            title={t("app.study.heatmap.cellTitle", { date: dateLabel, count: cell.count, reviewLabel })}
                           />
                         );
                       })}
@@ -541,15 +618,15 @@ export default function StudyView() {
         </div>
 
         {/* Deck list */}
-        {!decks && <p className="text-sm text-[var(--color-text-secondary)]">{zh ? "正在加载牌组..." : "Loading decks..."}</p>}
+        {!decks && <p className="text-sm text-[var(--color-text-secondary)]">{t("app.study.loadingDecks")}</p>}
 
         {decks && decks.length === 0 && (
           <div className="card-surface flex flex-col items-center px-6 py-16 text-center">
-            <h3 className="text-base font-bold">{zh ? "还没有牌组" : "No decks yet"}</h3>
+            <h3 className="text-base font-bold">{t("app.study.noDecksTitle")}</h3>
             <p className="mt-1 max-w-xs text-sm text-[var(--color-text-secondary)]">
-              {zh ? "请先创建牌组并添加卡片，再开始学习。" : "Create a deck and add some cards before you can study."}
+              {t("app.study.noDecksDesc")}
             </p>
-            <AppLink href="/decks/new" className="btn-primary mt-5">{zh ? "创建牌组" : "Create deck"}</AppLink>
+            <AppLink href="/decks/new" className="btn-primary mt-5">{t("app.study.createDeck")}</AppLink>
           </div>
         )}
 
@@ -569,7 +646,7 @@ export default function StudyView() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{deck.name}</p>
-                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{zh ? "点击开始学习" : "Tap to study"}</p>
+                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{t("app.study.tapToStudy")}</p>
                 </div>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                   className="shrink-0 text-[var(--color-text-tertiary)] transition group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]">
@@ -597,7 +674,7 @@ export default function StudyView() {
           </div>
           <div className="absolute bottom-[18vh] text-center">
             <p className="text-lg font-bold tracking-tight text-[var(--color-text)]">
-              {zh ? "准备就绪" : "Ready to study"}
+              {t("app.study.readyToStudy")}
             </p>
           </div>
         </div>
@@ -609,7 +686,7 @@ export default function StudyView() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
           </AppLink>
           <div>
-            <h1 className="text-lg font-bold tracking-tight"><span className="gradient-text">{zh ? "学习" : "Study"}</span></h1>
+            <h1 className="text-lg font-bold tracking-tight"><span className="gradient-text">{t("app.study.title")}</span></h1>
             <p className="text-xs text-[var(--color-text-secondary)]">{deckName}</p>
           </div>
         </div>
@@ -622,7 +699,7 @@ export default function StudyView() {
               }
               className="btn-secondary !px-3 !py-1.5 !text-xs"
             >
-              {zh ? "继续编辑这组卡片" : "Edit this set"}
+              {t("app.study.editThisSet")}
             </button>
           )}
           <button
@@ -630,18 +707,10 @@ export default function StudyView() {
             onClick={() => setShowAllView((prev) => !prev)}
             className="btn-secondary !px-3 !py-1.5 !text-xs"
           >
-            {showAllView ? (zh ? "关闭全部" : "Hide all") : (zh ? "查看全部" : "All view")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowTutorPanel(true)}
-            disabled={!currentCard}
-            className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
-          >
-            {zh ? "卡片导师" : "Tutor chat"}
+            {showAllView ? t("app.study.hideAll") : t("app.study.allView")}
           </button>
           <AppLink href={deckId ? `/cards?deck=${deckId}` : "/cards"} className="btn-secondary !px-3 !py-1.5 !text-xs">
-            {zh ? "编辑全部" : "Edit all"}
+            {t("app.study.editAll")}
           </AppLink>
           <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5">
             <button
@@ -653,7 +722,7 @@ export default function StudyView() {
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
               }`}
             >
-              {zh ? "智能" : "Smart"}
+              {t("app.study.modeSmart")}
             </button>
             <button
               type="button"
@@ -664,11 +733,11 @@ export default function StudyView() {
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
               }`}
             >
-              {zh ? "线性" : "Linear"}
+              {t("app.study.modeLinear")}
             </button>
           </div>
-          <span className="font-semibold text-[var(--color-success)]">{sessionDone} {zh ? "已完成" : "done"}</span>
-          <span className="text-[var(--color-text-secondary)]">{remaining} {zh ? "剩余" : "remaining"}</span>
+          <span className="font-semibold text-[var(--color-success)]">{sessionDone} {t("app.study.done")}</span>
+          <span className="text-[var(--color-text-secondary)]">{remaining} {t("app.study.remaining")}</span>
         </div>
       </div>
 
@@ -682,9 +751,9 @@ export default function StudyView() {
       {showAllView && (
         <div className="card-surface mb-4 overflow-hidden">
           <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-            <p className="text-sm font-semibold">{zh ? "本牌组全部卡片" : "All cards in this deck"}</p>
+            <p className="text-sm font-semibold">{t("app.study.allCardsInDeck")}</p>
             <AppLink href={deckId ? `/cards?deck=${deckId}` : "/cards"} className="btn-secondary !px-3 !py-1.5 !text-xs">
-              {zh ? "打开完整编辑器" : "Open full editor"}
+              {t("app.study.openFullEditor")}
             </AppLink>
           </div>
           <div className="max-h-64 divide-y divide-[var(--color-border)] overflow-y-auto">
@@ -705,34 +774,45 @@ export default function StudyView() {
                   <span className="line-clamp-1">{card.front.split("\n")[0].replace(/^#+\s*/, "")}</span>
                 </button>
                 <AppLink href={`/cards/new?edit=${card._id}`} className="btn-secondary !px-2.5 !py-1 !text-xs">
-                  {zh ? "编辑" : "Edit"}
+                  {t("app.study.edit")}
                 </AppLink>
               </div>
             ))}
             {allCardsList.length === 0 && (
-              <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{zh ? "暂无卡片。" : "No cards yet."}</p>
+              <p className="px-4 py-3 text-sm text-[var(--color-text-secondary)]">{t("app.study.noCardsYet")}</p>
             )}
           </div>
         </div>
       )}
 
-      <div className="flex flex-1 flex-col items-center justify-center">
-        {!activeData && <p className="text-[var(--color-text-secondary)]">{zh ? "正在加载卡片..." : "Loading cards..."}</p>}
+      <div className={`flex flex-1 flex-col items-center ${currentCard ? "justify-start pt-2" : "justify-center"}`}>
+        {!activeData && <p className="text-[var(--color-text-secondary)]">{t("app.study.loadingCards")}</p>}
 
         {activeData && remaining === 0 && (
           <div className="card-surface mx-auto flex w-full max-w-lg flex-col items-center px-6 py-16 text-center">
             <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-success-soft)]">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
-            <h2 className="text-xl font-bold">{zh ? "本轮学习完成！" : "Session complete!"}</h2>
+            <h2 className="text-xl font-bold">{t("app.study.sessionComplete.title")}</h2>
             <p className="mt-2 text-[var(--color-text-secondary)]">
-              {zh ? "你在本轮学习中复习了 " : "You reviewed "}
+              {t("app.study.sessionComplete.reviewedPrefix")}{" "}
               <strong className="text-[var(--color-text)]">{sessionDone}</strong>
-              {zh ? " 张卡片。" : ` card${sessionDone !== 1 ? "s" : ""} this session.`}
-              {activeData.total > 0 && (zh ? ` 已掌握 ${Math.min(activeData.total, activeData.reviewed + sessionDone)}/${activeData.total}。` : ` ${Math.min(activeData.total, activeData.reviewed + sessionDone)} of ${activeData.total} mastered.`)}
+              {" "}
+              {sessionDone === 1
+                ? t("app.study.sessionComplete.reviewedSuffixSingular")
+                : t("app.study.sessionComplete.reviewedSuffixPlural")}
+              {activeData.total > 0 && (
+                <>
+                  {" "}
+                  {t("app.study.sessionComplete.mastered", {
+                    done: Math.min(activeData.total, activeData.reviewed + sessionDone),
+                    total: activeData.total,
+                  })}
+                </>
+              )}
             </p>
             <div className="mt-6 flex gap-2">
-              <AppLink href="/study" className="btn-secondary">{zh ? "选择其他牌组" : "Pick another deck"}</AppLink>
+              <AppLink href="/study" className="btn-secondary">{t("app.study.pickAnotherDeck")}</AppLink>
               <button
                 type="button"
                 onClick={() => {
@@ -743,7 +823,7 @@ export default function StudyView() {
                 }}
                 className="btn-primary"
               >
-                {zh ? "再学一轮" : "Study again"}
+                {t("app.study.studyAgain")}
               </button>
             </div>
           </div>
@@ -751,21 +831,53 @@ export default function StudyView() {
 
         {currentCard && (
           <div className="w-full max-w-[min(96vw,78rem)]">
+            {!flipped && (
+              <p className="mb-1.5 text-center text-[11px] text-[var(--color-text-tertiary)]">
+                {t("app.study.thinkThenFlip")}
+              </p>
+            )}
             <button type="button" onClick={handleFlip}
               className="card-surface glow-hover scanline group w-full cursor-pointer px-6 py-12 text-left transition-all sm:px-12 sm:py-16 lg:px-16 lg:py-20"
-              style={{ minHeight: "clamp(22rem, 62dvh, 44rem)", boxShadow: flipped ? "0 0 30px var(--color-accent-glow)" : undefined }}>
-              <div className="mb-4 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)] sm:text-sm">{flipped ? (zh ? "背面" : "Back") : (zh ? "正面" : "Front")}</span>
-                <span className="text-xs text-[var(--color-text-secondary)] sm:text-sm">{zh ? "点击翻面" : "Tap to flip"}</span>
-              </div>
-              <div className="prose prose-lg max-w-none sm:prose-xl lg:prose-2xl">
-                <MarkdownRenderer content={flipped ? currentCard.back : currentCard.front} />
+              style={{ height: "clamp(22rem, 62dvh, 44rem)", boxShadow: flipped ? "0 0 30px var(--color-accent-glow)" : undefined }}>
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)] sm:text-sm">{flipped ? t("app.study.back") : t("app.study.front")}</span>
+                  {flipped && hasTutorSummary && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openLatestSummary();
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--color-accent)]/45 bg-[var(--color-accent-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--color-accent)] transition hover:border-[var(--color-accent)]/75 sm:text-xs"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                      </svg>
+                      {t("app.study.summaryReady")}
+                    </button>
+                  )}
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                  <div className="prose prose-lg max-w-none sm:prose-xl lg:prose-2xl">
+                    <MarkdownRenderer content={flipped ? currentCard.back : currentCard.front} />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-[var(--color-text-secondary)] sm:text-sm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12h18" />
+                    <path d="M16 6l6 6-6 6" />
+                    <path d="M8 18l-6-6 6-6" />
+                  </svg>
+                  <span>{flipped ? t("app.study.tapToFlipBack") : t("app.study.tapToFlip")}</span>
+                </div>
               </div>
             </button>
 
             {flipped && (
               <div className="mt-5 space-y-3">
-                <p className="text-center text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "你掌握得如何？" : "How well did you know it?"}</p>
+                <p className="text-center text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.study.howWellKnown")}</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {ratings.map((r) => (
                     <button key={r.quality} type="button" disabled={animating} onClick={() => handleRate(r.quality)}
@@ -779,7 +891,31 @@ export default function StudyView() {
               </div>
             )}
 
-            {!flipped && <p className="mt-4 text-center text-sm text-[var(--color-text-secondary)]">{zh ? "先想答案，然后点击卡片查看。" : "Think about the answer, then tap the card to reveal."}</p>}
+            <div className="mt-3 rounded-xl border border-[var(--color-accent)]/45 bg-gradient-to-r from-[var(--color-accent-soft)] via-[var(--color-accent-soft)] to-transparent p-3 sm:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[var(--color-accent)]">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-accent)] animate-pulse" />
+                    {t("app.study.tutor.badge")}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[var(--color-text)] sm:text-base">
+                    {hasTutorHistory
+                      ? t("app.study.tutor.continueChat", { count: tutorSessionCount })
+                      : t("app.study.tutor.introCta")}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)] sm:text-sm">
+                    {t("app.study.tutor.helper")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTutorPanel(true)}
+                  className="btn-primary !px-4 !py-2 !text-xs sm:!text-sm"
+                >
+                  {hasTutorHistory ? t("app.study.tutor.openChat") : t("app.study.tutor.startChat")}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -788,54 +924,44 @@ export default function StudyView() {
         <>
           <button
             type="button"
-            aria-label={zh ? "关闭导师面板" : "Close tutor panel"}
-            onClick={() => setShowTutorPanel(false)}
+            aria-label={t("app.study.tutor.closePanelAria")}
+            onClick={() => void closeTutorPanel()}
             className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
           />
           <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[46rem] flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
               <div>
-                <p className="text-sm font-bold">{zh ? "卡片导师对话" : "Card tutor chat"}</p>
+                <p className="text-sm font-bold">{t("app.study.tutor.panelTitle")}</p>
                 <p className="mt-1 line-clamp-2 text-xs text-[var(--color-text-secondary)]">
                   {currentCard.front.split("\n")[0].replace(/^#+\s*/, "")}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowTutorPanel(false)}
+                onClick={() => void closeTutorPanel()}
                 className="btn-secondary !px-2.5 !py-1 text-xs"
               >
-                {zh ? "关闭" : "Close"}
+                {t("app.study.tutor.close")}
               </button>
             </div>
 
-            <div className="border-b border-[var(--color-border)] px-4 py-2.5">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-                  {zh ? "该卡片历史对话" : "Chat history for this card"}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void startFreshTutorChat()}
-                  disabled={tutorBusy || summaryBusy}
-                  className="btn-secondary !px-2.5 !py-1 !text-xs disabled:opacity-50"
-                >
-                  {zh ? "新建" : "New"}
-                </button>
-              </div>
-              {!tutorChats && (
-                <p className="text-xs text-[var(--color-text-secondary)]">
-                  {zh ? "正在加载历史..." : "Loading history..."}
-                </p>
-              )}
-              {tutorChats && tutorChats.length === 0 && (
-                <p className="text-xs text-[var(--color-text-secondary)]">
-                  {zh ? "还没有历史对话。" : "No chat history yet."}
-                </p>
-              )}
-              {tutorChats && tutorChats.length > 0 && (
+            {hasTutorHistory && (
+              <div className="border-b border-[var(--color-border)] px-4 py-2.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    {t("app.study.tutor.historyTitle")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void startFreshTutorChat()}
+                    disabled={tutorBusy || summaryBusy}
+                    className="btn-secondary !px-2.5 !py-1 !text-xs disabled:opacity-50"
+                  >
+                    {t("app.study.tutor.new")}
+                  </button>
+                </div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {tutorChats.map((chat) => {
+                  {tutorChats?.map((chat) => {
                     const active = String(chat._id) === String(selectedTutorChatId);
                     return (
                       <button
@@ -849,31 +975,53 @@ export default function StudyView() {
                         }`}
                       >
                         <p className="line-clamp-1 font-semibold text-[var(--color-text)]">
-                          {chat.title || (zh ? "未命名对话" : "Untitled chat")}
+                          {chat.title || t("app.study.tutor.untitledChat")}
                         </p>
                         <p className="mt-1 line-clamp-1 text-[var(--color-text-secondary)]">
-                          {chat.lastMessagePreview || (zh ? "尚无消息" : "No messages yet")}
+                          {chat.lastMessagePreview || t("app.study.tutor.noMessagesYet")}
                         </p>
                         <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">
-                          {formatDateTime(chat.updatedAt, zh)}
+                          {formatDateTime(chat.updatedAt, locale)}
                         </p>
                       </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div ref={tutorScrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-              {!selectedTutorChatId && (
-                <div className="card-surface p-4 text-sm text-[var(--color-text-secondary)]">
-                  {zh ? "点击“新建”开始这张卡片的导师对话。" : "Click “New” to start a tutor chat for this card."}
+              {!hasTutorHistory && (
+                <div className="card-surface p-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    {t("app.study.tutor.currentCard")}
+                  </p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-3">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                        {t("app.study.front")}
+                      </p>
+                      <div className="prose prose-sm max-w-none">
+                        <MarkdownRenderer content={currentCard.front} />
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-3">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                        {t("app.study.back")}
+                      </p>
+                      <div className="prose prose-sm max-w-none">
+                        <MarkdownRenderer content={currentCard.back} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {selectedTutorChatId && tutorChatDetail && tutorChatDetail.messages.length === 0 && (
-                <div className="card-surface p-4 text-sm text-[var(--color-text-secondary)]">
-                  {zh ? "发一条消息开始提问。" : "Send a message to start asking questions."}
+                <div className="card-surface p-4">
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    {t("app.study.tutor.emptyStatePrompt")}
+                  </p>
                 </div>
               )}
 
@@ -887,7 +1035,7 @@ export default function StudyView() {
                   }`}
                 >
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-                    {msg.role === "user" ? (zh ? "你" : "You") : (zh ? "导师" : "Tutor")}
+                    {msg.role === "user" ? t("app.study.tutor.you") : t("app.study.tutor.tutorName")}
                   </p>
                   {msg.role === "assistant" ? (
                     <div className="prose prose-sm max-w-none">
@@ -899,10 +1047,30 @@ export default function StudyView() {
                 </div>
               ))}
 
+              {pendingUserMessage && (
+                <div className="ml-8 rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface-alt)] px-3 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    {t("app.study.tutor.you")}
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-[var(--color-text)]">{pendingUserMessage}</p>
+                </div>
+              )}
+
+              {assistantTyping && (
+                <div className="mr-8 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    {t("app.study.tutor.tutorName")}
+                  </p>
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    {t("app.study.tutor.thinking")}
+                  </p>
+                </div>
+              )}
+
               {selectedTutorChatMeta?.summary && (
                 <div className="card-surface border-[var(--color-accent)]/40 p-4">
                   <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--color-accent)]">
-                    {zh ? "学习总结" : "Study summary"}
+                    {t("app.study.tutor.studySummary")}
                   </p>
                   <div className="prose prose-sm max-w-none">
                     <MarkdownRenderer content={selectedTutorChatMeta.summary} />
@@ -916,11 +1084,31 @@ export default function StudyView() {
             </div>
 
             <div className="border-t border-[var(--color-border)] px-4 py-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => void sendTutorMessage(tutorStarterPrompt)}
+                  disabled={tutorBusy || summaryBusy}
+                  className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
+                >
+                  {t("app.study.tutor.starterButton")}
+                </button>
+                {hasTutorHistory && (
+                  <button
+                    type="button"
+                    onClick={() => void startFreshTutorChat()}
+                    disabled={tutorBusy || summaryBusy}
+                    className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
+                  >
+                    {t("app.study.tutor.newChat")}
+                  </button>
+                )}
+              </div>
               <textarea
                 value={tutorInput}
                 onChange={(e) => setTutorInput(e.target.value)}
                 rows={3}
-                placeholder={zh ? "问导师：这张卡片我哪里没理解透？" : "Ask the tutor: what am I missing on this card?"}
+                placeholder={t("app.study.tutor.textareaPlaceholder")}
                 disabled={tutorBusy || summaryBusy}
               />
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -936,8 +1124,8 @@ export default function StudyView() {
                   className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
                 >
                   {summaryBusy
-                    ? (zh ? "总结中..." : "Summarizing...")
-                    : (zh ? "结束并生成总结" : "Finish & summarize")}
+                    ? t("app.study.tutor.summarizing")
+                    : t("app.study.tutor.finishAndSummarize")}
                 </button>
                 <button
                   type="button"
@@ -945,7 +1133,7 @@ export default function StudyView() {
                   disabled={tutorBusy || summaryBusy || !tutorInput.trim()}
                   className="btn-primary !px-3 !py-1.5 !text-xs disabled:opacity-50"
                 >
-                  {tutorBusy ? (zh ? "发送中..." : "Sending...") : (zh ? "发送" : "Send")}
+                  {tutorBusy ? t("app.study.tutor.sending") : t("app.study.tutor.send")}
                 </button>
               </div>
             </div>
