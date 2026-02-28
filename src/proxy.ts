@@ -5,6 +5,7 @@ import { getToken } from "next-auth/jwt";
 const publicRoutes = new Set([
   "/",
   "/about",
+  "/contact",
   "/pricing",
   "/terms",
   "/privacy",
