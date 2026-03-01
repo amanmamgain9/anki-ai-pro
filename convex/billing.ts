@@ -155,9 +155,14 @@ export const syncCurrentUser = mutationGeneric({
 
 export const setMyPaddleCustomerId = mutationGeneric({
   args: {
+    forwardSecret: v.string(),
     customerId: v.string(),
   },
-  handler: async (ctx, { customerId }) => {
+  handler: async (ctx, { forwardSecret, customerId }) => {
+    const expectedSecret = process.env.PADDLE_WEBHOOK_FORWARD_SECRET;
+    if (!expectedSecret || forwardSecret !== expectedSecret) {
+      throw new ConvexError("Unauthorized");
+    }
     const identity = await requireIdentity(ctx);
     const existing = await ctx.db
       .query("users")

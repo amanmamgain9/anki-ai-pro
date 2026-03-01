@@ -3,7 +3,12 @@ import { anyApi } from "convex/server";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { type BillingPlan, getPaddleClient, getPaddlePriceId } from "@/lib/paddle";
+import {
+  type BillingPlan,
+  getPaddleClient,
+  getPaddleForwardSecret,
+  getPaddlePriceId,
+} from "@/lib/paddle";
 
 const api = anyApi;
 
@@ -87,6 +92,7 @@ export async function POST(request: Request) {
       });
       customerId = customer.id;
       await convex.mutation(api.billing.setMyPaddleCustomerId, {
+        forwardSecret: getPaddleForwardSecret(),
         customerId,
       });
     }
