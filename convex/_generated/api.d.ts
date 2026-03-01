@@ -12,6 +12,7 @@ import type * as billing from "../billing.js";
 import type * as cardChats from "../cardChats.js";
 import type * as chats from "../chats.js";
 import type * as decks from "../decks.js";
+import type * as entitlements from "../entitlements.js";
 import type * as flashcards from "../flashcards.js";
 import type * as http from "../http.js";
 import type * as study from "../study.js";
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   cardChats: typeof cardChats;
   chats: typeof chats;
   decks: typeof decks;
+  entitlements: typeof entitlements;
   flashcards: typeof flashcards;
   http: typeof http;
   study: typeof study;
