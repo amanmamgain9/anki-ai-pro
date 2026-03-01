@@ -15,6 +15,11 @@ export default async function PricingPage() {
     {
       ...dict.marketing.pricing.tiers.pro,
       href: "#",
+      accent: false,
+    },
+    {
+      ...dict.marketing.pricing.tiers.proPlus,
+      href: "#",
       accent: true,
     },
   ];
@@ -41,7 +46,7 @@ export default async function PricingPage() {
           {dict.marketing.pricing.subtitle}
         </p>
 
-        <div className="mt-12 grid w-full max-w-2xl gap-5 sm:grid-cols-2">
+        <div className="mt-12 grid w-full max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {tiers.map((t) => (
             <div
               key={t.name}

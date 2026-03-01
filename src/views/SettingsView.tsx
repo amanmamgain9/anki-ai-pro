@@ -8,16 +8,21 @@ import { useState } from "react";
 import { useI18n } from "@/i18n/client";
 
 const api = anyApi;
+type CheckoutPlan =
+  | "pro_monthly"
+  | "pro_yearly"
+  | "pro_plus_monthly"
+  | "pro_plus_yearly";
 
 export default function SettingsView() {
   const { locale } = useI18n();
   const zh = locale === "zh";
   const { data: session } = useSession();
   const billing = useQuery(api.billing.getMyBilling);
-  const [busyAction, setBusyAction] = useState<"monthly" | "yearly" | "portal" | null>(null);
+  const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
 
-  async function startCheckout(plan: "monthly" | "yearly") {
+  async function startCheckout(plan: CheckoutPlan) {
     setBillingError(null);
     setBusyAction(plan);
     try {
@@ -83,7 +88,11 @@ export default function SettingsView() {
         <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "计费" : "Billing"}</h2>
         <p className="mt-3 text-sm">
           <span className="font-semibold">{zh ? "套餐：" : "Plan:"}</span>{" "}
-          {billing?.isActive ? (zh ? "专业版" : "Pro") : (zh ? "免费版" : "Free")}
+          {billing?.isActive
+            ? billing?.plan === "pro_plus"
+              ? (zh ? "专业增强版" : "Pro+")
+              : (zh ? "专业版" : "Pro")
+            : (zh ? "免费版" : "Free")}
         </p>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
           <span className="font-semibold text-[var(--color-text)]">{zh ? "订阅状态：" : "Subscription status:"}</span>{" "}
@@ -92,19 +101,43 @@ export default function SettingsView() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => startCheckout("monthly")}
+            onClick={() => startCheckout("pro_monthly")}
             className="btn-primary"
             disabled={busyAction !== null}
           >
-            {busyAction === "monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "升级月付" : "Upgrade monthly")}
+            {busyAction === "pro_monthly"
+              ? (zh ? "打开中..." : "Opening...")
+              : (zh ? "升级 Pro（月付）" : "Upgrade Pro (monthly)")}
           </button>
           <button
             type="button"
-            onClick={() => startCheckout("yearly")}
+            onClick={() => startCheckout("pro_yearly")}
             className="btn-secondary"
             disabled={busyAction !== null}
           >
-            {busyAction === "yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "升级年付" : "Upgrade yearly")}
+            {busyAction === "pro_yearly"
+              ? (zh ? "打开中..." : "Opening...")
+              : (zh ? "升级 Pro（年付）" : "Upgrade Pro (yearly)")}
+          </button>
+          <button
+            type="button"
+            onClick={() => startCheckout("pro_plus_monthly")}
+            className="btn-primary"
+            disabled={busyAction !== null}
+          >
+            {busyAction === "pro_plus_monthly"
+              ? (zh ? "打开中..." : "Opening...")
+              : (zh ? "升级 Pro+（月付）" : "Upgrade Pro+ (monthly)")}
+          </button>
+          <button
+            type="button"
+            onClick={() => startCheckout("pro_plus_yearly")}
+            className="btn-secondary"
+            disabled={busyAction !== null}
+          >
+            {busyAction === "pro_plus_yearly"
+              ? (zh ? "打开中..." : "Opening...")
+              : (zh ? "升级 Pro+（年付）" : "Upgrade Pro+ (yearly)")}
           </button>
           <button
             type="button"

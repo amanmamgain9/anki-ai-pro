@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLink, useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
+import { useStudyVoice } from "@/hooks/useStudyVoice";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 
 const api = anyApi;
@@ -13,6 +14,11 @@ type Deck = { _id: string; name: string };
 type DueCard = { _id: string; front: string; back: string };
 type Card = { _id: string; front: string; back: string };
 type StudyMode = "smart" | "linear";
+type BillingState = {
+  isActive: boolean;
+  plan: "free" | "pro" | "pro_plus";
+  hasPremiumVoice?: boolean;
+};
 type HeatCell = { dayStart: number; count: number };
 type HeatmapData = {
   days: HeatCell[];
@@ -100,6 +106,7 @@ export default function StudyView() {
   ] as const;
 
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
+  const billing = useQuery(api.billing.getMyBilling, {}) as BillingState | undefined;
   const [studyAll, setStudyAll] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -201,6 +208,10 @@ export default function StudyView() {
   const deckName = deckId
     ? decks?.find((d) => d._id === deckId)?.name ?? t("app.study.deckFallback")
     : t("app.study.allCardsDeckName");
+  const ratingByQuality = useMemo(
+    () => new Map(ratings.map((item) => [item.quality, item])),
+    [ratings],
+  );
 
   const progressPct = activeData?.total
     ? isLinearMode
@@ -361,9 +372,9 @@ export default function StudyView() {
   }, [tutorBusy, summarizeSelectedTutorChat]);
 
   const sendTutorMessage = useCallback(async (presetMessage?: string) => {
-    if (!currentCard || tutorBusy) return;
+    if (!currentCard || tutorBusy) return null;
     const message = (presetMessage ?? tutorInput).trim();
-    if (!message) return;
+    if (!message) return null;
 
     setTutorBusy(true);
     setPendingUserMessage(message);
@@ -371,9 +382,10 @@ export default function StudyView() {
     setTutorError(null);
     let chatIdUsed: string | null = null;
     let forcedSummaryMessages: Array<{ role: "user" | "assistant"; content: string }> | null = null;
+    let assistantReply: string | null = null;
     try {
       const chatId = await ensureTutorChatId();
-      if (!chatId) return;
+      if (!chatId) return null;
       chatIdUsed = String(chatId);
       const history = tutorChatDetail?.messages?.map((msg) => ({
         role: msg.role,
@@ -399,16 +411,17 @@ export default function StudyView() {
       if (!response.ok || !payload.reply) {
         throw new Error(payload.error ?? t("app.study.tutor.errors.replyFailed"));
       }
+      assistantReply = payload.reply;
 
       await appendTutorTurn({
         id: chatId as any,
         userMessage: message,
-        assistantMessage: payload.reply,
+        assistantMessage: assistantReply,
       });
       forcedSummaryMessages = [
         ...history,
         { role: "user", content: message },
-        { role: "assistant", content: payload.reply },
+        { role: "assistant", content: assistantReply },
       ];
       if (!presetMessage) {
         setTutorInput("");
@@ -431,6 +444,7 @@ export default function StudyView() {
         );
       }
     }
+    return assistantReply;
   }, [
     currentCard,
     tutorBusy,
@@ -469,6 +483,53 @@ export default function StudyView() {
     setShowTutorPanel(true);
   }, [latestSummaryChat]);
   const tutorStarterPrompt = t("app.study.tutor.starterPrompt");
+  const applyRating = useCallback(async (quality: number) => {
+    if (!currentCard || animating) return;
+    setAnimating(true);
+    await recordReview({ cardId: currentCard._id as any, quality });
+    setSessionDone((n) => n + 1);
+    if (isLinearMode) {
+      setLinearIndex((idx) => idx + 1);
+    }
+    setFlipped(false);
+    setTimeout(() => setAnimating(false), 200);
+  }, [animating, currentCard, isLinearMode, recordReview]);
+
+  const ratingLabelByQuality = useCallback(
+    (quality: 0 | 1 | 2 | 3) => ratingByQuality.get(quality)?.label ?? "Good",
+    [ratingByQuality],
+  );
+
+  const {
+    voiceMode,
+    voiceSupported,
+    voiceListening,
+    voiceStatus,
+    suggestedVoiceQuality,
+    toggleVoiceMode,
+    interruptVoiceTurn,
+  } = useStudyVoice({
+    locale,
+    t,
+    deckId,
+    decks,
+    currentCard,
+    selectedTutorChatId,
+    showTutorPanel,
+    setShowTutorPanel,
+    flipped,
+    setFlipped,
+    isLinearMode,
+    linearCardsLength: linearCards.length,
+    setLinearIndex,
+    navigate,
+    applyRating,
+    sendTutorMessage,
+    ratingLabelByQuality,
+    usePremiumTts: Boolean(
+      billing?.isActive && (billing?.hasPremiumVoice || billing?.plan === "pro_plus"),
+    ),
+  });
 
   useEffect(() => {
     if (!shouldLaunchIntro) return;
@@ -482,6 +543,7 @@ export default function StudyView() {
   const setMode = useCallback(
     (nextMode: StudyMode) => {
       if (!deckId) return;
+      interruptVoiceTurn("manual_mode_switch");
       const query = new URLSearchParams(searchParams.toString());
       query.set("deck", deckId);
       query.delete("launch");
@@ -490,24 +552,18 @@ export default function StudyView() {
       else query.delete("mode");
       navigate(`/study?${query.toString()}`);
     },
-    [deckId, navigate, searchParams],
+    [deckId, interruptVoiceTurn, navigate, searchParams],
   );
 
   const handleRate = useCallback(async (quality: number) => {
-    if (!currentCard || animating) return;
-    setAnimating(true);
-    await recordReview({ cardId: currentCard._id as any, quality });
-    setSessionDone((n) => n + 1);
-    if (isLinearMode) {
-      setLinearIndex((idx) => idx + 1);
-    }
-    setFlipped(false);
-    setTimeout(() => setAnimating(false), 200);
-  }, [currentCard, animating, isLinearMode, recordReview]);
+    interruptVoiceTurn("manual_rating");
+    await applyRating(quality);
+  }, [applyRating, interruptVoiceTurn]);
 
   const handleFlip = useCallback(() => {
+    interruptVoiceTurn("manual_flip");
     if (!animating) setFlipped((f) => !f);
-  }, [animating]);
+  }, [animating, interruptVoiceTurn]);
 
   // ── Deck picker (no deck selected) ───────────────
   if (!deckId) {
@@ -520,6 +576,21 @@ export default function StudyView() {
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.study.pickDeckDesc")}
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={!voiceSupported}
+                onClick={toggleVoiceMode}
+                className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
+              >
+                {voiceMode ? t("app.study.voice.toggleOn") : t("app.study.voice.toggleOff")}
+              </button>
+            <span className="text-xs text-[var(--color-text-secondary)]">
+              {voiceSupported
+                ? voiceStatus ?? (voiceListening ? t("app.study.voice.listening") : "")
+                : t("app.study.voice.unsupported")}
+            </span>
+          </div>
         </div>
 
         {/* Quick stats */}
@@ -738,6 +809,19 @@ export default function StudyView() {
           </div>
           <span className="font-semibold text-[var(--color-success)]">{sessionDone} {t("app.study.done")}</span>
           <span className="text-[var(--color-text-secondary)]">{remaining} {t("app.study.remaining")}</span>
+          <button
+            type="button"
+            disabled={!voiceSupported}
+            onClick={toggleVoiceMode}
+            className="btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50"
+          >
+            {voiceMode ? t("app.study.voice.toggleOn") : t("app.study.voice.toggleOff")}
+          </button>
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {voiceSupported
+              ? voiceStatus ?? (voiceListening ? t("app.study.voice.listening") : "")
+              : t("app.study.voice.unsupported")}
+          </span>
         </div>
       </div>
 
@@ -878,6 +962,14 @@ export default function StudyView() {
             {flipped && (
               <div className="mt-5 space-y-3">
                 <p className="text-center text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.study.howWellKnown")}</p>
+                {suggestedVoiceQuality !== null && (
+                  <p className="text-center text-xs text-[var(--color-text-secondary)]">
+                    {t("app.study.voice.suggestedPrefix")}:{" "}
+                    <span className="font-semibold text-[var(--color-text)]">
+                      {ratingByQuality.get(suggestedVoiceQuality)?.label}
+                    </span>
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {ratings.map((r) => (
                     <button key={r.quality} type="button" disabled={animating} onClick={() => handleRate(r.quality)}

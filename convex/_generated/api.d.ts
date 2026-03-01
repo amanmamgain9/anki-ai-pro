@@ -15,6 +15,7 @@ import type * as decks from "../decks.js";
 import type * as flashcards from "../flashcards.js";
 import type * as http from "../http.js";
 import type * as study from "../study.js";
+import type * as voice from "../voice.js";
 
 import type {
   ApiFromModules,
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   flashcards: typeof flashcards;
   http: typeof http;
   study: typeof study;
+  voice: typeof voice;
 }>;
 
 /**

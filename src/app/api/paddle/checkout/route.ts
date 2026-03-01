@@ -13,7 +13,16 @@ type SyncUserResult = {
 };
 
 function parsePlan(input: unknown): BillingPlan | null {
-  if (input === "monthly" || input === "yearly") return input;
+  if (input === "monthly") return "pro_monthly";
+  if (input === "yearly") return "pro_yearly";
+  if (
+    input === "pro_monthly" ||
+    input === "pro_yearly" ||
+    input === "pro_plus_monthly" ||
+    input === "pro_plus_yearly"
+  ) {
+    return input;
+  }
   return null;
 }
 
@@ -42,7 +51,10 @@ export async function POST(request: Request) {
     const plan = parsePlan(body.plan);
     if (!plan) {
       return NextResponse.json(
-        { error: "Invalid plan. Expected 'monthly' or 'yearly'." },
+        {
+          error:
+            "Invalid plan. Expected one of: 'pro_monthly', 'pro_yearly', 'pro_plus_monthly', 'pro_plus_yearly'.",
+        },
         { status: 400 },
       );
     }

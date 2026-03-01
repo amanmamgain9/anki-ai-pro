@@ -56,6 +56,34 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
   }
 }
 
+type BillingTier = "free" | "pro" | "pro_plus";
+
+function getTierFromPriceId(priceId: string | undefined): BillingTier {
+  if (!priceId) return "pro";
+
+  const proPlusPriceIds = new Set(
+    [
+      process.env.PADDLE_PRICE_ID_PRO_PLUS_MONTHLY,
+      process.env.PADDLE_PRICE_ID_PRO_PLUS_YEARLY,
+    ].filter((value): value is string => Boolean(value)),
+  );
+  if (proPlusPriceIds.has(priceId)) return "pro_plus";
+
+  const proPriceIds = new Set(
+    [
+      process.env.PADDLE_PRICE_ID_PRO_MONTHLY,
+      process.env.PADDLE_PRICE_ID_PRO_YEARLY,
+      process.env.PADDLE_PRICE_ID_MONTHLY,
+      process.env.PADDLE_PRICE_ID_YEARLY,
+    ].filter((value): value is string => Boolean(value)),
+  );
+  if (proPriceIds.size === 0) return "pro";
+  if (proPriceIds.has(priceId)) return "pro";
+
+  // Unknown active paid price IDs default to pro so access is not unexpectedly blocked.
+  return "pro";
+}
+
 export const syncCurrentUser = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
@@ -217,9 +245,11 @@ export const getMyBilling = queryGeneric({
         hasUserRecord: false,
         plan: "free",
         isActive: false,
+        hasPremiumVoice: false,
         subscriptionStatus: null as string | null,
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
+        paddlePriceId: null as string | null,
       };
     }
 
@@ -233,9 +263,11 @@ export const getMyBilling = queryGeneric({
         hasUserRecord: false,
         plan: "free",
         isActive: false,
+        hasPremiumVoice: false,
         subscriptionStatus: null as string | null,
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
+        paddlePriceId: null as string | null,
       };
     }
 
@@ -247,15 +279,18 @@ export const getMyBilling = queryGeneric({
 
     const status = subscription?.status ?? null;
     const isActive = status === "active" || status === "trialing";
+    const tier = isActive ? getTierFromPriceId(subscription?.priceId) : "free";
 
     return {
       isAuthenticated: true,
       hasUserRecord: true,
-      plan: isActive ? "pro" : "free",
+      plan: tier,
       isActive,
+      hasPremiumVoice: isActive && tier === "pro_plus",
       subscriptionStatus: status,
       paddleCustomerId: user.paddleCustomerId ?? null,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
+      paddlePriceId: subscription?.priceId ?? null,
     };
   },
 });

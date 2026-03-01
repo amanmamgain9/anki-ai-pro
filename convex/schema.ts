@@ -166,4 +166,32 @@ export default defineSchema({
   })
     .index("by_user_reviewedAt", ["userId", "reviewedAt"])
     .index("by_user_dayStart", ["userId", "dayStart"]),
+
+  voiceSessions: defineTable({
+    userId: v.string(),
+    deckId: v.optional(v.id("decks")),
+    cardId: v.optional(v.id("cards")),
+    cardChatId: v.optional(v.id("cardStudyChats")),
+    channel: v.string(), // "study" | "tutor"
+    locale: v.string(),
+    status: v.string(), // "active" | "ended"
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index("by_user_updatedAt", ["userId", "updatedAt"])
+    .index("by_user_status_updatedAt", ["userId", "status", "updatedAt"]),
+
+  voiceEvents: defineTable({
+    userId: v.string(),
+    sessionId: v.id("voiceSessions"),
+    source: v.string(), // "user" | "assistant" | "system"
+    channel: v.string(), // "study" | "tutor"
+    type: v.string(), // "transcript" | "command" | "spoken" | "evaluation" | "error"
+    text: v.string(),
+    metadata: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_session_createdAt", ["sessionId", "createdAt"])
+    .index("by_user_createdAt", ["userId", "createdAt"]),
 });
