@@ -23,6 +23,7 @@ const api = anyApi;
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
+  plan?: "free" | "pro" | "pro_plus";
 };
 
 function isActiveRoute(pathname: string, href: string) {
@@ -48,6 +49,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isSettingsRoute =
     initialPath === "/settings" || initialPath?.startsWith("/settings?");
   const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
+  const showUpgradeCta = billing?.plan !== "pro_plus";
 
   useEffect(() => {
     if (status !== "unauthenticated") return;
@@ -100,12 +102,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppRouterProvider initialPath={initialPath}>
       <UserSync />
-      <AppShell>{children}</AppShell>
+      <AppShell showUpgradeCta={showUpgradeCta}>{children}</AppShell>
     </AppRouterProvider>
   );
 }
 
-function AppShell({ children }: { children: React.ReactNode }) {
+function AppShell({
+  children,
+  showUpgradeCta,
+}: {
+  children: React.ReactNode;
+  showUpgradeCta: boolean;
+}) {
   const { pathname } = useAppRouter();
   const { t } = useI18n();
   const isGenerateFocusRoute =
@@ -157,11 +165,21 @@ function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <div className="relative z-10 flex items-center gap-2 border-t border-[var(--color-border)] pt-5">
-            <AccountButton compact />
-            <span className="flex-1 text-xs text-[var(--color-text-tertiary)]">{t("app.account")}</span>
-            <LocaleSwitcher />
-            <ThemeToggle />
+          <div className="relative z-10 border-t border-[var(--color-border)] pt-4">
+            {showUpgradeCta && (
+              <AppLink
+                href="/settings?upgrade=1"
+                className="btn-primary mb-3 flex w-full items-center justify-center !px-3 !py-2 !text-xs"
+              >
+                {t("app.upgradeCta")}
+              </AppLink>
+            )}
+            <div className="flex items-center gap-2">
+              <AccountButton compact />
+              <span className="flex-1 text-xs text-[var(--color-text-tertiary)]">{t("app.account")}</span>
+              <LocaleSwitcher />
+              <ThemeToggle />
+            </div>
           </div>
         </aside>
       )}

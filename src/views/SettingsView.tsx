@@ -32,11 +32,13 @@ export default function SettingsView() {
   const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
 
   async function startCheckout(plan: CheckoutPlan) {
+    setShowUpgradeModal(false);
     setBillingError(null);
     setBusyAction(plan);
     try {
@@ -129,43 +131,15 @@ export default function SettingsView() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => startCheckout("pro_monthly")}
+            onClick={() => setShowUpgradeModal(true)}
             className="btn-primary"
             disabled={busyAction !== null}
           >
-            {busyAction === "pro_monthly"
+            {busyAction && busyAction !== "portal"
               ? (zh ? "打开中..." : "Opening...")
-              : (zh ? "升级 Pro（月付）" : "Upgrade Pro (monthly)")}
-          </button>
-          <button
-            type="button"
-            onClick={() => startCheckout("pro_yearly")}
-            className="btn-secondary"
-            disabled={busyAction !== null}
-          >
-            {busyAction === "pro_yearly"
-              ? (zh ? "打开中..." : "Opening...")
-              : (zh ? "升级 Pro（年付）" : "Upgrade Pro (yearly)")}
-          </button>
-          <button
-            type="button"
-            onClick={() => startCheckout("pro_plus_monthly")}
-            className="btn-primary"
-            disabled={busyAction !== null}
-          >
-            {busyAction === "pro_plus_monthly"
-              ? (zh ? "打开中..." : "Opening...")
-              : (zh ? "升级 Pro+（月付）" : "Upgrade Pro+ (monthly)")}
-          </button>
-          <button
-            type="button"
-            onClick={() => startCheckout("pro_plus_yearly")}
-            className="btn-secondary"
-            disabled={busyAction !== null}
-          >
-            {busyAction === "pro_plus_yearly"
-              ? (zh ? "打开中..." : "Opening...")
-              : (zh ? "升级 Pro+（年付）" : "Upgrade Pro+ (yearly)")}
+              : billing?.isActive
+                ? (zh ? "更改套餐" : "Change plan")
+                : (zh ? "升级" : "Upgrade")}
           </button>
           <button
             type="button"
@@ -180,6 +154,75 @@ export default function SettingsView() {
           <p className="mt-3 text-sm text-[var(--color-danger)]">{billingError}</p>
         )}
       </div>
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold">{zh ? "选择套餐" : "Choose your plan"}</h3>
+                <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                  {zh ? "选择结算周期后将跳转到 Paddle 结账页面。" : "Pick a billing cycle to continue to Paddle checkout."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(false)}
+                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+              >
+                {zh ? "关闭" : "Close"}
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-[var(--color-border)] p-3">
+                <p className="text-sm font-semibold">{zh ? "Pro" : "Pro"}</p>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$8 / 月" : "$8 / month"}</p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startCheckout("pro_monthly")}
+                    className="btn-primary !px-3 !py-1.5 !text-xs"
+                    disabled={busyAction !== null}
+                  >
+                    {busyAction === "pro_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startCheckout("pro_yearly")}
+                    className="btn-secondary !px-3 !py-1.5 !text-xs"
+                    disabled={busyAction !== null}
+                  >
+                    {busyAction === "pro_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--color-border)] p-3">
+                <p className="text-sm font-semibold">{zh ? "Pro+" : "Pro+"}</p>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$20 / 月" : "$20 / month"}</p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startCheckout("pro_plus_monthly")}
+                    className="btn-primary !px-3 !py-1.5 !text-xs"
+                    disabled={busyAction !== null}
+                  >
+                    {busyAction === "pro_plus_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startCheckout("pro_plus_yearly")}
+                    className="btn-secondary !px-3 !py-1.5 !text-xs"
+                    disabled={busyAction !== null}
+                  >
+                    {busyAction === "pro_plus_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card-surface p-5">
         <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "法律" : "Legal"}</h2>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">

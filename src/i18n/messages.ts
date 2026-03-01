@@ -133,6 +133,7 @@ export const dictionaries = {
       redirectingSignIn: "Redirecting to sign in...",
       account: "Account",
       signOut: "Sign out",
+      upgradeCta: "Upgrade",
       nav: {
         study: "Study",
         cards: "Cards",
@@ -405,6 +406,7 @@ export const dictionaries = {
       redirectingSignIn: "正在跳转到登录页...",
       account: "账户",
       signOut: "退出登录",
+      upgradeCta: "升级",
       nav: {
         study: "学习",
         cards: "卡片",
