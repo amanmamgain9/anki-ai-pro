@@ -2,6 +2,8 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useQuery } from "convex/react";
+import { anyApi } from "convex/server";
 import { signOut, useSession } from "next-auth/react";
 import ThemeToggle from "@/components/ThemeToggle";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
@@ -17,6 +19,11 @@ const navItems = [
   { href: "/decks", labelKey: "app.nav.decks", icon: DeckIcon },
   { href: "/settings", labelKey: "app.nav.settings", icon: SettingsIcon },
 ];
+const api = anyApi;
+type BillingState = {
+  isActive?: boolean;
+  trialActive?: boolean;
+};
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/cards") {
@@ -37,6 +44,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { status } = useSession();
   const { t } = useI18n();
+  const billing = useQuery(api.billing.getMyBilling, {}) as BillingState | undefined;
+  const isSettingsRoute =
+    initialPath === "/settings" || initialPath?.startsWith("/settings?");
+  const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
 
   useEffect(() => {
     if (status !== "unauthenticated") return;
@@ -47,7 +58,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     router.replace(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }, [initialPath, router, status]);
 
-  if (status === "loading") {
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!initialPath) return;
+    if (!billing) return;
+    if (isSettingsRoute) return;
+    if (hasProAccess) return;
+    router.replace(`/settings?upgrade=required&from=${encodeURIComponent(initialPath)}`);
+  }, [billing, hasProAccess, initialPath, isSettingsRoute, router, status]);
+
+  if (status === "loading" || (status === "authenticated" && !billing)) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">
@@ -58,6 +78,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (status === "unauthenticated") {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-4">
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          {t("app.redirectingSignIn")}
+        </p>
+      </div>
+    );
+  }
+
+  if (!isSettingsRoute && !hasProAccess) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">

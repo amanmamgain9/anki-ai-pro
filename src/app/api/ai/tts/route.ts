@@ -59,6 +59,7 @@ export async function POST(request: Request) {
 
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
+    await convex.mutation(api.billing.syncCurrentUser, {});
 
     const units = parsed.text.length;
     const consume = (await convex.mutation(api.usage.consumePremiumTtsPreview, {

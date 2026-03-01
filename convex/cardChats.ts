@@ -1,19 +1,13 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { requireEntitledExternalUserId } from "./entitlements";
 
 const TITLE_MAX = 72;
 const PREVIEW_MAX = 220;
 const SUMMARY_MAX = 12_000;
 
-async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const userId = await getUserId(ctx);
-  if (!userId) throw new ConvexError("Unauthorized");
-  return userId;
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> }; db: any }) {
+  return requireEntitledExternalUserId(ctx);
 }
 
 function normalizeInline(text: string) {

@@ -1,21 +1,14 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
+import {
+  getEntitledExternalUserId,
+  requireEntitledExternalUserId,
+} from "./entitlements";
 
 const DAY_MS = 86_400_000;
 
 function dayStart(ts: number) {
   return ts - (ts % DAY_MS);
-}
-
-async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const userId = await getUserId(ctx);
-  if (!userId) throw new ConvexError("Unauthorized");
-  return userId;
 }
 
 /**
@@ -93,7 +86,7 @@ export const getDueCards = queryGeneric({
     all: v.optional(v.boolean()),
   },
   handler: async (ctx, { deckId, all }) => {
-    const userId = await getUserId(ctx);
+    const userId = await getEntitledExternalUserId(ctx);
     if (!userId) return { due: [], total: 0, reviewed: 0 };
     const { db } = ctx;
     const now = Date.now();
@@ -142,7 +135,7 @@ export const getLinearCards = queryGeneric({
     chatId: v.optional(v.id("chats")),
   },
   handler: async (ctx, { deckId, chatId }) => {
-    const userId = await getUserId(ctx);
+    const userId = await getEntitledExternalUserId(ctx);
     if (!userId) return { due: [], total: 0, reviewed: 0 };
     const { db } = ctx;
     const now = Date.now();
@@ -238,7 +231,7 @@ export const recordReview = mutationGeneric({
     quality: v.number(),
   },
   handler: async (ctx, { cardId, quality }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
 
     const card = await db.get(cardId);
@@ -303,7 +296,7 @@ export const getSessionStats = queryGeneric({
     deckId: v.optional(v.id("decks")),
   },
   handler: async (ctx, { deckId }) => {
-    const userId = await getUserId(ctx);
+    const userId = await getEntitledExternalUserId(ctx);
     if (!userId) return { total: 0, newCount: 0, dueCount: 0, reviewedToday: 0 };
     const { db } = ctx;
     const now = Date.now();
@@ -342,7 +335,7 @@ export const getReviewHeatmap = queryGeneric({
     sinceUserCreated: v.optional(v.boolean()),
   },
   handler: async (ctx, { days, sinceUserCreated }) => {
-    const userId = await getUserId(ctx);
+    const userId = await getEntitledExternalUserId(ctx);
     const fallbackSpanDays = Math.max(28, Math.min(366, Math.floor(days ?? 182)));
     if (!userId) {
       const now = Date.now();

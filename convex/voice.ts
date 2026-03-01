@@ -1,18 +1,12 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { requireEntitledExternalUserId } from "./entitlements";
 
 const EVENT_TEXT_MAX = 6_000;
 const EVENT_META_MAX = 8_000;
 
-async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const userId = await getUserId(ctx);
-  if (!userId) throw new ConvexError("Unauthorized");
-  return userId;
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> }; db: any }) {
+  return requireEntitledExternalUserId(ctx);
 }
 
 async function assertOwnsDeck(db: any, userId: string, deckId?: any) {

@@ -1,5 +1,9 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
+import {
+  getEntitledExternalUserId,
+  requireEntitledExternalUserId,
+} from "./entitlements";
 
 const sampleCards = [
   {
@@ -14,23 +18,12 @@ const sampleCards = [
   },
 ];
 
-async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const userId = await getUserId(ctx);
-  if (!userId) throw new ConvexError("Unauthorized");
-  return userId;
-}
-
 export const list = queryGeneric({
   args: {
     deckId: v.optional(v.id("decks")),
   },
   handler: async (ctx, { deckId }) => {
-    const userId = await getUserId(ctx);
+    const userId = await getEntitledExternalUserId(ctx);
     if (!userId) return [];
     const { db } = ctx;
 
@@ -61,7 +54,7 @@ export const create = mutationGeneric({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, { deckId, front, back, tags }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
 
     if (deckId) {
@@ -98,7 +91,7 @@ export const update = mutationGeneric({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, { id, deckId, front, back, tags }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
 
     const card = await db.get(id);
@@ -145,7 +138,7 @@ export const remove = mutationGeneric({
     id: v.id("cards"),
   },
   handler: async (ctx, { id }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
 
     const card = await db.get(id);
@@ -184,7 +177,7 @@ export const bulkCreate = mutationGeneric({
     ),
   },
   handler: async (ctx, { deckId, cards }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
 
     if (deckId) {
@@ -218,7 +211,7 @@ export const bulkCreate = mutationGeneric({
 
 export const seed = mutationGeneric({
   handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
 
     const now = Date.now();

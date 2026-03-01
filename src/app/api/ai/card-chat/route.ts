@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { ensureProAccess } from "@/lib/server-entitlements";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,8 @@ export async function POST(req: Request) {
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const proCheck = await ensureProAccess(session);
+  if (proCheck) return proCheck;
 
   let parsed: z.infer<typeof requestSchema>;
   try {

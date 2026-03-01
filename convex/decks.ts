@@ -1,20 +1,13 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { ConvexError, v } from "convex/values";
-
-async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const userId = await getUserId(ctx);
-  if (!userId) throw new ConvexError("Unauthorized");
-  return userId;
-}
+import { v } from "convex/values";
+import {
+  getEntitledExternalUserId,
+  requireEntitledExternalUserId,
+} from "./entitlements";
 
 export const list = queryGeneric({
   handler: async (ctx) => {
-    const userId = await getUserId(ctx);
+    const userId = await getEntitledExternalUserId(ctx);
     if (!userId) return [];
     const { db } = ctx;
     return await db
@@ -31,7 +24,7 @@ export const create = mutationGeneric({
     description: v.optional(v.string()),
   },
   handler: async (ctx, { name, description }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
     const now = Date.now();
     return await db.insert("decks", {
@@ -51,7 +44,7 @@ export const update = mutationGeneric({
     description: v.optional(v.string()),
   },
   handler: async (ctx, { id, name, description }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
     const deck = await db.get(id);
     if (!deck || deck.userId !== userId) {
@@ -70,7 +63,7 @@ export const remove = mutationGeneric({
     id: v.id("decks"),
   },
   handler: async (ctx, { id }) => {
-    const userId = await requireUserId(ctx);
+    const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
     const deck = await db.get(id);
     if (!deck || deck.userId !== userId) {

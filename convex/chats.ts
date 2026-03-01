@@ -1,5 +1,9 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import {
+  getEntitledExternalUserId,
+  requireEntitledExternalUserId,
+} from "./entitlements";
 
 const messageInput = v.object({
   id: v.optional(v.string()),
@@ -26,15 +30,12 @@ const snapshotInput = v.object({
   workspace: v.union(v.literal("coach"), v.literal("editor")),
 });
 
-async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
+async function getUserId(ctx: { auth: { getUserIdentity: () => Promise<any> }; db: any }) {
+  return getEntitledExternalUserId(ctx);
 }
 
-async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> } }) {
-  const userId = await getUserId(ctx);
-  if (!userId) throw new ConvexError("Unauthorized");
-  return userId;
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> }; db: any }) {
+  return requireEntitledExternalUserId(ctx);
 }
 
 function sanitizeSnapshot(
