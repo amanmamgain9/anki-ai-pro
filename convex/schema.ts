@@ -46,6 +46,18 @@ export default defineSchema({
     rawBody: v.optional(v.string()),
   }).index("by_eventId", ["eventId"]),
 
+  featureUsageMonthly: defineTable({
+    userId: v.id("users"),
+    feature: v.string(),
+    monthKey: v.string(),
+    usedUnits: v.number(),
+    quotaUnits: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_feature_month", ["userId", "feature", "monthKey"])
+    .index("by_user_month", ["userId", "monthKey"]),
+
   decks: defineTable({
     userId: v.string(),
     name: v.string(),

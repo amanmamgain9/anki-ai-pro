@@ -526,9 +526,7 @@ export default function StudyView() {
     applyRating,
     sendTutorMessage,
     ratingLabelByQuality,
-    usePremiumTts: Boolean(
-      billing?.isActive && (billing?.hasPremiumVoice || billing?.plan === "pro_plus"),
-    ),
+    usePremiumTts: Boolean(billing?.isActive && billing?.plan !== "free"),
   });
 
   useEffect(() => {

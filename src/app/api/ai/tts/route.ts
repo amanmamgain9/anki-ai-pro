@@ -19,6 +19,11 @@ type BillingState = {
   plan?: string;
   hasPremiumVoice?: boolean;
 };
+type ConsumeResult = {
+  allowed: boolean;
+  reason?: string;
+  remaining?: number;
+};
 
 function escapeXml(input: string) {
   return input
@@ -60,12 +65,30 @@ export async function POST(request: Request) {
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
-    const premiumEnabled = Boolean(
-      billing?.isActive && (billing?.hasPremiumVoice || billing?.plan === "pro_plus"),
-    );
-    if (!premiumEnabled) {
+    const isPaid = Boolean(billing?.isActive && billing?.plan && billing.plan !== "free");
+    if (!isPaid) {
       return NextResponse.json(
-        { error: "Premium voice requires Pro+ plan" },
+        { error: "Premium voice requires a paid plan" },
+        { status: 403 },
+      );
+    }
+
+    const units = parsed.text.length;
+    const consume = (await convex.mutation(api.usage.consumePremiumTtsPreview, {
+      units,
+    })) as ConsumeResult;
+    if (!consume.allowed) {
+      if (consume.reason === "preview_exhausted") {
+        return NextResponse.json(
+          {
+            error: "Pro preview credits exhausted for this month",
+            remaining: consume.remaining ?? 0,
+          },
+          { status: 402 },
+        );
+      }
+      return NextResponse.json(
+        { error: "Premium voice is unavailable for this account" },
         { status: 403 },
       );
     }
@@ -132,4 +155,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
