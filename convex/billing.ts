@@ -57,6 +57,8 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
 }
 
 type BillingTier = "free" | "pro" | "pro_plus";
+const DAY_MS = 86_400_000;
+const PREMIUM_TTS_FEATURE = "premium_tts";
 
 function getTierFromPriceId(priceId: string | undefined): BillingTier {
   if (!priceId) return "pro";
@@ -82,6 +84,27 @@ function getTierFromPriceId(priceId: string | undefined): BillingTier {
 
   // Unknown active paid price IDs default to pro so access is not unexpectedly blocked.
   return "pro";
+}
+
+function resolveFreeProPlusTrialDays() {
+  const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function resolveProPreviewQuotaChars() {
+  const raw = process.env.PRO_PREMIUM_TTS_PREVIEW_CHARS ?? "60000";
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 60000;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function getCurrentMonthKey(now: number) {
+  const d = new Date(now);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
 }
 
 export const syncCurrentUser = mutationGeneric({
@@ -246,6 +269,12 @@ export const getMyBilling = queryGeneric({
         plan: "free",
         isActive: false,
         hasPremiumVoice: false,
+        trialActive: false,
+        trialEndsAt: null as number | null,
+        premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
+        proPreviewQuotaChars: null as number | null,
+        proPreviewUsedChars: null as number | null,
+        proPreviewRemainingChars: null as number | null,
         subscriptionStatus: null as string | null,
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
@@ -264,6 +293,12 @@ export const getMyBilling = queryGeneric({
         plan: "free",
         isActive: false,
         hasPremiumVoice: false,
+        trialActive: false,
+        trialEndsAt: null as number | null,
+        premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
+        proPreviewQuotaChars: null as number | null,
+        proPreviewUsedChars: null as number | null,
+        proPreviewRemainingChars: null as number | null,
         subscriptionStatus: null as string | null,
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
@@ -277,16 +312,58 @@ export const getMyBilling = queryGeneric({
       .order("desc")
       .first();
 
+    const now = Date.now();
     const status = subscription?.status ?? null;
     const isActive = status === "active" || status === "trialing";
     const tier = isActive ? getTierFromPriceId(subscription?.priceId) : "free";
+    const trialDays = resolveFreeProPlusTrialDays();
+    const trialEndsAt = user.createdAt + trialDays * DAY_MS;
+    const trialActive =
+      trialDays > 0 && !isActive && now < trialEndsAt;
+    const hasPremiumVoice = isActive
+      ? tier === "pro_plus"
+      : trialActive;
+    const premiumVoiceSource = trialActive
+      ? "trial"
+      : isActive
+        ? tier === "pro_plus"
+          ? "pro_plus"
+          : "pro_preview"
+        : "none";
+
+    let proPreviewQuotaChars: number | null = null;
+    let proPreviewUsedChars: number | null = null;
+    let proPreviewRemainingChars: number | null = null;
+
+    if (isActive && tier === "pro") {
+      const quota = resolveProPreviewQuotaChars();
+      const monthKey = getCurrentMonthKey(now);
+      const rowsForUser = await ctx.db
+        .query("featureUsageMonthly")
+        .withIndex("by_user_month", (q) => q.eq("userId", user._id))
+        .collect();
+      const existing =
+        rowsForUser.find(
+          (row) => row.feature === PREMIUM_TTS_FEATURE && row.monthKey === monthKey,
+        ) ?? null;
+      const used = existing?.usedUnits ?? 0;
+      proPreviewQuotaChars = quota;
+      proPreviewUsedChars = used;
+      proPreviewRemainingChars = Math.max(0, quota - used);
+    }
 
     return {
       isAuthenticated: true,
       hasUserRecord: true,
       plan: tier,
       isActive,
-      hasPremiumVoice: isActive && tier === "pro_plus",
+      hasPremiumVoice,
+      trialActive,
+      trialEndsAt: trialActive ? trialEndsAt : null,
+      premiumVoiceSource,
+      proPreviewQuotaChars,
+      proPreviewUsedChars,
+      proPreviewRemainingChars,
       subscriptionStatus: status,
       paddleCustomerId: user.paddleCustomerId ?? null,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,

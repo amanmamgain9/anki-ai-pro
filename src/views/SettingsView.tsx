@@ -13,14 +13,28 @@ type CheckoutPlan =
   | "pro_yearly"
   | "pro_plus_monthly"
   | "pro_plus_yearly";
+type BillingState = {
+  isActive?: boolean;
+  plan?: "free" | "pro" | "pro_plus";
+  subscriptionStatus?: string | null;
+  paddleCustomerId?: string | null;
+  trialActive?: boolean;
+  trialEndsAt?: number | null;
+  proPreviewQuotaChars?: number | null;
+  proPreviewUsedChars?: number | null;
+  proPreviewRemainingChars?: number | null;
+};
 
 export default function SettingsView() {
   const { locale } = useI18n();
   const zh = locale === "zh";
   const { data: session } = useSession();
-  const billing = useQuery(api.billing.getMyBilling);
+  const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
+  const trialDaysLeft =
+    trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
 
   async function startCheckout(plan: CheckoutPlan) {
     setBillingError(null);
@@ -98,6 +112,20 @@ export default function SettingsView() {
           <span className="font-semibold text-[var(--color-text)]">{zh ? "订阅状态：" : "Subscription status:"}</span>{" "}
           {billing?.subscriptionStatus ?? (zh ? "无" : "none")}
         </p>
+        {billing?.trialActive && (
+          <p className="mt-1 text-sm text-[var(--color-accent)]">
+            {zh
+              ? `免费 Pro+ 试用进行中（剩余约 ${trialDaysLeft} 天）。`
+              : `Free Pro+ trial is active (${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left).`}
+          </p>
+        )}
+        {billing?.isActive && billing?.plan === "pro" && typeof billing.proPreviewQuotaChars === "number" && (
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            {zh
+              ? `本月 Pro+ 语音体验额度：剩余 ${billing.proPreviewRemainingChars ?? 0} / ${billing.proPreviewQuotaChars} 字符（已用 ${billing.proPreviewUsedChars ?? 0}）。`
+              : `Monthly Pro+ voice preview: ${billing.proPreviewRemainingChars ?? 0} / ${billing.proPreviewQuotaChars} characters left (${billing.proPreviewUsedChars ?? 0} used).`}
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"

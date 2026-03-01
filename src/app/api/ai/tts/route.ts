@@ -14,11 +14,6 @@ const requestSchema = z.object({
   locale: z.string().trim().default("en"),
 });
 
-type BillingState = {
-  isActive?: boolean;
-  plan?: string;
-  hasPremiumVoice?: boolean;
-};
 type ConsumeResult = {
   allowed: boolean;
   reason?: string;
@@ -64,14 +59,6 @@ export async function POST(request: Request) {
 
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
-    const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
-    const isPaid = Boolean(billing?.isActive && billing?.plan && billing.plan !== "free");
-    if (!isPaid) {
-      return NextResponse.json(
-        { error: "Premium voice requires a paid plan" },
-        { status: 403 },
-      );
-    }
 
     const units = parsed.text.length;
     const consume = (await convex.mutation(api.usage.consumePremiumTtsPreview, {

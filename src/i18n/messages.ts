@@ -92,7 +92,7 @@ export const dictionaries = {
           },
           pro: {
             name: "Pro",
-            price: "$20",
+            price: "$8",
             desc: "Advanced tools for power users.",
             features: [
               "Everything in Free",
@@ -105,7 +105,7 @@ export const dictionaries = {
           },
           proPlus: {
             name: "Pro+",
-            price: "$50",
+            price: "$20",
             desc: "Premium voice with natural Chinese and English output.",
             features: [
               "Everything in Pro",
@@ -364,7 +364,7 @@ export const dictionaries = {
           },
           pro: {
             name: "专业版",
-            price: "$20",
+            price: "$8",
             desc: "为重度用户提供高级能力。",
             features: [
               "含免费版全部功能",
@@ -377,7 +377,7 @@ export const dictionaries = {
           },
           proPlus: {
             name: "专业增强版",
-            price: "$50",
+            price: "$20",
             desc: "提供更自然的中英文高级语音。",
             features: [
               "包含专业版全部功能",
