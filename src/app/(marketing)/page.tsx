@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import ThemeToggle from "@/components/ThemeToggle";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
 import { getServerDictionary } from "@/i18n/server";
 
@@ -39,9 +40,7 @@ export default async function MarketingHome() {
     <div className="flex min-h-dvh flex-col">
       {/* ── Nav ─────────────────────────────────────── */}
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <span className="gradient-text text-lg font-bold tracking-tight">
-          {dict.common.appName}
-        </span>
+        <BrandLogo iconSize={28} priority />
         <div className="flex items-center gap-2">
           <LocaleSwitcher />
           <ThemeToggle />

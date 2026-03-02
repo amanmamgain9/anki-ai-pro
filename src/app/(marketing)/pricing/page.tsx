@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
 import { getServerDictionary } from "@/i18n/server";
 
@@ -27,9 +28,7 @@ export default async function PricingPage() {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <Link href="/" className="gradient-text text-lg font-bold tracking-tight">
-          {dict.common.appName}
-        </Link>
+        <BrandLogo iconSize={28} />
         <div className="flex items-center gap-2">
           <LocaleSwitcher />
           <ThemeToggle />

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
@@ -133,8 +134,16 @@ function AppShell({
           <div className="pointer-events-none absolute -left-16 -top-24 h-44 w-44 rounded-full bg-[var(--color-accent-soft)] blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 right-0 h-40 w-40 rounded-full bg-[var(--color-surface-alt)] blur-3xl" />
 
-          <AppLink href="/cards" className="gradient-text relative z-10 text-lg font-bold tracking-tight">
-            ANKI CARDS
+          <AppLink href="/cards" className="relative z-10 inline-flex items-center gap-2.5">
+            <Image
+              src="/brand/logo-mark-512.png"
+              alt="aiankipro logo"
+              width={26}
+              height={26}
+              className="h-auto w-auto rounded-[20%]"
+              priority
+            />
+            <span className="gradient-text text-lg font-bold tracking-tight">aiankipro</span>
           </AppLink>
 
           {isStudyRoute && (
@@ -185,6 +194,39 @@ function AppShell({
         </aside>
       )}
       {isGenerateFocusRoute && <GenerateChatsSidebar />}
+
+      {/* Mobile top bar */}
+      <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 lg:hidden">
+        <div className="flex min-w-[72px] items-center">
+          {(isStudyRoute || isGenerateFocusRoute) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) back();
+                else navigate("/cards");
+              }}
+              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+            >
+              <span aria-hidden>← </span>
+              {t("app.back")}
+            </button>
+          )}
+        </div>
+        <div className="ml-auto inline-flex items-center gap-2">
+          <ThemeToggle className="scale-75 origin-center" />
+          <AppLink href="/cards" className="inline-flex items-center gap-2">
+            <Image
+              src="/brand/logo-mark-512.png"
+              alt="aiankipro logo"
+              width={24}
+              height={24}
+              className="h-auto w-auto rounded-[20%]"
+              priority
+            />
+            <span className="gradient-text text-sm font-bold tracking-tight">aiankipro</span>
+          </AppLink>
+        </div>
+      </header>
 
       {/* Main content */}
       <main

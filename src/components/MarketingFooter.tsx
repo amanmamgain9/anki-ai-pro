@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { dictionaries, type Locale } from "@/i18n/messages";
 
 export default function MarketingFooter({ locale }: { locale: Locale }) {
@@ -14,7 +15,7 @@ export default function MarketingFooter({ locale }: { locale: Locale }) {
   return (
     <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6 text-xs font-semibold text-[var(--color-text-tertiary)] sm:px-6">
-        <span className="gradient-text">{dict.common.appName}</span>
+        <BrandLogo href="/" iconSize={18} textClassName="gradient-text text-sm font-bold tracking-tight" />
         <div className="flex flex-wrap gap-5">
           {footerLinks.map((item) => (
             <Link

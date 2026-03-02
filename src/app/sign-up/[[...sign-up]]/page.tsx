@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { signIn } from "next-auth/react";
+import BrandLogo from "@/components/BrandLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import { useI18n } from "@/i18n/client";
 
@@ -13,9 +13,7 @@ export default function SignUpPage() {
       <div className="mb-4 w-full max-w-md text-right">
         <LocaleSwitcher />
       </div>
-      <Link href="/" className="gradient-text mb-8 text-lg font-bold tracking-tight">
-        {t("common.appName")}
-      </Link>
+      <BrandLogo className="mb-8" iconSize={30} priority />
       <div className="card-surface w-full max-w-md p-6">
         <h1 className="text-xl font-bold">{t("auth.signUpTitle")}</h1>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
