@@ -80,6 +80,25 @@ function clampConfidence(value: unknown, fallback = 0.55) {
   return Math.max(0, Math.min(1, value));
 }
 
+function looksLikeExplainRequest(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("explain") ||
+    normalized.includes("elaborate") ||
+    normalized.includes("clarify") ||
+    normalized.includes("more detail") ||
+    normalized.includes("break down") ||
+    normalized.includes("example") ||
+    normalized.includes("expliquer") ||
+    normalized.includes("explica") ||
+    normalized.includes("erkl") ||
+    normalized.includes("解释") ||
+    normalized.includes("详细") ||
+    normalized.includes("举例")
+  );
+}
+
 export function useStudyVoice(options: UseStudyVoiceOptions): UseStudyVoiceResult {
   const {
     locale,
@@ -601,6 +620,19 @@ export function useStudyVoice(options: UseStudyVoiceOptions): UseStudyVoiceResul
           await ctx.applyRating(command.quality);
           return;
         }
+      }
+
+      if (
+        (intent?.intent === "tutor" || (intent?.intent === "unknown" && looksLikeExplainRequest(text))) &&
+        ctx.currentCard
+      ) {
+        ctx.setShowTutorPanel(true);
+        setVoiceStatus(ctx.t("app.study.voice.switchedToTutor"));
+        const prompt = intent?.prompt?.trim() || text;
+        const reply = await ctx.sendTutorMessage(prompt);
+        if (!isVoiceTurnActive(turnId)) return;
+        if (reply) await speakText(reply, "tutor", true);
+        return;
       }
 
       if (!ctx.deckId) {

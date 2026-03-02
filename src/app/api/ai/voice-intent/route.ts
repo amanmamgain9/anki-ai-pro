@@ -116,10 +116,12 @@ export async function POST(req: Request) {
         [
           "You classify one voice transcript for a flashcard study app.",
           "Return JSON only.",
+          "User can speak in any language.",
+          "Normalize all detected commands into the English enum values.",
           "Allowed intents: command, answer, tutor, deck_select, unknown.",
           "Use intent=command when transcript asks action like flip/show front/show back/next/previous/repeat/open tutor/close tutor/stop voice/rate.",
           "When command=rate, include rateQuality as 0..3.",
-          "Use intent=tutor for free-form tutor questions when tutorOpen=true and no explicit command.",
+          "Use intent=tutor for free-form tutor questions even when tutorOpen=false.",
           "Use intent=answer for learner recall answers to the current card.",
           "Use intent=deck_select when no deck is selected and transcript likely names a deck/topic; include deckQuery.",
           "confidence is a number 0..1 for how sure you are about this classification.",

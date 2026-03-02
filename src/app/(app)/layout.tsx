@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { anyApi } from "convex/server";
 import { signOut, useSession } from "next-auth/react";
@@ -17,7 +17,6 @@ const navItems = [
   { href: "/cards", labelKey: "app.nav.cards", icon: CardIcon },
   { href: "/cards/generate", labelKey: "app.nav.generate", icon: GenerateIcon },
   { href: "/decks", labelKey: "app.nav.decks", icon: DeckIcon },
-  { href: "/settings", labelKey: "app.nav.settings", icon: SettingsIcon },
 ];
 const api = anyApi;
 type BillingState = {
@@ -114,10 +113,11 @@ function AppShell({
   children: React.ReactNode;
   showUpgradeCta: boolean;
 }) {
-  const { pathname } = useAppRouter();
+  const { pathname, back, navigate } = useAppRouter();
   const { t } = useI18n();
   const isGenerateFocusRoute =
     pathname === "/cards/generate" || pathname.startsWith("/cards/generate?");
+  const isStudyRoute = pathname === "/study" || pathname.startsWith("/study?");
 
   return (
     <div className="flex h-dvh overflow-hidden flex-col lg:flex-row">
@@ -136,6 +136,20 @@ function AppShell({
           <AppLink href="/cards" className="gradient-text relative z-10 text-lg font-bold tracking-tight">
             ANKI CARDS
           </AppLink>
+
+          {isStudyRoute && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) back();
+                else navigate("/decks");
+              }}
+              className="relative z-10 flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+            >
+              <span aria-hidden>←</span>
+              {t("app.back")}
+            </button>
+          )}
 
           <nav className="ios-scroll relative z-10 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {navItems.map(({ href, labelKey, icon: Icon }) => {
@@ -166,20 +180,7 @@ function AppShell({
           </nav>
 
           <div className="relative z-10 border-t border-[var(--color-border)] pt-4">
-            {showUpgradeCta && (
-              <AppLink
-                href="/settings?upgrade=1"
-                className="btn-primary mb-3 flex w-full items-center justify-center !px-3 !py-2 !text-xs"
-              >
-                {t("app.upgradeCta")}
-              </AppLink>
-            )}
-            <div className="flex items-center gap-2">
-              <AccountButton compact />
-              <span className="flex-1 text-xs text-[var(--color-text-tertiary)]">{t("app.account")}</span>
-              <LocaleSwitcher />
-              <ThemeToggle />
-            </div>
+            <UserMenu showUpgradeCta={showUpgradeCta} />
           </div>
         </aside>
       )}
@@ -211,30 +212,123 @@ function AppShell({
               </AppLink>
             );
           })}
-          <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><LocaleSwitcher /></div>
-          <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><ThemeToggle /></div>
-          <div className="flex flex-1 flex-col items-center gap-0.5 py-2.5"><AccountButton /></div>
+          <div className="relative flex flex-1 flex-col items-center gap-0.5 py-2.5">
+            <UserMenu showUpgradeCta={showUpgradeCta} mobile />
+          </div>
         </nav>
       )}
     </div>
   );
 }
 
-function AccountButton({ compact = false }: { compact?: boolean }) {
+function UserMenu({
+  showUpgradeCta,
+  mobile = false,
+}: {
+  showUpgradeCta: boolean;
+  mobile?: boolean;
+}) {
   const { data: session } = useSession();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const zh = locale === "zh";
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const label = session?.user?.name?.trim()?.charAt(0).toUpperCase() ?? "U";
+  const name = session?.user?.name?.trim() || (zh ? "账户" : "Account");
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   return (
-    <button
-      type="button"
-      onClick={() => signOut({ callbackUrl: "/" })}
-      className={`flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] font-bold text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)] ${compact ? "h-8 w-8 text-xs" : "h-8 w-8 text-[0.65rem]"}`}
-      title={session?.user?.email ?? t("app.signOut")}
-      aria-label={t("app.signOut")}
-    >
-      {label}
-    </button>
+    <div ref={rootRef} className={mobile ? "w-full" : "relative"}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={
+          mobile
+            ? "flex w-full flex-col items-center gap-0.5 text-[0.625rem] font-bold uppercase tracking-wider text-[var(--color-text-tertiary)] transition hover:text-[var(--color-text)]"
+            : "flex w-full items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] px-2.5 py-2 text-left text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)]"
+        }
+        aria-label={t("app.account")}
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-xs font-bold">
+          {label}
+        </span>
+        {!mobile && (
+          <>
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold">{name}</span>
+            <span className="text-[0.65rem]">▾</span>
+          </>
+        )}
+        {mobile && <span>{t("app.account")}</span>}
+      </button>
+
+      {open && (
+        <div
+          className={`absolute z-[120] w-56 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-2xl ${
+            mobile ? "bottom-full right-0 mb-2" : "bottom-full right-0 mb-2"
+          }`}
+        >
+          <div className="px-2 py-1.5">
+            <p className="truncate text-xs font-semibold text-[var(--color-text)]">{name}</p>
+            <p className="truncate text-[0.7rem] text-[var(--color-text-tertiary)]">
+              {session?.user?.email ?? ""}
+            </p>
+          </div>
+          <div className="my-1 h-px bg-[var(--color-border)]" />
+
+          <AppLink
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block rounded-md px-2 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+          >
+            {t("app.nav.settings")}
+          </AppLink>
+          {showUpgradeCta && (
+            <AppLink
+              href="/settings?upgrade=1"
+              onClick={() => setOpen(false)}
+              className="block rounded-md px-2 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+            >
+              {t("app.upgradeCta")}
+            </AppLink>
+          )}
+
+          <div className="my-1 h-px bg-[var(--color-border)]" />
+          <div className="flex items-center justify-between rounded-md px-2 py-1.5">
+            <LocaleSwitcher />
+            <ThemeToggle />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              void signOut({ callbackUrl: "/" });
+            }}
+            className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+          >
+            {t("app.signOut")}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -265,16 +359,6 @@ function DeckIcon({ active }: { active: boolean }) {
          strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
       <path d="M16 6H3v13a2 2 0 0 0 2 2h11z" />
       <path d="M8 3h13v13a2 2 0 0 1-2 2H8z" />
-    </svg>
-  );
-}
-
-function SettingsIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
     </svg>
   );
 }

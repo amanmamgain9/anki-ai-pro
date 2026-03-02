@@ -123,11 +123,15 @@ export default function StudyView() {
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
   const [assistantTyping, setAssistantTyping] = useState(false);
   const [tutorError, setTutorError] = useState<string | null>(null);
+  const [tutorDictationSupported, setTutorDictationSupported] = useState(false);
+  const [tutorDictating, setTutorDictating] = useState(false);
   const [showLaunchOverlay, setShowLaunchOverlay] = useState(shouldLaunchIntro);
   const [launchLeaving, setLaunchLeaving] = useState(false);
   const launchStartedAtRef = useRef<number>(0);
   const tutorScrollRef = useRef<HTMLDivElement | null>(null);
   const closeAfterReplyRef = useRef(false);
+  const tutorDictationRef = useRef<any>(null);
+  const voiceModeRef = useRef(false);
 
   // Only fetch the active study source based on mode
   const dueData = useQuery(
@@ -485,6 +489,90 @@ export default function StudyView() {
     setShowTutorPanel(true);
   }, [latestSummaryChat]);
   const tutorStarterPrompt = t("app.study.tutor.starterPrompt");
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setTutorDictationSupported(false);
+      return;
+    }
+    const supported = Boolean(
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition,
+    );
+    setTutorDictationSupported(supported);
+  }, []);
+
+  const stopTutorDictation = useCallback(() => {
+    const recognition = tutorDictationRef.current;
+    if (recognition) {
+      try {
+        recognition.stop();
+      } catch {
+        // no-op
+      }
+    }
+    tutorDictationRef.current = null;
+    setTutorDictating(false);
+  }, []);
+
+  const toggleTutorDictation = useCallback(() => {
+    if (tutorDictating) {
+      stopTutorDictation();
+      return;
+    }
+    if (voiceModeRef.current) {
+      setTutorError(t("app.study.tutor.voiceInMainMode"));
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const RecognitionCtor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!RecognitionCtor) {
+      setTutorError(t("app.study.voice.unsupported"));
+      return;
+    }
+
+    const recognition = new RecognitionCtor();
+    recognition.lang = locale.startsWith("zh") ? "zh-CN" : locale || "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const chunk = event.results[i]?.[0]?.transcript;
+        if (typeof chunk === "string" && chunk.trim()) {
+          transcript += `${chunk.trim()} `;
+        }
+      }
+      const spoken = transcript.trim();
+      if (!spoken) return;
+      setTutorInput((prev) => (prev.trim() ? `${prev.trim()}\n${spoken}` : spoken));
+    };
+    recognition.onerror = () => {
+      setTutorError(t("app.study.tutor.voiceCaptureFailed"));
+      tutorDictationRef.current = null;
+      setTutorDictating(false);
+    };
+    recognition.onend = () => {
+      tutorDictationRef.current = null;
+      setTutorDictating(false);
+    };
+
+    tutorDictationRef.current = recognition;
+    setTutorError(null);
+    setTutorDictating(true);
+    try {
+      recognition.start();
+    } catch {
+      tutorDictationRef.current = null;
+      setTutorDictating(false);
+      setTutorError(t("app.study.tutor.voiceCaptureFailed"));
+    }
+  }, [locale, stopTutorDictation, t, tutorDictating]);
+
+  useEffect(() => () => stopTutorDictation(), [stopTutorDictation]);
+
   const applyRating = useCallback(async (quality: number) => {
     if (!currentCard || animating) return;
     setAnimating(true);
@@ -532,6 +620,10 @@ export default function StudyView() {
       billing?.hasPremiumVoice || (billing?.isActive && billing?.plan !== "free"),
     ),
   });
+
+  useEffect(() => {
+    voiceModeRef.current = voiceMode;
+  }, [voiceMode]);
 
   useEffect(() => {
     if (!shouldLaunchIntro) return;
@@ -1198,6 +1290,9 @@ export default function StudyView() {
                   </button>
                 )}
               </div>
+              <p className="mb-2 text-xs text-[var(--color-text-secondary)]">
+                {t("app.study.tutor.voiceHint")}
+              </p>
               <textarea
                 value={tutorInput}
                 onChange={(e) => setTutorInput(e.target.value)}
@@ -1220,6 +1315,16 @@ export default function StudyView() {
                   {summaryBusy
                     ? t("app.study.tutor.summarizing")
                     : t("app.study.tutor.finishAndSummarize")}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleTutorDictation}
+                  disabled={tutorBusy || summaryBusy || !tutorDictationSupported}
+                  className={`btn-secondary !px-3 !py-1.5 !text-xs disabled:opacity-50 ${tutorDictating ? "!border-[var(--color-accent)] !text-[var(--color-accent)]" : ""}`}
+                >
+                  {tutorDictating
+                    ? t("app.study.tutor.voiceStop")
+                    : t("app.study.tutor.voiceStart")}
                 </button>
                 <button
                   type="button"

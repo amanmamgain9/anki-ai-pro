@@ -71,6 +71,23 @@ export function parseVoiceCommand(text: string): VoiceCommand | null {
     const prompt = tutorPrefix[2]?.trim();
     return prompt ? { kind: "openTutor", prompt } : { kind: "openTutor" };
   }
+  if (
+    includesAny(input, [
+      "explain this",
+      "explain this card",
+      "explain more",
+      "more detail",
+      "elaborate",
+      "clarify",
+      "give example",
+      "解释一下",
+      "详细讲",
+      "讲详细",
+      "举个例子",
+    ])
+  ) {
+    return { kind: "openTutor", prompt: text.trim() };
+  }
 
   if (includesAny(input, ["close tutor", "back to study", "退出导师", "关闭导师", "返回学习"])) {
     return { kind: "closeTutor" };

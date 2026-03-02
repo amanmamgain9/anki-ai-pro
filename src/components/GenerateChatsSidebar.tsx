@@ -35,7 +35,7 @@ function formatSessionTime(ts: number, zh: boolean) {
 
 export default function GenerateChatsSidebar() {
   const { locale } = useI18n();
-  const { searchParams, navigate } = useAppRouter();
+  const { searchParams, navigate, back } = useAppRouter();
   const zh = locale === "zh";
   const sessions = (useQuery(api.chats.listActive) as SessionMeta[] | undefined) ?? [];
 
@@ -45,6 +45,18 @@ export default function GenerateChatsSidebar() {
 
   return (
     <aside className="hidden h-full min-h-0 w-64 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] p-4 lg:flex lg:flex-col">
+      <button
+        type="button"
+        onClick={() => {
+          if (window.history.length > 1) back();
+          else navigate("/cards");
+        }}
+        className="mb-3 flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+      >
+        <span aria-hidden>←</span>
+        {zh ? "返回" : "Back"}
+      </button>
+
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm font-bold text-[var(--color-text)]">
           {zh ? "历史草稿" : "Draft Chats"}
