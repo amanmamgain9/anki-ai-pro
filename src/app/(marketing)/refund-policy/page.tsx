@@ -39,10 +39,12 @@ export default async function RefundPolicyPage() {
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "1. 免费方案" : "1. Free Plan"}
+              {zh ? "1. 试用说明" : "1. Trial"}
             </h2>
             <p className="mt-2">
-              {zh ? "免费方案不产生费用。" : "The free plan is not billed."}
+              {zh
+                ? "我们为 Pro+ 提供 3 天试用。试用结束后，如未取消，订阅将按所选月付方案续费。"
+                : "We offer a 3-day trial for Pro+. After the trial ends, the subscription renews on the selected monthly plan unless canceled before renewal."}
             </p>
           </section>
 
@@ -85,8 +87,8 @@ export default async function RefundPolicyPage() {
             </h2>
             <p className="mt-2">
               {zh ? "请发送邮件至 " : "Email "}{" "}
-              <a href="mailto:support@aiankipro.com" className="text-[var(--color-accent)] hover:underline">
-                support@aiankipro.com
+              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
+                planmyworkday@gmail.com
               </a>{" "}
               {zh
                 ? "获取账单协助。若适用法律要求退款，我们会依法处理。"

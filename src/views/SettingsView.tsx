@@ -10,9 +10,7 @@ import { useI18n } from "@/i18n/client";
 const api = anyApi;
 type CheckoutPlan =
   | "pro_monthly"
-  | "pro_yearly"
-  | "pro_plus_monthly"
-  | "pro_plus_yearly";
+  | "pro_plus_monthly";
 type BillingState = {
   isActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
@@ -186,14 +184,6 @@ export default function SettingsView() {
                   >
                     {busyAction === "pro_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => startCheckout("pro_yearly")}
-                    className="btn-secondary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null}
-                  >
-                    {busyAction === "pro_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
-                  </button>
                 </div>
               </div>
 
@@ -208,14 +198,6 @@ export default function SettingsView() {
                     disabled={busyAction !== null}
                   >
                     {busyAction === "pro_plus_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startCheckout("pro_plus_yearly")}
-                    className="btn-secondary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null}
-                  >
-                    {busyAction === "pro_plus_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
                   </button>
                 </div>
               </div>

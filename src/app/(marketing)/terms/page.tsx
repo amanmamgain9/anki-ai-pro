@@ -65,8 +65,8 @@ export default async function TermsPage() {
             </h2>
             <p className="mt-2">
               {zh
-                ? "付费订阅由 Paddle 处理。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。"
-                : "Paid subscriptions are processed by Paddle. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal."}
+                ? "付费订阅由 Paddle 处理。目前提供月付 Pro 与 Pro+。新用户可获得 3 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。"
+                : "Paid subscriptions are processed by Paddle. We currently offer monthly Pro and Pro+ plans. New users receive a 3-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal."}
             </p>
           </section>
 
@@ -89,8 +89,13 @@ export default async function TermsPage() {
             </h2>
             <p className="mt-2">
               {zh
-                ? "你不得将本服务用于违法活动、滥用、未授权访问或干扰平台运行。"
-                : "You may not use the service for unlawful activity, abuse, unauthorized access, or interference with platform operation."}
+                ? "本服务仅用于学习。你不得将本服务用于违法活动、滥用、未授权访问、干扰平台运行，或用于考试作弊、代考及其他学术不诚信行为。"
+                : "This service is for learning only. You may not use the service for unlawful activity, abuse, unauthorized access, interference with platform operation, exam cheating, test impersonation, or other academic misconduct."}
+            </p>
+            <p className="mt-2">
+              {zh
+                ? "若发现违规，我们可暂停或终止账户，并在适用情况下向相关方配合处理。"
+                : "If we detect violations, we may suspend or terminate accounts and cooperate with relevant parties where appropriate."}
             </p>
           </section>
 
@@ -111,8 +116,8 @@ export default async function TermsPage() {
             </h2>
             <p className="mt-2">
               {zh ? "如有法律或账单问题，请联系：" : "For legal or billing questions, contact:"}{" "}
-              <a href="mailto:support@aiankipro.com" className="text-[var(--color-accent)] hover:underline">
-                support@aiankipro.com
+              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
+                planmyworkday@gmail.com
               </a>
             </p>
           </section>

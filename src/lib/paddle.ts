@@ -2,9 +2,7 @@ import { Environment, Paddle } from "@paddle/paddle-node-sdk";
 
 export type BillingPlan =
   | "pro_monthly"
-  | "pro_yearly"
-  | "pro_plus_monthly"
-  | "pro_plus_yearly";
+  | "pro_plus_monthly";
 
 function resolvePaddleEnvironment(value: string | undefined): Environment {
   if (!value || value === "sandbox") return Environment.sandbox;
@@ -25,10 +23,7 @@ export function getPaddleClient() {
 export function getPaddlePriceId(plan: BillingPlan) {
   const proMonthlyPriceId =
     process.env.PADDLE_PRICE_ID_PRO_MONTHLY ?? process.env.PADDLE_PRICE_ID_MONTHLY;
-  const proYearlyPriceId =
-    process.env.PADDLE_PRICE_ID_PRO_YEARLY ?? process.env.PADDLE_PRICE_ID_YEARLY;
   const proPlusMonthlyPriceId = process.env.PADDLE_PRICE_ID_PRO_PLUS_MONTHLY;
-  const proPlusYearlyPriceId = process.env.PADDLE_PRICE_ID_PRO_PLUS_YEARLY;
 
   if (plan === "pro_monthly") {
     if (!proMonthlyPriceId) {
@@ -37,24 +32,10 @@ export function getPaddlePriceId(plan: BillingPlan) {
     return proMonthlyPriceId;
   }
 
-  if (plan === "pro_yearly") {
-    if (!proYearlyPriceId) {
-      throw new Error("Missing PADDLE_PRICE_ID_PRO_YEARLY (or PADDLE_PRICE_ID_YEARLY)");
-    }
-    return proYearlyPriceId;
+  if (!proPlusMonthlyPriceId) {
+    throw new Error("Missing PADDLE_PRICE_ID_PRO_PLUS_MONTHLY");
   }
-
-  if (plan === "pro_plus_monthly") {
-    if (!proPlusMonthlyPriceId) {
-      throw new Error("Missing PADDLE_PRICE_ID_PRO_PLUS_MONTHLY");
-    }
-    return proPlusMonthlyPriceId;
-  }
-
-  if (!proPlusYearlyPriceId) {
-    throw new Error("Missing PADDLE_PRICE_ID_PRO_PLUS_YEARLY");
-  }
-  return proPlusYearlyPriceId;
+  return proPlusMonthlyPriceId;
 }
 
 export function getPaddleWebhookSecret() {

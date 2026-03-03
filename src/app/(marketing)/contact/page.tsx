@@ -43,8 +43,8 @@ export default async function ContactPage() {
             </h2>
             <p className="mt-2">
               {zh ? "如需帮助，请联系：" : "For support, contact:"}{" "}
-              <a href="mailto:support@aiankipro.com" className="text-[var(--color-accent)] hover:underline">
-                support@aiankipro.com
+              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
+                planmyworkday@gmail.com
               </a>
             </p>
           </section>

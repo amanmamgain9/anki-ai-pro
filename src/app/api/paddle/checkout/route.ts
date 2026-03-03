@@ -19,13 +19,7 @@ type SyncUserResult = {
 
 function parsePlan(input: unknown): BillingPlan | null {
   if (input === "monthly") return "pro_monthly";
-  if (input === "yearly") return "pro_yearly";
-  if (
-    input === "pro_monthly" ||
-    input === "pro_yearly" ||
-    input === "pro_plus_monthly" ||
-    input === "pro_plus_yearly"
-  ) {
+  if (input === "pro_monthly" || input === "pro_plus_monthly") {
     return input;
   }
   return null;
@@ -58,7 +52,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid plan. Expected one of: 'pro_monthly', 'pro_yearly', 'pro_plus_monthly', 'pro_plus_yearly'.",
+            "Invalid plan. Expected one of: 'pro_monthly', 'pro_plus_monthly'.",
         },
         { status: 400 },
       );
