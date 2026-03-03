@@ -55,9 +55,9 @@ export default async function PricingPage() {
               </h3>
               <p className="mt-2 text-4xl font-bold tracking-tight">
                 {t.price}
-                {t.price !== "$0" && (
-                  <span className="text-sm font-medium text-[var(--color-text-secondary)]">{dict.marketing.pricing.perMonth}</span>
-                )}
+                <span className="text-sm font-medium text-[var(--color-text-secondary)]">
+                  {dict.marketing.pricing.perMonth}
+                </span>
               </p>
               <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{t.desc}</p>
 
