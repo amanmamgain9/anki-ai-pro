@@ -61,38 +61,48 @@ export default async function RefundPolicyPage() {
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "3. 不退款政策" : "3. No Refund Policy"}
+              {zh ? "3. 退款资格" : "3. Refund Eligibility"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "所有订阅费用均不退款，包括部分周期未使用部分。"
-                : "All subscription payments are non-refundable, including unused portions of a billing period."}
+                ? "试用结束后的首笔订阅收费，可在收费后 14 天内申请退款。"
+                : "The first paid subscription charge after trial conversion is eligible for a refund if requested within 14 days of that charge."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "4. 取消订阅" : "4. Cancellation"}
+              {zh ? "4. 续费与部分周期规则" : "4. Renewals and Partial-Period Rules"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "你可以随时取消订阅。取消后当前计费周期内仍可继续使用，随后不再自动续费。"
-                : "You may cancel your subscription at any time. Access continues until the current billing period ends, and then it will not renew automatically."}
+                ? "续费款项通常不退款，且不提供按未使用时长比例退款。"
+                : "Renewal charges are generally non-refundable, and we do not provide prorated refunds for unused time in a billing period."}
+            </p>
+            <p className="mt-2">
+              {zh
+                ? "如遇重复扣费、未经授权付款、技术性账单错误，或适用法律另有要求的情况，我们会按个案处理。"
+                : "We will review exceptions for duplicate charges, unauthorized payments, technical billing errors, or where refunds are required by applicable law."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "5. 法律例外与账单支持" : "5. Legal Exceptions and Billing Support"}
+              {zh ? "5. 取消与账单支持" : "5. Cancellation and Billing Support"}
             </h2>
+            <p className="mt-2">
+              {zh
+                ? "你可随时取消订阅。取消后可继续使用至当前计费周期结束，之后不再自动续费。"
+                : "You may cancel at any time. Access continues until the end of the current billing period, after which the subscription will not renew."}
+            </p>
             <p className="mt-2">
               {zh ? "请发送邮件至 " : "Email "}{" "}
               <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
                 planmyworkday@gmail.com
               </a>{" "}
               {zh
-                ? "获取账单协助。若适用法律要求退款，我们会依法处理。"
-                : "for billing assistance. Where refunds are required by applicable law, we will honor those requirements."}
+                ? "并附上 Paddle 收据号与账户邮箱。我们通常会在 1 个工作日内回复。"
+                : "with your Paddle receipt number and account email for billing support. We typically respond within 1 business day."}
             </p>
           </section>
         </div>

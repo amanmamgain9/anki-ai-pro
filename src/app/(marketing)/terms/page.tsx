@@ -46,6 +46,11 @@ export default async function TermsPage() {
                 ? "使用 aiankipro.com 与 Anki Cards 应用即表示你同意本服务条款。"
                 : "By using aiankipro.com and the Anki Cards application, you agree to these Terms of Service."}
             </p>
+            <p className="mt-2">
+              {zh
+                ? "本服务由 Aman Mamgain（个体经营者）运营。"
+                : "This service is operated by Aman Mamgain (sole proprietor)."}
+            </p>
           </section>
 
           <section>
