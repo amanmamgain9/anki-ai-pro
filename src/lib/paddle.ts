@@ -1,8 +1,5 @@
 import { Environment, Paddle } from "@paddle/paddle-node-sdk";
-
-export type BillingPlan =
-  | "pro_monthly"
-  | "pro_plus_monthly";
+import { getBillingPlanConfig, type BillingPlan } from "@/lib/billing-plans";
 
 function resolvePaddleEnvironment(value: string | undefined): Environment {
   if (!value || value === "sandbox") return Environment.sandbox;
@@ -21,21 +18,37 @@ export function getPaddleClient() {
 }
 
 export function getPaddlePriceId(plan: BillingPlan) {
-  const proMonthlyPriceId =
-    process.env.PADDLE_PRICE_ID_PRO_MONTHLY ?? process.env.PADDLE_PRICE_ID_MONTHLY;
-  const proPlusMonthlyPriceId = process.env.PADDLE_PRICE_ID_PRO_PLUS_MONTHLY;
-
-  if (plan === "pro_monthly") {
-    if (!proMonthlyPriceId) {
-      throw new Error("Missing PADDLE_PRICE_ID_PRO_MONTHLY (or PADDLE_PRICE_ID_MONTHLY)");
-    }
-    return proMonthlyPriceId;
+  const config = getBillingPlanConfig(plan);
+  const priceId = resolvePriceId(config.envVars, config.legacyEnvVars);
+  if (!priceId) {
+    const preferred = config.envVars.join(" or ");
+    const fallback = config.legacyEnvVars?.length
+      ? ` (fallback: ${config.legacyEnvVars.join(" or ")})`
+      : "";
+    throw new Error(`Missing ${preferred}${fallback}`);
   }
+  return priceId;
+}
 
-  if (!proPlusMonthlyPriceId) {
-    throw new Error("Missing PADDLE_PRICE_ID_PRO_PLUS_MONTHLY");
+export function isCheckoutPlanConfigured(plan: BillingPlan) {
+  const config = getBillingPlanConfig(plan);
+  return Boolean(resolvePriceId(config.envVars, config.legacyEnvVars));
+}
+
+function resolvePriceId(
+  envVars: readonly string[],
+  legacyEnvVars?: readonly string[],
+) {
+  for (const envVar of envVars) {
+    const value = process.env[envVar];
+    if (value && value.length > 0) return value;
   }
-  return proPlusMonthlyPriceId;
+  if (!legacyEnvVars) return null;
+  for (const envVar of legacyEnvVars) {
+    const value = process.env[envVar];
+    if (value && value.length > 0) return value;
+  }
+  return null;
 }
 
 export function getPaddleWebhookSecret() {

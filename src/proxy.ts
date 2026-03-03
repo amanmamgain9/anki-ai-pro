@@ -24,6 +24,17 @@ export default async function proxy(req: NextRequest) {
   if (pathname === "/api/paddle/webhook") {
     return NextResponse.next();
   }
+  if (pathname === "/api/paddle/plans") {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/api/")) {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
 
   if (publicRoutes.has(pathname)) {
     return NextResponse.next();

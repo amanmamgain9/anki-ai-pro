@@ -3,8 +3,8 @@ import { anyApi } from "convex/server";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { parseBillingPlan } from "@/lib/billing-plans";
 import {
-  type BillingPlan,
   getPaddleClient,
   getPaddleForwardSecret,
   getPaddlePriceId,
@@ -17,13 +17,10 @@ type SyncUserResult = {
   paddleCustomerId: string | null;
 };
 
-function parsePlan(input: unknown): BillingPlan | null {
-  if (input === "monthly") return "pro_monthly";
-  if (input === "pro_monthly" || input === "pro_plus_monthly") {
-    return input;
-  }
-  return null;
-}
+type BillingState = {
+  isActive?: boolean;
+  paddleSubscriptionId?: string | null;
+};
 
 export const runtime = "nodejs";
 
@@ -47,12 +44,12 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as { plan?: unknown };
-    const plan = parsePlan(body.plan);
+    const plan = parseBillingPlan(body.plan);
     if (!plan) {
       return NextResponse.json(
         {
           error:
-            "Invalid plan. Expected one of: 'pro_monthly', 'pro_plus_monthly'.",
+            "Invalid plan. Expected one of: 'pro_monthly', 'pro_yearly', 'pro_plus_monthly', 'pro_plus_yearly'.",
         },
         { status: 400 },
       );
@@ -74,6 +71,20 @@ export async function POST(request: Request) {
       {},
     )) as SyncUserResult;
 
+    const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
+    if (billing?.isActive) {
+      return NextResponse.json(
+        {
+          error:
+            "An active subscription already exists for this account. Use Manage billing to change plan.",
+          code: "active_subscription_exists",
+          paddleSubscriptionId: billing.paddleSubscriptionId ?? null,
+        },
+        { status: 409 },
+      );
+    }
+
+    const priceId = getPaddlePriceId(plan);
     const paddle = getPaddleClient();
     let customerId = user.paddleCustomerId;
     if (!customerId) {
@@ -91,7 +102,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const priceId = getPaddlePriceId(plan);
     const returnBaseUrl =
       process.env.NEXTAUTH_URL?.replace(/\/+$/, "") ?? "http://localhost:3000";
 

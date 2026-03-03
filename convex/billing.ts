@@ -28,7 +28,14 @@ async function requireIdentity(ctx: AuthCtx) {
   return identity;
 }
 
-function toMillis(value: string | undefined): number | undefined {
+function ensureTestingAllowed(testSecret: string) {
+  const expected = process.env.E2E_TEST_SECRET;
+  if (!expected || testSecret !== expected) {
+    throw new ConvexError("Unauthorized test helper call");
+  }
+}
+
+function toMillis(value: string | null | undefined): number | undefined {
   if (!value) return undefined;
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : undefined;
@@ -54,6 +61,17 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
     default:
       return "unknown";
   }
+}
+
+function isSubscriptionActive(status: string | null | undefined) {
+  return status === "active" || status === "trialing";
+}
+
+function pickEffectiveSubscription<T extends { status?: string | null }>(rows: T[]): T | null {
+  for (const row of rows) {
+    if (isSubscriptionActive(row.status)) return row;
+  }
+  return rows[0] ?? null;
 }
 
 type BillingTier = "free" | "pro" | "pro_plus";
@@ -155,12 +173,18 @@ export const syncCurrentUser = mutationGeneric({
 
 export const setMyPaddleCustomerId = mutationGeneric({
   args: {
-    forwardSecret: v.string(),
+    forwardSecret: v.optional(v.string()),
+    testSecret: v.optional(v.string()),
     customerId: v.string(),
   },
-  handler: async (ctx, { forwardSecret, customerId }) => {
+  handler: async (ctx, { forwardSecret, testSecret, customerId }) => {
     const expectedSecret = process.env.PADDLE_WEBHOOK_FORWARD_SECRET;
-    if (!expectedSecret || forwardSecret !== expectedSecret) {
+    const testAllowed =
+      Boolean(process.env.E2E_TEST_SECRET) &&
+      testSecret === process.env.E2E_TEST_SECRET;
+    const forwardAllowed =
+      Boolean(expectedSecret) && forwardSecret === expectedSecret;
+    if (!testAllowed && !forwardAllowed) {
       throw new ConvexError("Unauthorized");
     }
     const identity = await requireIdentity(ctx);
@@ -264,6 +288,109 @@ export const resetMyOnboardingForTesting = mutationGeneric({
   },
 });
 
+export const setMyCreatedAtForTesting = mutationGeneric({
+  args: {
+    testSecret: v.string(),
+    createdAt: v.number(),
+  },
+  handler: async (ctx, { testSecret, createdAt }) => {
+    ensureTestingAllowed(testSecret);
+    const identity = await requireIdentity(ctx);
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, {
+      createdAt,
+      updatedAt: now,
+      lastSeenAt: now,
+    });
+    return { userId: user._id, createdAt };
+  },
+});
+
+export const resetMyBillingForTesting = mutationGeneric({
+  args: {
+    testSecret: v.string(),
+  },
+  handler: async (ctx, { testSecret }) => {
+    ensureTestingAllowed(testSecret);
+    const identity = await requireIdentity(ctx);
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const subscriptions = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
+      .collect();
+
+    for (const row of subscriptions) {
+      await ctx.db.delete(row._id);
+    }
+
+    await ctx.db.patch(user._id, {
+      updatedAt: Date.now(),
+      lastSeenAt: Date.now(),
+    });
+
+    return {
+      userId: user._id,
+      deletedSubscriptions: subscriptions.length,
+    };
+  },
+});
+
+export const getMySubscriptionSnapshotForTesting = queryGeneric({
+  args: {
+    testSecret: v.string(),
+  },
+  handler: async (ctx, { testSecret }) => {
+    ensureTestingAllowed(testSecret);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthorized");
+    }
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
+      .first();
+    if (!user) {
+      return {
+        userExists: false as const,
+      };
+    }
+    const subscription = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+
+    return {
+      userExists: true as const,
+      paddleCustomerId: user.paddleCustomerId ?? null,
+      subscriptionStatus: subscription?.status ?? null,
+      paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
+      paddlePriceId: subscription?.priceId ?? null,
+      currentPeriodStartsAt: subscription?.currentPeriodStartsAt ?? null,
+      currentPeriodEndsAt: subscription?.currentPeriodEndsAt ?? null,
+      nextBilledAt: subscription?.nextBilledAt ?? null,
+      updatedAt: subscription?.updatedAt ?? null,
+    };
+  },
+});
+
 export const getMyBilling = queryGeneric({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -311,15 +438,16 @@ export const getMyBilling = queryGeneric({
       };
     }
 
-    const subscription = await ctx.db
+    const subscriptions = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
-      .first();
+      .collect();
+    const subscription = pickEffectiveSubscription(subscriptions);
 
     const now = Date.now();
     const status = subscription?.status ?? null;
-    const isActive = status === "active" || status === "trialing";
+    const isActive = isSubscriptionActive(status);
     const tier = isActive ? getTierFromPriceId(subscription?.priceId) : "free";
     const trialDays = resolveFreeProPlusTrialDays();
     const trialEndsAt = user.createdAt + trialDays * DAY_MS;
@@ -379,24 +507,32 @@ export const getMyBilling = queryGeneric({
 
 export const processPaddleWebhook = mutationGeneric({
   args: {
-    forwardSecret: v.string(),
+    forwardSecret: v.optional(v.string()),
+    testSecret: v.optional(v.string()),
     eventId: v.string(),
     eventType: v.string(),
     occurredAt: v.optional(v.string()),
     subscriptionId: v.optional(v.string()),
     customerId: v.optional(v.string()),
+    externalId: v.optional(v.string()),
+    subscriptionUpdatedAt: v.optional(v.string()),
     subscriptionStatus: v.optional(v.string()),
     priceId: v.optional(v.string()),
     productId: v.optional(v.string()),
-    currentPeriodStartsAt: v.optional(v.string()),
-    currentPeriodEndsAt: v.optional(v.string()),
-    nextBilledAt: v.optional(v.string()),
-    canceledAt: v.optional(v.string()),
+    currentPeriodStartsAt: v.optional(v.union(v.string(), v.null())),
+    currentPeriodEndsAt: v.optional(v.union(v.string(), v.null())),
+    nextBilledAt: v.optional(v.union(v.string(), v.null())),
+    canceledAt: v.optional(v.union(v.string(), v.null())),
     rawBody: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const expectedSecret = process.env.PADDLE_WEBHOOK_FORWARD_SECRET;
-    if (!expectedSecret || args.forwardSecret !== expectedSecret) {
+    const testAllowed =
+      Boolean(process.env.E2E_TEST_SECRET) &&
+      args.testSecret === process.env.E2E_TEST_SECRET;
+    const forwardAllowed =
+      Boolean(expectedSecret) && args.forwardSecret === expectedSecret;
+    if (!testAllowed && !forwardAllowed) {
       throw new ConvexError("Unauthorized webhook call");
     }
 
@@ -410,11 +546,22 @@ export const processPaddleWebhook = mutationGeneric({
 
     const now = Date.now();
     const occurredAt = toMillis(args.occurredAt);
+    const subscriptionUpdatedAt = toMillis(args.subscriptionUpdatedAt);
+    const incomingEventTime = occurredAt ?? now;
+    const incomingVersionTime = subscriptionUpdatedAt ?? incomingEventTime;
 
     let userId: Id<"users"> | undefined;
     const subscriptionId = args.subscriptionId;
+    const existingSubscription = args.subscriptionId
+      ? await ctx.db
+          .query("subscriptions")
+          .withIndex("by_paddleSubscriptionId", (q) =>
+            q.eq("paddleSubscriptionId", args.subscriptionId!),
+          )
+          .first()
+      : null;
 
-    const user = args.customerId
+    let user = args.customerId
       ? await ctx.db
           .query("users")
           .withIndex("by_paddleCustomerId", (q) =>
@@ -423,20 +570,58 @@ export const processPaddleWebhook = mutationGeneric({
           .first()
       : null;
 
-    if (user) {
-      userId = user._id;
-      await ctx.db.patch(user._id, {
-        updatedAt: now,
-      });
+    if (!user && args.externalId) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId!))
+        .first();
     }
 
-    if (user && args.subscriptionId) {
-      const existingSubscription = await ctx.db
-        .query("subscriptions")
-        .withIndex("by_paddleSubscriptionId", (q) =>
-          q.eq("paddleSubscriptionId", args.subscriptionId!),
-        )
-        .first();
+    if (!user && existingSubscription) {
+      user = await ctx.db.get(existingSubscription.userId);
+    }
+    if (user && existingSubscription && existingSubscription.userId !== user._id) {
+      const subscriptionOwner = await ctx.db.get(existingSubscription.userId);
+      if (subscriptionOwner) {
+        user = subscriptionOwner;
+      }
+    }
+
+    let processingStatus: "processed" | "ignored_missing_user" | "ignored_stale_event" = user
+      ? "processed"
+      : "ignored_missing_user";
+
+    if (existingSubscription) {
+      const currentVersionTime =
+        existingSubscription.lastSubscriptionUpdatedAt ??
+        existingSubscription.lastEventOccurredAt;
+      const currentEventTime = existingSubscription.lastEventOccurredAt;
+      if (
+        currentVersionTime !== undefined &&
+        (incomingVersionTime < currentVersionTime ||
+          (incomingVersionTime === currentVersionTime &&
+            currentEventTime !== undefined &&
+            incomingEventTime < currentEventTime))
+      ) {
+        processingStatus = "ignored_stale_event";
+      }
+    }
+
+    if (processingStatus === "processed" && user) {
+      userId = user._id;
+      const userPatch: {
+        updatedAt: number;
+        paddleCustomerId?: string;
+      } = {
+        updatedAt: now,
+      };
+      if (args.customerId && user.paddleCustomerId !== args.customerId) {
+        userPatch.paddleCustomerId = args.customerId;
+      }
+      await ctx.db.patch(user._id, userPatch);
+    }
+
+    if (processingStatus === "processed" && user && args.subscriptionId) {
 
       const normalizedStatus = normalizeSubscriptionStatus(
         args.eventType,
@@ -454,27 +639,81 @@ export const processPaddleWebhook = mutationGeneric({
         currentPeriodEndsAt?: number;
         nextBilledAt?: number;
         canceledAt?: number;
+        lastEventOccurredAt?: number;
+        lastSubscriptionUpdatedAt?: number;
       } = {
         status: normalizedStatus,
         updatedAt: now,
         lastEventType: args.eventType,
+        lastEventOccurredAt: incomingEventTime,
       };
+      if (subscriptionUpdatedAt !== undefined) {
+        patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
+      }
 
       if (args.customerId) patch.paddleCustomerId = args.customerId;
       if (args.priceId) patch.priceId = args.priceId;
       if (args.productId) patch.productId = args.productId;
-      const currentPeriodStartsAt = toMillis(args.currentPeriodStartsAt);
-      if (currentPeriodStartsAt) patch.currentPeriodStartsAt = currentPeriodStartsAt;
-      const currentPeriodEndsAt = toMillis(args.currentPeriodEndsAt);
-      if (currentPeriodEndsAt) patch.currentPeriodEndsAt = currentPeriodEndsAt;
-      const nextBilledAt = toMillis(args.nextBilledAt);
-      if (nextBilledAt) patch.nextBilledAt = nextBilledAt;
-      const canceledAt = toMillis(args.canceledAt);
-      if (canceledAt) patch.canceledAt = canceledAt;
+      if (args.currentPeriodStartsAt !== undefined) {
+        if (args.currentPeriodStartsAt === null) {
+          patch.currentPeriodStartsAt = undefined;
+        } else {
+          const currentPeriodStartsAt = toMillis(args.currentPeriodStartsAt);
+          if (currentPeriodStartsAt !== undefined) {
+            patch.currentPeriodStartsAt = currentPeriodStartsAt;
+          }
+        }
+      }
+      if (args.currentPeriodEndsAt !== undefined) {
+        if (args.currentPeriodEndsAt === null) {
+          patch.currentPeriodEndsAt = undefined;
+        } else {
+          const currentPeriodEndsAt = toMillis(args.currentPeriodEndsAt);
+          if (currentPeriodEndsAt !== undefined) {
+            patch.currentPeriodEndsAt = currentPeriodEndsAt;
+          }
+        }
+      }
+      if (args.nextBilledAt !== undefined) {
+        if (args.nextBilledAt === null) {
+          patch.nextBilledAt = undefined;
+        } else {
+          const nextBilledAt = toMillis(args.nextBilledAt);
+          if (nextBilledAt !== undefined) {
+            patch.nextBilledAt = nextBilledAt;
+          }
+        }
+      }
+      if (args.canceledAt !== undefined) {
+        if (args.canceledAt === null) {
+          patch.canceledAt = undefined;
+        } else {
+          const canceledAt = toMillis(args.canceledAt);
+          if (canceledAt !== undefined) {
+            patch.canceledAt = canceledAt;
+          }
+        }
+      }
 
       if (existingSubscription) {
         await ctx.db.patch(existingSubscription._id, patch);
       } else {
+        const currentPeriodStartsAt =
+          args.currentPeriodStartsAt === null
+            ? undefined
+            : toMillis(args.currentPeriodStartsAt);
+        const currentPeriodEndsAt =
+          args.currentPeriodEndsAt === null
+            ? undefined
+            : toMillis(args.currentPeriodEndsAt);
+        const nextBilledAt =
+          args.nextBilledAt === null
+            ? undefined
+            : toMillis(args.nextBilledAt);
+        const canceledAt =
+          args.canceledAt === null
+            ? undefined
+            : toMillis(args.canceledAt);
         await ctx.db.insert("subscriptions", {
           userId: user._id,
           paddleSubscriptionId: args.subscriptionId,
@@ -489,6 +728,8 @@ export const processPaddleWebhook = mutationGeneric({
           createdAt: now,
           updatedAt: now,
           lastEventType: args.eventType,
+          lastEventOccurredAt: incomingEventTime,
+          lastSubscriptionUpdatedAt: subscriptionUpdatedAt,
         });
       }
     }
@@ -498,7 +739,7 @@ export const processPaddleWebhook = mutationGeneric({
       eventType: args.eventType,
       occurredAt,
       processedAt: now,
-      status: user ? "processed" : "ignored_missing_user",
+      status: processingStatus,
       userId,
       paddleSubscriptionId: subscriptionId,
       paddleCustomerId: args.customerId,
@@ -508,7 +749,8 @@ export const processPaddleWebhook = mutationGeneric({
     return {
       duplicate: false,
       eventId: args.eventId,
-      userResolved: Boolean(user),
+      userResolved: Boolean(userId),
+      stale: processingStatus === "ignored_stale_event",
       subscriptionId: subscriptionId ?? null,
     };
   },

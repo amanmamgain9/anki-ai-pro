@@ -58,6 +58,17 @@ function getTierFromPriceId(priceId: string | undefined): BillingTier {
   return "pro";
 }
 
+function isSubscriptionActive(status: string | null | undefined) {
+  return status === "active" || status === "trialing";
+}
+
+function pickEffectiveSubscription<T extends { status?: string | null }>(rows: T[]): T | null {
+  for (const row of rows) {
+    if (isSubscriptionActive(row.status)) return row;
+  }
+  return rows[0] ?? null;
+}
+
 async function requireIdentity(ctx: AuthCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -83,13 +94,14 @@ export const consumePremiumTtsPreview = mutationGeneric({
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
 
-    const subscription = await ctx.db
+    const subscriptions = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
-      .first();
+      .collect();
+    const subscription = pickEffectiveSubscription(subscriptions);
     const status = subscription?.status ?? null;
-    const isActive = status === "active" || status === "trialing";
+    const isActive = isSubscriptionActive(status);
     const trialDays = resolveFreeProPlusTrialDays();
     const trialEndsAt = user.createdAt + trialDays * DAY_MS;
     const trialActive = trialDays > 0 && !isActive && now < trialEndsAt;

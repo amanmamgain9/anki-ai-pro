@@ -13,6 +13,10 @@ function isSubscriptionActive(status: string | null | undefined) {
   return status === "active" || status === "trialing";
 }
 
+function hasAnyActiveSubscription(rows: Array<{ status?: string | null }>) {
+  return rows.some((row) => isSubscriptionActive(row.status));
+}
+
 type EntitlementCtx = {
   auth: {
     getUserIdentity: () => Promise<{ subject?: string } | null>;
@@ -31,13 +35,13 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
     .first();
   if (!user) return null;
 
-  const subscription = await ctx.db
+  const subscriptions = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId_updatedAt", (q: any) => q.eq("userId", user._id))
     .order("desc")
-    .first();
+    .collect();
 
-  if (isSubscriptionActive(subscription?.status)) {
+  if (hasAnyActiveSubscription(subscriptions)) {
     return externalId;
   }
 
@@ -54,4 +58,3 @@ export async function requireEntitledExternalUserId(ctx: EntitlementCtx) {
   if (!externalId) throw new ConvexError("Pro plan required");
   return externalId;
 }
-

@@ -27,6 +27,8 @@ export default defineSchema({
     currentPeriodEndsAt: v.optional(v.number()),
     nextBilledAt: v.optional(v.number()),
     canceledAt: v.optional(v.number()),
+    lastEventOccurredAt: v.optional(v.number()),
+    lastSubscriptionUpdatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     lastEventType: v.optional(v.string()),
@@ -45,6 +47,20 @@ export default defineSchema({
     paddleCustomerId: v.optional(v.string()),
     rawBody: v.optional(v.string()),
   }).index("by_eventId", ["eventId"]),
+
+  magicLinks: defineTable({
+    tokenHash: v.string(),
+    userId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    callbackUrl: v.string(),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_email_createdAt", ["email", "createdAt"]),
 
   featureUsageMonthly: defineTable({
     userId: v.id("users"),

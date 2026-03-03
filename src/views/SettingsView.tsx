@@ -4,13 +4,15 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
 
 const api = anyApi;
 type CheckoutPlan =
   | "pro_monthly"
-  | "pro_plus_monthly";
+  | "pro_yearly"
+  | "pro_plus_monthly"
+  | "pro_plus_yearly";
 type BillingState = {
   isActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
@@ -22,6 +24,14 @@ type BillingState = {
   proPreviewUsedChars?: number | null;
   proPreviewRemainingChars?: number | null;
 };
+type PlanAvailability = Record<CheckoutPlan, boolean>;
+
+const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
+  pro_monthly: true,
+  pro_yearly: true,
+  pro_plus_monthly: true,
+  pro_plus_yearly: true,
+};
 
 export default function SettingsView() {
   const { locale } = useI18n();
@@ -31,9 +41,39 @@ export default function SettingsView() {
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [planAvailability, setPlanAvailability] = useState<PlanAvailability>(
+    DEFAULT_PLAN_AVAILABILITY,
+  );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/paddle/plans", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          plans?: Array<{ plan?: string; checkoutEnabled?: boolean }>;
+        };
+        if (!Array.isArray(payload.plans)) return;
+        const nextAvailability: PlanAvailability = { ...DEFAULT_PLAN_AVAILABILITY };
+        for (const row of payload.plans) {
+          if (!row.plan || !(row.plan in nextAvailability)) continue;
+          nextAvailability[row.plan as CheckoutPlan] = Boolean(row.checkoutEnabled);
+        }
+        if (!cancelled) {
+          setPlanAvailability(nextAvailability);
+        }
+      } catch {
+        // Keep default availability; checkout endpoint still validates.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
@@ -180,26 +220,55 @@ export default function SettingsView() {
                     type="button"
                     onClick={() => startCheckout("pro_monthly")}
                     className="btn-primary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null}
+                    disabled={busyAction !== null || !planAvailability.pro_monthly}
                   >
                     {busyAction === "pro_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => startCheckout("pro_yearly")}
+                    className="btn-secondary !px-3 !py-1.5 !text-xs"
+                    disabled={busyAction !== null || !planAvailability.pro_yearly}
+                  >
+                    {busyAction === "pro_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
+                  </button>
                 </div>
+                {(!planAvailability.pro_monthly || !planAvailability.pro_yearly) && (
+                  <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
+                    {zh ? "部分结算周期暂不可用" : "Some billing cycles are currently unavailable"}
+                  </p>
+                )}
               </div>
 
               <div className="rounded-xl border border-[var(--color-border)] p-3">
                 <p className="text-sm font-semibold">{zh ? "Pro+" : "Pro+"}</p>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$20 / 月" : "$20 / month"}</p>
+                <p className="mt-1 text-[11px] text-[var(--color-accent)]">
+                  {zh ? "含 3 天免费试用" : "Includes 3-day free trial"}
+                </p>
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
                     onClick={() => startCheckout("pro_plus_monthly")}
                     className="btn-primary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null}
+                    disabled={busyAction !== null || !planAvailability.pro_plus_monthly}
                   >
                     {busyAction === "pro_plus_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => startCheckout("pro_plus_yearly")}
+                    className="btn-secondary !px-3 !py-1.5 !text-xs"
+                    disabled={busyAction !== null || !planAvailability.pro_plus_yearly}
+                  >
+                    {busyAction === "pro_plus_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
+                  </button>
                 </div>
+                {(!planAvailability.pro_plus_monthly || !planAvailability.pro_plus_yearly) && (
+                  <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
+                    {zh ? "部分结算周期暂不可用" : "Some billing cycles are currently unavailable"}
+                  </p>
+                )}
               </div>
             </div>
           </div>

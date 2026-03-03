@@ -8,13 +8,15 @@ const api = anyApi;
 type SubscriptionSnapshot = {
   subscriptionId?: string;
   customerId?: string;
+  externalId?: string;
+  subscriptionUpdatedAt?: string;
   subscriptionStatus?: string;
   priceId?: string;
   productId?: string;
-  currentPeriodStartsAt?: string;
-  currentPeriodEndsAt?: string;
-  nextBilledAt?: string;
-  canceledAt?: string;
+  currentPeriodStartsAt?: string | null;
+  currentPeriodEndsAt?: string | null;
+  nextBilledAt?: string | null;
+  canceledAt?: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -28,9 +30,18 @@ function getStringValue(record: Record<string, unknown> | null, key: string) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function getStringOrNullValue(record: Record<string, unknown> | null, key: string) {
+  if (!record || !(key in record)) return undefined;
+  const value = record[key];
+  if (value === null) return null;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot {
   const root = asRecord(data);
-  const currentBillingPeriod = asRecord(root?.currentBillingPeriod);
+  const currentBillingPeriodRaw = root?.currentBillingPeriod;
+  const currentBillingPeriod = asRecord(currentBillingPeriodRaw);
+  const customData = asRecord(root?.customData);
   const firstItem = Array.isArray(root?.items) ? asRecord(root.items[0]) : null;
   const price = asRecord(firstItem?.price);
   const product = asRecord(firstItem?.product);
@@ -38,13 +49,21 @@ function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot {
   return {
     subscriptionId: getStringValue(root, "id") ?? getStringValue(root, "subscriptionId"),
     customerId: getStringValue(root, "customerId"),
+    externalId: getStringValue(customData, "externalId"),
+    subscriptionUpdatedAt: getStringValue(root, "updatedAt"),
     subscriptionStatus: getStringValue(root, "status"),
     priceId: getStringValue(price, "id"),
     productId: getStringValue(product, "id") ?? getStringValue(price, "productId"),
-    currentPeriodStartsAt: getStringValue(currentBillingPeriod, "startsAt"),
-    currentPeriodEndsAt: getStringValue(currentBillingPeriod, "endsAt"),
-    nextBilledAt: getStringValue(root, "nextBilledAt"),
-    canceledAt: getStringValue(root, "canceledAt"),
+    currentPeriodStartsAt:
+      currentBillingPeriodRaw === null
+        ? null
+        : getStringOrNullValue(currentBillingPeriod, "startsAt"),
+    currentPeriodEndsAt:
+      currentBillingPeriodRaw === null
+        ? null
+        : getStringOrNullValue(currentBillingPeriod, "endsAt"),
+    nextBilledAt: getStringOrNullValue(root, "nextBilledAt"),
+    canceledAt: getStringOrNullValue(root, "canceledAt"),
   };
 }
 
@@ -84,6 +103,8 @@ export async function POST(request: Request) {
       rawBody,
       subscriptionId: snapshot.subscriptionId,
       customerId: snapshot.customerId,
+      externalId: snapshot.externalId,
+      subscriptionUpdatedAt: snapshot.subscriptionUpdatedAt,
       subscriptionStatus: snapshot.subscriptionStatus,
       priceId: snapshot.priceId,
       productId: snapshot.productId,
