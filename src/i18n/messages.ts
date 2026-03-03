@@ -75,7 +75,7 @@ export const dictionaries = {
       pricing: {
         title: "Simple",
         titleHighlight: "pricing",
-        subtitle: "Pro and Pro+ monthly plans with a 3-day Pro+ trial.",
+        subtitle: "Monthly and yearly Pro and Pro+ plans with a 3-day Pro+ trial.",
         perMonth: "/mo",
         tiers: {
           pro: {
@@ -347,7 +347,7 @@ export const dictionaries = {
       pricing: {
         title: "简单",
         titleHighlight: "定价",
-        subtitle: "专业版与专业增强版月付，含 3 天 Pro+ 试用。",
+        subtitle: "专业版与专业增强版支持月付和年付，含 3 天 Pro+ 试用。",
         perMonth: "/月",
         tiers: {
           pro: {

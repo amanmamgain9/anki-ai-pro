@@ -70,8 +70,8 @@ export default async function TermsPage() {
             </h2>
             <p className="mt-2">
               {zh
-                ? "付费订阅由 Paddle 处理。目前提供月付 Pro 与 Pro+。新用户可获得 3 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。"
-                : "Paid subscriptions are processed by Paddle. We currently offer monthly Pro and Pro+ plans. New users receive a 3-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal."}
+                ? "付费订阅由 Paddle 处理。目前提供 Pro 与 Pro+ 的月付和年付方案。新用户可获得 3 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。"
+                : "Paid subscriptions are processed by Paddle. We currently offer monthly and yearly Pro and Pro+ plans. New users receive a 3-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal."}
             </p>
           </section>
 

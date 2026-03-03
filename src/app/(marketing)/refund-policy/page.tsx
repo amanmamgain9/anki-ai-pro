@@ -43,8 +43,8 @@ export default async function RefundPolicyPage() {
             </h2>
             <p className="mt-2">
               {zh
-                ? "我们为 Pro+ 提供 3 天试用。试用结束后，如未取消，订阅将按所选月付方案续费。"
-                : "We offer a 3-day trial for Pro+. After the trial ends, the subscription renews on the selected monthly plan unless canceled before renewal."}
+                ? "我们为 Pro+ 提供 3 天试用。试用结束后，如未取消，订阅将按所选计费周期（月付或年付）续费。"
+                : "We offer a 3-day trial for Pro+. After the trial ends, the subscription renews on the selected billing cycle (monthly or yearly) unless canceled before renewal."}
             </p>
           </section>
 

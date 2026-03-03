@@ -83,7 +83,7 @@ npx convex env set JWKS '{"keys":[...]}'
 
 Set up Paddle Billing:
 
-1. Create monthly products/prices in Paddle and copy their `price_...` IDs.
+1. Create monthly and yearly products/prices in Paddle and copy their `price_...` IDs.
 2. Create a webhook endpoint in Paddle pointing to:
    - `https://your-domain.com/api/paddle/webhook` (production)
    - `http://localhost:3000/api/paddle/webhook` for local testing via tunnel
@@ -101,7 +101,9 @@ PADDLE_API_KEY=...
 PADDLE_WEBHOOK_SECRET=...
 PADDLE_WEBHOOK_FORWARD_SECRET=...
 PADDLE_PRICE_ID_PRO_MONTHLY=...
+PADDLE_PRICE_ID_PRO_YEARLY=...
 PADDLE_PRICE_ID_PRO_PLUS_MONTHLY=...
+PADDLE_PRICE_ID_PRO_PLUS_YEARLY=...
 ```
 
 Set the webhook forward secret in Convex env too (must match `.env.local`):
@@ -137,6 +139,44 @@ Use `/cards/generate` for chat-based generation: enter topic, choose level,
 and cards are generated + saved automatically.
 
 Use the language toggle in the header/sidebar to switch between English and Chinese.
+
+## E2E Testing
+
+Run Playwright E2E tests:
+
+```bash
+npm run test:e2e
+```
+
+The test runner enables a local-only credentials provider (`E2E_AUTH_ENABLED=1`)
+so signed-in flows can be tested without Google OAuth. This path is disabled in production.
+
+For lifecycle tests that use billing test helpers, set an E2E secret in Convex dev env:
+
+```bash
+npx convex env set E2E_TEST_SECRET your-test-secret
+```
+
+## Magic Link Auth
+
+For users who cannot use Google OAuth, email magic-link sign-in is available by default.
+Configure email delivery with:
+
+```bash
+MAGIC_LINK_FROM="aiankipro <no-reply@your-domain.com>"
+MAGIC_LINK_SMTP_URL="smtps://username:password@smtp.your-provider.com:465"
+```
+
+Development options:
+
+```bash
+# logs the link to server console instead of sending email
+MAGIC_LINK_EMAIL_MODE=log
+
+# returns the link in API response (for automated tests only)
+MAGIC_LINK_EMAIL_MODE=return_link
+E2E_TEST_SECRET=your-test-secret
+```
 
 ## Local Webhook Testing
 
