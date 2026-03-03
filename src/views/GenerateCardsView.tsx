@@ -782,7 +782,6 @@ export default function GenerateCardsView() {
       if (options?.redirectToStudy && result.deckId) {
         const query = new URLSearchParams();
         query.set("deck", String(result.deckId));
-        query.set("launch", "1");
         query.set("chat", String(chatId));
         query.set("mode", "linear");
         navigate(`/study?${query.toString()}`);

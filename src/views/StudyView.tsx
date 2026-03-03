@@ -91,7 +91,7 @@ function formatDateTime(ts: number, locale: string) {
 
 export default function StudyView() {
   const { locale, t } = useI18n();
-  const { searchParams, navigate, replace } = useAppRouter();
+  const { searchParams, navigate } = useAppRouter();
   const deckId = searchParams.get("deck") || undefined;
   const sourceChatId = searchParams.get("chat") || undefined;
   const modeParam = searchParams.get("mode");
@@ -99,7 +99,6 @@ export default function StudyView() {
     ? "linear"
     : "smart";
   const isLinearMode = mode === "linear";
-  const shouldLaunchIntro = searchParams.get("launch") === "1";
   const ratings = [
     { label: t("app.study.ratings.again.label"), quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: t("app.study.ratings.again.desc") },
     { label: t("app.study.ratings.hard.label"), quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: t("app.study.ratings.hard.desc") },
@@ -125,9 +124,6 @@ export default function StudyView() {
   const [tutorError, setTutorError] = useState<string | null>(null);
   const [tutorDictationSupported, setTutorDictationSupported] = useState(false);
   const [tutorDictating, setTutorDictating] = useState(false);
-  const [showLaunchOverlay, setShowLaunchOverlay] = useState(shouldLaunchIntro);
-  const [launchLeaving, setLaunchLeaving] = useState(false);
-  const launchStartedAtRef = useRef<number>(0);
   const tutorScrollRef = useRef<HTMLDivElement | null>(null);
   const closeAfterReplyRef = useRef(false);
   const tutorDictationRef = useRef<any>(null);
@@ -158,29 +154,6 @@ export default function StudyView() {
     setSessionDone(0);
     setFlipped(false);
   }, [deckId, mode, sourceChatId]);
-
-  useEffect(() => {
-    if (!shouldLaunchIntro) return;
-    launchStartedAtRef.current = Date.now();
-    setShowLaunchOverlay(true);
-    setLaunchLeaving(false);
-  }, [shouldLaunchIntro]);
-
-  useEffect(() => {
-    if (!shouldLaunchIntro || !showLaunchOverlay || !activeData) return;
-    const elapsed = Date.now() - launchStartedAtRef.current;
-    const minVisibleMs = 620;
-    const waitMs = Math.max(0, minVisibleMs - elapsed);
-    const fadeTimer = window.setTimeout(() => setLaunchLeaving(true), waitMs);
-    const hideTimer = window.setTimeout(
-      () => setShowLaunchOverlay(false),
-      waitMs + 260,
-    );
-    return () => {
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(hideTimer);
-    };
-  }, [shouldLaunchIntro, showLaunchOverlay, activeData]);
 
   const statsAllDecks = useQuery(api.study.getSessionStats, {}) as
     | { total: number; newCount: number; dueCount: number; reviewedToday: number }
@@ -625,22 +598,12 @@ export default function StudyView() {
     voiceModeRef.current = voiceMode;
   }, [voiceMode]);
 
-  useEffect(() => {
-    if (!shouldLaunchIntro) return;
-    const query = new URLSearchParams(searchParams.toString());
-    if (!query.has("launch")) return;
-    query.delete("launch");
-    const next = query.toString();
-    replace(next ? `/study?${next}` : "/study");
-  }, [replace, searchParams, shouldLaunchIntro]);
-
   const setMode = useCallback(
     (nextMode: StudyMode) => {
       if (!deckId) return;
       interruptVoiceTurn("manual_mode_switch");
       const query = new URLSearchParams(searchParams.toString());
       query.set("deck", deckId);
-      query.delete("launch");
       query.delete("draft");
       if (nextMode === "linear") query.set("mode", "linear");
       else query.delete("mode");
@@ -828,22 +791,6 @@ export default function StudyView() {
   // ── Active study session ─────────────────────────
   return (
     <div className="flex min-h-[calc(100dvh-8rem)] flex-col lg:min-h-[calc(100dvh-5rem)]">
-      {showLaunchOverlay && (
-        <div className={`onboarding-overlay fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-300 ${launchLeaving ? "opacity-0" : "opacity-100"}`}>
-          <div className="onboarding-deck relative h-56 w-72">
-            <div className="onboarding-deck-card onboarding-deck-card-1" />
-            <div className="onboarding-deck-card onboarding-deck-card-2" />
-            <div className="onboarding-deck-card onboarding-deck-card-3" />
-            <div className="onboarding-deck-card onboarding-deck-card-4" />
-            <div className="onboarding-deck-card onboarding-deck-card-5" />
-          </div>
-          <div className="absolute bottom-[18vh] text-center">
-            <p className="text-lg font-bold tracking-tight text-[var(--color-text)]">
-              {t("app.study.readyToStudy")}
-            </p>
-          </div>
-        </div>
-      )}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <AppLink href="/study"

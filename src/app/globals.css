@@ -286,7 +286,7 @@ label {
 
 .onboarding-deck {
   transform-style: preserve-3d;
-  animation: onboardingDeckDrift 320ms cubic-bezier(0.2, 0.84, 0.24, 1) both;
+  animation: onboardingDeckDrift 900ms cubic-bezier(0.2, 0.84, 0.24, 1) infinite alternate;
   filter: drop-shadow(0 30px 70px rgba(5, 8, 18, 0.58));
 }
 
@@ -311,7 +311,7 @@ label {
   transform-origin: center center;
   backface-visibility: hidden;
   will-change: transform, opacity;
-  animation: onboardingCardPulse 460ms cubic-bezier(0.2, 0.84, 0.24, 1) both;
+  animation: onboardingCardPulse 980ms cubic-bezier(0.2, 0.84, 0.24, 1) infinite alternate;
 }
 
 .onboarding-deck-card-1 {
