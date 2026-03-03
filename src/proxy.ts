@@ -13,6 +13,7 @@ const publicRoutes = new Set([
   "/sign-in",
   "/sign-up",
 ]);
+const publicRoutePrefixes = ["/blog"];
 
 export default async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -25,6 +26,10 @@ export default async function proxy(req: NextRequest) {
   }
 
   if (publicRoutes.has(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (publicRoutePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return NextResponse.next();
   }
 

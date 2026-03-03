@@ -7,6 +7,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const routes = [
     "/",
     "/about",
+    "/blog",
+    "/blog/sleep-learning-audio",
     "/pricing",
     "/contact",
     "/terms",
