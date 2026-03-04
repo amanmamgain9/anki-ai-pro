@@ -1,203 +1,110 @@
-# Anki Flashcards
+# AIANKIPRO
 
-Next.js + Convex app for reading and editing Anki-style flashcards with
-Markdown and Mermaid diagram support.
+AIANKIPRO is for people who struggle to stay focused while learning and still forget after rereading notes.
 
-## Features
+Try it at https://aiankipro.com.
 
-- Markdown rendering with GitHub-flavored tables, lists, and task lists
-- Mermaid diagrams via fenced code blocks
-- Real-time updates powered by Convex WebSockets
-- Create, edit, delete, and preview flashcards
-- Decks for grouping related cards
-- Google OAuth authentication (Auth.js) with protected app routes
-- AI card generation chat (topic + level) powered by Groq (Kimi model) via LangChain
-- Built-in localization support (English + Chinese toggle)
+## What The App Actually Does
 
-## Getting Started
+This is the real flow in the product right now:
 
-Install dependencies:
+1. You type a topic and pick a level.
+2. AI creates a first draft of cards.
+3. You can edit the draft or ask for a rewrite.
+4. When you save, the app opens a first study run in the same card order that was generated.
+5. As you review, cards you struggled with come back sooner and easy cards come back later.
+6. If a card is confusing, you can open card chat for that exact card and ask follow-up questions.
+7. Voice mode lets you study hands-free: answer out loud, flip cards, move next/previous, and ask tutor questions by voice.
+
+## How Chat Helps (In Plain English)
+
+Card chat is not a generic chatbot tab.
+It is attached to the current card, so the explanation stays about that concept.
+
+- Ask "explain this simply"
+- Ask "give me one real example"
+- Ask "how is this different from X"
+
+Your chat history for that card is saved, so next time you hit the same card you can continue where you left off.
+
+## How Voice Helps (In Plain English)
+
+Voice mode is useful when focus is low or you do not want to type.
+
+- Say commands like "flip", "next", "show back", "easy", "hard"
+- Speak your answer out loud before revealing the card
+- Ask tutor questions by voice without leaving study flow
+- Listen to spoken responses (premium voice when available, browser voice fallback otherwise)
+
+## Real Problems And Friend-Style Ways To Use It
+
+- "I keep forgetting everything before tests."
+  You can try aiankipro.com by starting with one chapter, not the whole subject. Generate cards, do one short round, and rate honestly. Come back daily and clear due cards. This builds memory step by step instead of last-minute cramming.
+
+- "My notes are messy and I never know where to begin."
+  Start with one topic and let the app make the first draft. Delete weak cards fast, rewrite a few in your own words, then save and begin the guided first run immediately.
+
+- "I understand only after someone explains it."
+  Open card chat on the hard card and ask for a simpler explanation plus one example. Keep that chat with the card, so you can revisit it next time instead of starting over.
+
+- "I cannot do long study sessions."
+  Use 10-minute rounds. One deck, one goal, done. If typing feels heavy, switch to voice mode and continue by speaking.
+
+## Core Product Capabilities
+
+- Topic-to-card generation with editable drafts
+- Draft autosave and resume
+- Save to an existing deck or auto-create a new one
+- First-run study opened automatically in generated order
+- Review scheduling based on how easy or hard each card felt
+- Per-card tutor chat with saved history and summaries
+- Voice commands + spoken answer handling + voice tutor flow
+- English and Chinese UI
+
+## Tech Stack
+
+- Next.js (App Router, TypeScript)
+- Convex (data, realtime, server functions)
+- Auth.js / NextAuth
+- Paddle (billing)
+- OpenAI-compatible LLM APIs via LangChain
+
+## Local Development
+
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-Create a Convex deployment and generate local config:
-
-```bash
-npx convex dev
-```
-
-Add the Convex URL to `.env.local`:
-
-```bash
-NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-NEXT_PUBLIC_CONVEX_SITE_URL=https://your-deployment.convex.site
-```
-
-Set up Auth.js / NextAuth base config:
-
-```bash
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-long-random-secret
-```
-
-Generate a secure `NEXTAUTH_SECRET`:
-
-```bash
-openssl rand -base64 32
-```
-
-Create Google OAuth credentials:
-
-1. Open Google Cloud Console: APIs & Services -> Credentials
-2. Click Create Credentials -> OAuth client ID -> Web application
-3. Add authorized redirect URIs:
-   - `http://localhost:3000/api/auth/callback/google`
-   - `https://your-domain.com/api/auth/callback/google`
-4. Copy Client ID + Client Secret into `.env.local`:
-
-```bash
-AUTH_GOOGLE_ID=your-google-client-id
-AUTH_GOOGLE_SECRET=your-google-client-secret
-```
-
-Generate Convex JWT signing keys:
-
-```bash
-node scripts/generate-convex-auth-keys.mjs
-```
-
-Add the printed private key to `.env.local`:
-
-```bash
-CONVEX_AUTH_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-CONVEX_AUTH_KID=your-key-id
-```
-
-Add the printed `JWKS` to Convex environment:
-
-```bash
-npx convex env set JWKS '{"keys":[...]}'
-```
-
-Set up Paddle Billing:
-
-1. Create monthly and yearly products/prices in Paddle and copy their `price_...` IDs.
-2. Create a webhook endpoint in Paddle pointing to:
-   - `https://your-domain.com/api/paddle/webhook` (production)
-   - `http://localhost:3000/api/paddle/webhook` for local testing via tunnel
-3. Subscribe to at least:
-   - `subscription.created`
-   - `subscription.updated`
-   - `subscription.activated`
-   - `subscription.canceled`
-   - `subscription.past_due`
-4. Copy env vars:
-
-```bash
-PADDLE_ENV=sandbox
-PADDLE_API_KEY=...
-PADDLE_WEBHOOK_SECRET=...
-PADDLE_WEBHOOK_FORWARD_SECRET=...
-PADDLE_PRICE_ID_PRO_MONTHLY=...
-PADDLE_PRICE_ID_PRO_YEARLY=...
-PADDLE_PRICE_ID_PRO_PLUS_MONTHLY=...
-PADDLE_PRICE_ID_PRO_PLUS_YEARLY=...
-```
-
-Set the webhook forward secret in Convex env too (must match `.env.local`):
-
-```bash
-npx convex env set PADDLE_WEBHOOK_FORWARD_SECRET your-shared-secret
-```
-
-Set up Groq for AI card generation (OpenAI-compatible endpoint):
-
-```bash
-GROQ_API_KEY=your-groq-api-key
-GROQ_BASE_URL=https://api.groq.com/openai/v1
-GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
-```
-
-Use the env template as a checklist:
+2. Copy environment template and fill required values:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Run the dev server:
+3. Start Convex dev deployment:
+
+```bash
+npx convex dev
+```
+
+4. Run the app:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the marketing site,
-then sign in to access the flashcard app at `/cards`.
+5. Open http://localhost:3000
 
-Use `/cards/generate` for chat-based generation: enter topic, choose level,
-and cards are generated + saved automatically.
-
-Use the language toggle in the header/sidebar to switch between English and Chinese.
-
-## E2E Testing
-
-Run Playwright E2E tests:
+## Testing
 
 ```bash
 npm run test:e2e
 ```
 
-The test runner enables a local-only credentials provider (`E2E_AUTH_ENABLED=1`)
-so signed-in flows can be tested without Google OAuth. This path is disabled in production.
-
-For lifecycle tests that use billing test helpers, set an E2E secret in Convex dev env:
+## Build
 
 ```bash
-npx convex env set E2E_TEST_SECRET your-test-secret
+npm run build
 ```
-
-## Magic Link Auth
-
-For users who cannot use Google OAuth, email magic-link sign-in is available by default.
-Configure email delivery with:
-
-```bash
-MAGIC_LINK_FROM="aiankipro <no-reply@your-domain.com>"
-MAGIC_LINK_SMTP_URL="smtps://username:password@smtp.your-provider.com:465"
-```
-
-Development options:
-
-```bash
-# logs the link to server console instead of sending email
-MAGIC_LINK_EMAIL_MODE=log
-
-# returns the link in API response (for automated tests only)
-MAGIC_LINK_EMAIL_MODE=return_link
-E2E_TEST_SECRET=your-test-secret
-```
-
-## Local Webhook Testing
-
-Paddle webhooks need a public URL. For local testing:
-
-1. Start app locally:
-
-```bash
-npm run dev
-```
-
-2. Expose local server with a tunnel (example using `ngrok`):
-
-```bash
-ngrok http 3000
-```
-
-3. Put the tunnel URL in Paddle webhook destination:
-
-```text
-https://<your-ngrok-subdomain>.ngrok-free.app/api/paddle/webhook
-```
-
-4. Trigger a test event from Paddle and verify app/Convex logs.

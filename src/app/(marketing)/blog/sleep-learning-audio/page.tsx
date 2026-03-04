@@ -7,9 +7,9 @@ import MarketingFooter from "@/components/MarketingFooter";
 import { getServerDictionary } from "@/i18n/server";
 
 export const metadata: Metadata = {
-  title: "Sleep Learning with Audio | Anki Cards Blog",
+  title: "Sleep Learning with Audio | AIANKIPRO Blog",
   description:
-    "A bedtime workflow to replace doom scrolling with voice-first flashcard learning while reducing blue-light exposure.",
+    "A bedtime workflow to replace doom scrolling with voice-first card review: Learn mode first, then Shuffle mode for recall.",
 };
 
 export default async function SleepLearningAudioBlogPage() {
@@ -39,7 +39,7 @@ export default async function SleepLearningAudioBlogPage() {
           </p>
           <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
             {zh
-              ? "我如何在睡前用 AnkiPro 音频学习，替代刷屏"
+              ? "我如何在睡前用 AIANKIPRO 语音学习，替代刷屏"
               : "I Started Learning in Bed Instead of Doom Scrolling"}
           </h1>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
@@ -62,12 +62,12 @@ export default async function SleepLearningAudioBlogPage() {
 
           <section>
             <h2 className="text-lg font-bold text-[var(--color-text)] sm:text-xl">
-              {zh ? "我做的改变：改成 AnkiPro 音频复习" : "What I changed with AnkiPro audio mode"}
+              {zh ? "我做的改变：改成 AIANKIPRO 学习闭环" : "What I changed with AIANKIPRO's learning flow"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "现在我把手机亮度调到最低，打开 AnkiPro 的语音模式。系统读卡片正面，我直接口头回答，然后听背面和解释。很多时候我几乎不用盯屏幕。"
-                : "Now I dim my phone, open voice mode, and let AnkiPro quiz me while I’m already in bed. It reads the front, I answer out loud, and then I hear the back plus a quick explanation. I’ve been using it for Spanish phrases, and it honestly feels like a tiny bedtime tutor session instead of random scrolling."}
+                ? "现在我先用学习模式把新卡片顺一遍，睡前再用随机模式做回忆。语音模式会读卡片，我口头回答；如果卡住，就直接开卡片对话（也可以语音问）。这样我不用在多个 App 之间来回切。"
+                : "Now I use a clearer loop: Learn mode first for new cards, then Shuffle mode at night for recall. In voice mode, the app reads the card and I answer out loud. If I get stuck, I open card chat (or ask by voice) and keep going in the same flow instead of context-switching across apps."}
             </p>
           </section>
 
@@ -76,10 +76,10 @@ export default async function SleepLearningAudioBlogPage() {
               {zh ? "我现在的 10-20 分钟流程" : "My real bedtime flow (about 15 minutes)"}
             </h2>
             <ol className="mt-2 list-decimal space-y-1.5 pl-5">
-              <li>{zh ? "打开语音模式，选一个牌组开始。" : "I start one deck, usually Spanish travel or daily conversation cards."}</li>
-              <li>{zh ? "系统读题，我直接回答；不会就说“解释一下”。" : "I answer out loud. If I blank, I just say “explain this card more.”"}</li>
-              <li>{zh ? "系统会给出记忆评分建议，我通常一键确认。" : "I take the suggested rating and keep moving so the session stays light."}</li>
-              <li>{zh ? "结束前看一眼热力图，然后收手机睡觉。" : "I end on a small win, check the heatmap, and put the phone away."}</li>
+              <li>{zh ? "白天有新内容时，先用学习模式顺序走一遍。" : "If I added new cards that day, I do a quick Learn mode pass first."}</li>
+              <li>{zh ? "睡前切到随机模式，开语音，让系统读卡，我直接口头回答。" : "At bedtime, I switch to Shuffle mode with voice so the app reads and I answer out loud."}</li>
+              <li>{zh ? "遇到不懂就开卡片对话；如果之前聊过，我会直接打开旧总结继续。" : "If a card is unclear, I open card chat. If I chatted before, I reopen the old summary and continue."}</li>
+              <li>{zh ? "系统会给评分建议，我确认后再做几张，然后收手机睡觉。" : "The app can suggest a rating, I confirm, finish a few more cards, and stop."}</li>
             </ol>
           </section>
 
@@ -88,9 +88,9 @@ export default async function SleepLearningAudioBlogPage() {
               {zh ? "为什么我能坚持下来" : "What changed after a couple of weeks"}
             </h2>
             <ul className="mt-2 list-disc space-y-1.5 pl-5">
-              <li>{zh ? "门槛很低：我不用坐起来，也不用打字。" : "I actually remember phrases I used to forget by morning."}</li>
-              <li>{zh ? "每张卡都有反馈，我能感觉到自己在推进。" : "My nights feel calmer because I’m not feeding my brain endless random content."}</li>
-              <li>{zh ? "屏幕使用更少，睡前状态明显更平静。" : "It feels fun, not forced, because I can do it half-relaxed in bed."}</li>
+              <li>{zh ? "流程更清楚：学习模式负责“学会”，随机模式负责“记住”。" : "The flow is clearer: Learn mode helps me understand, Shuffle mode checks what I can actually retrieve."}</li>
+              <li>{zh ? "卡住时直接问，不用跳到别的地方找解释。" : "When I get stuck, help is right there through card chat or voice chat."}</li>
+              <li>{zh ? "旧总结和历史对话都还在，不会每次都从头解释。" : "Old summaries and chat history stay attached to the card, so I don’t restart from zero."}</li>
             </ul>
           </section>
 

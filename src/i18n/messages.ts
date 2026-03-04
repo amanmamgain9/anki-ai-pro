@@ -32,98 +32,174 @@ export const dictionaries = {
     },
     marketing: {
       home: {
-        badge: "Study that actually sticks",
-        titleTop: "Generate cards, learn interactively,",
-        titleHighlight: "then review on time.",
-        desc: "Start with any topic. AI builds your first deck, card chat clarifies each concept, and spaced repetition brings cards back before you forget.",
+        badge: "From scattered learning to lasting recall",
+        titleTop: "Stop collecting knowledge.",
+        titleHighlight: "Start retaining it.",
+        desc: "AIANKIPRO turns videos, notes, and AI chats into one clear loop: Learn mode for first-pass understanding, Shuffle mode for recall, plus card chat or voice whenever you get stuck.",
         getStartedFree: "Start 3-day trial",
         learnMore: "How it works",
         watchDemo: "Watch demo",
         openApp: "Open app",
         openCards: "Continue learning",
-        focusTitle: "Built for real study lives",
+        focusTitle: "Why people switch",
         focusItems: [
           {
-            title: "ADHD-friendly learning flow",
-            desc: "Short review loops, voice support, and active Q&A help reduce context switching and keep momentum.",
+            title: "Too much input, weak retention",
+            desc: "People read, watch, and ask AI all day, then forget when it matters. We turn that into a learn-first, recall-later flow.",
           },
           {
-            title: "Busy students and professionals",
-            desc: "Generate a starter deck quickly, then learn in small sessions between classes, meetings, or commutes.",
+            title: "Learning without structure",
+            desc: "Learn mode gives a clean first-pass path so learning is sequential instead of scattered.",
           },
           {
-            title: "Language and memory-heavy topics",
-            desc: "Use spaced repetition plus spoken review to improve recall for vocab, definitions, and core concepts.",
+            title: "Low-focus days break momentum",
+            desc: "Voice mode and short sessions help you keep learning moving even when energy is low.",
           },
         ],
         storiesTitle: "How people use it",
         stories: [
           {
-            title: "Exam prep under pressure",
-            desc: "A student turns lecture notes into cards, asks follow-up tutor questions, and reviews daily in short sessions.",
+            title: "Interview prep that finally sticks",
+            desc: "A candidate turns scattered notes into cards, learns in Learn mode, then drills Shuffle mode before interviews.",
           },
           {
-            title: "ADHD routine that holds up",
-            desc: "A distracted learner switches to voice + card chat to stay engaged, even on low-focus days.",
+            title: "Exam prep without panic",
+            desc: "A learner studies chapters in sequence first, then uses Shuffle mode to keep older material retrievable.",
           },
           {
-            title: "From blank page to first deck",
-            desc: "A new user starts with one topic, auto-generates a deck, and begins studying in minutes instead of hours.",
+            title: "Upskilling after work",
+            desc: "A professional uses voice mode on low-energy evenings and card chat on hard concepts without losing continuity.",
           },
         ],
-        featuresTitle: "Why learners stick with it",
+        cohortsTitle: "Who it helps most",
+        cohorts: [
+          {
+            title: "Exam and certification learners",
+            desc: "Medical, licensing, and high-stakes exam prep where recall reliability matters.",
+          },
+          {
+            title: "Interview candidates",
+            desc: "Tech, consulting, finance, healthcare, and operations interview preparation.",
+          },
+          {
+            title: "Career upskillers",
+            desc: "Professionals learning while working who need memory that survives busy schedules.",
+          },
+          {
+            title: "On-the-job performers",
+            desc: "Teams that need faster recall in real workflows, calls, incidents, and decisions.",
+          },
+          {
+            title: "Language communicators",
+            desc: "Learners building speaking confidence with recall, voice practice, and contextual help.",
+          },
+          {
+            title: "Teachers and mentors",
+            desc: "People who need learners to not just understand once, but remember and explain later.",
+          },
+        ],
+        featuresTitle: "Core product loop",
         features: [
           {
             title: "Generate cards from any topic",
-            desc: "Start from zero with AI-generated drafts, then edit and personalize before you hit study.",
+            desc: "Start from scattered input and turn it into a focused deck you can actually study.",
           },
           {
-            title: "Talk to cards like a tutor",
-            desc: "Ask \"why\" and \"how\" questions directly from study mode and get instant, focused explanations.",
+            title: "Learn in Learn mode first",
+            desc: "Go card-by-card in sequence so you build understanding before testing random recall.",
           },
           {
-            title: "Spaced repetition, automatically",
-            desc: "Cards come back when your memory is likely to fade, so review time goes where it matters most.",
+            title: "Use card chat and voice while learning",
+            desc: "When you get confused or curious, ask immediately, keep the explanation, and continue.",
           },
           {
-            title: "Hands-free voice practice",
-            desc: "Listen and respond while walking or commuting when screen-heavy studying feels hard.",
+            title: "Review in Shuffle mode later",
+            desc: "Test true retrieval, revisit weak cards, and reopen saved summaries or continue chat anytime.",
           },
         ],
       },
       about: {
         title: "Built for",
-        titleHighlight: "real learning",
+        titleHighlight: "focus + retention",
         intro:
-          "Anki Flashcards helps you go from topic to long-term recall with one simple loop: generate cards, learn actively, then review before you forget.",
-        flowTitle: "How learning works here",
-        flowSteps: [
+          "Most learners are not short on information. They are short on structure, retrieval, and continuity. AIANKIPRO fixes that by turning scattered inputs into one dependable study loop.",
+        problemTitle: "The real problem",
+        problemBody:
+          "People read articles, watch videos, and ask AI all day, but the knowledge stays fragmented. By the time an exam, interview, or real decision arrives, recall fails. AIANKIPRO is designed to close that gap.",
+        modesTitle: "How study works in practice",
+        modes: [
           {
-            title: "Generate a starting deck",
-            desc: "Type any topic and AI creates your first draft cards in minutes.",
+            title: "Learn mode for first-pass learning",
+            desc: "Learn cards in sequence so the topic has clear flow instead of random fragments.",
           },
           {
-            title: "Learn interactively",
-            desc: "Practice recall card by card. Use voice or card chat when a concept feels unclear.",
+            title: "Shuffle mode",
+            desc: "After first-pass learning, review cards in recall mode so memory is tested and strengthened.",
           },
           {
-            title: "Review with spaced repetition",
-            desc: "Cards come back at the right intervals so memory gets stronger over time.",
+            title: "Card chat + voice when you need help",
+            desc: "If a card feels unclear, ask in chat or voice immediately. Keep summaries and continue the same thread later.",
           },
         ],
-        principlesTitle: "Why learners stay consistent",
+        flowTitle: "What a real session looks like",
+        flowSteps: [
+          {
+            title: "Generate a focused deck",
+            desc: "Start from one topic. AI creates a first draft so you are not blocked by blank-page setup.",
+          },
+          {
+            title: "Learn in sequence",
+            desc: "Use Learn mode to build clear understanding. Ask card chat or voice when a concept needs depth.",
+          },
+          {
+            title: "Review for retrieval",
+            desc: "Switch to Shuffle mode to test what you can retrieve without sequence support.",
+          },
+          {
+            title: "Return with context",
+            desc: "Reopen saved chat summaries or continue chat threads when the same hard card comes back.",
+          },
+        ],
+        cohortsTitle: "Built for outcome-driven learners",
+        cohorts: [
+          {
+            title: "Exam and certification success",
+            desc: "For learners who need reliable recall in high-stakes tests.",
+          },
+          {
+            title: "Interview performance",
+            desc: "For candidates who need quick retrieval and clearer explanations under pressure.",
+          },
+          {
+            title: "Career growth and upskilling",
+            desc: "For professionals turning scattered learning into practical on-the-job memory.",
+          },
+          {
+            title: "Operational and clinical reliability",
+            desc: "For teams that need step recall and decision support in real workflows.",
+          },
+          {
+            title: "Language and communication confidence",
+            desc: "For learners who need active usage, not just passive recognition.",
+          },
+          {
+            title: "Teaching and onboarding",
+            desc: "For mentors who need knowledge to stay with learners after first exposure.",
+          },
+        ],
+        principlesTitle: "Product principles",
         principles: [
           {
             title: "Active over passive",
             desc: "Answer, speak, and explain instead of only rereading notes.",
           },
           {
-            title: "AI help when needed",
-            desc: "Card chat and voice support are optional, so the flow stays in your control.",
+            title: "Help at the point of confusion",
+            desc: "Card chat and voice are available in both learning and review whenever understanding breaks.",
           },
           {
-            title: "Built for busy schedules",
-            desc: "Short sessions still count, whether you are between classes, meetings, or commutes.",
+            title: "Continuity over restart",
+            desc: "Saved chat summaries and thread history prevent relearning from zero each time.",
           },
         ],
         backHome: "Back home",
@@ -221,8 +297,8 @@ export const dictionaries = {
         hideAll: "Hide all",
         allView: "All view",
         editAll: "Edit all",
-        modeSmart: "Smart",
-        modeLinear: "Linear",
+        modeSmart: "Shuffle",
+        modeLinear: "Learn (Linear)",
         done: "done",
         remaining: "remaining",
         allCardsInDeck: "All cards in this deck",
@@ -361,97 +437,173 @@ export const dictionaries = {
     },
     marketing: {
       home: {
-        badge: "让学习真正记住",
-        titleTop: "先生成卡片并互动学习，",
-        titleHighlight: "再按时复习。",
-        desc: "从任意主题开始。AI 先生成首版卡组，卡片对话能讲清每个概念，再用间隔复习在遗忘前巩固记忆。",
+        badge: "把碎片信息变成长期记忆",
+        titleTop: "别再只收集知识。",
+        titleHighlight: "开始真正记住。",
+        desc: "AIANKIPRO 把视频、笔记和 AI 对话整理成一个清晰学习闭环：先用学习模式学第一遍，再在卡片卡住时用对话/语音，最后用随机回忆模式做巩固。",
         getStartedFree: "开始 3 天试用",
         learnMore: "了解工作方式",
         watchDemo: "观看演示",
         openApp: "打开应用",
         openCards: "继续学习",
-        focusTitle: "为真实学习场景而设计",
+        focusTitle: "为什么大家会切换到这套流程",
         focusItems: [
           {
-            title: "对 ADHD 更友好的节奏",
-            desc: "短回合复习、语音支持和主动问答，减少频繁切换带来的负担。",
+            title: "信息很多，记住很少",
+            desc: "大家每天都在读、看、问 AI，但关键时刻仍然想不起来。我们把它变成先学后测的闭环。",
           },
           {
-            title: "适合忙碌学生和职场人",
-            desc: "快速生成第一版牌组，在课间、通勤、碎片时间也能持续学习。",
+            title: "学习没有结构",
+            desc: "学习模式先把知识按顺序走一遍，不再东一块西一块。",
           },
           {
-            title: "适合语言与记忆密集内容",
-            desc: "用间隔复习结合语音练习，提升词汇、定义和核心概念的长期记忆。",
+            title: "低专注日容易中断",
+            desc: "语音模式和短回合让你在低能量时也能继续推进。",
           },
         ],
         storiesTitle: "大家是这样使用它的",
         stories: [
           {
-            title: "考试冲刺更有节奏",
-            desc: "把课堂笔记转成卡片，边学边问 AI 导师，每天用短时复习稳步推进。",
+            title: "面试准备终于能记住",
+            desc: "把分散笔记变成卡片，先用学习模式，再用随机回忆模式做高频训练。",
           },
           {
-            title: "注意力不稳也能坚持",
-            desc: "容易分心的学习者改用语音 + 卡片对话，在低专注日也能完成学习闭环。",
+            title: "考试复习不再临时抱佛脚",
+            desc: "先按章节顺序学透，再用随机回忆模式把旧内容持续拉回记忆区。",
           },
           {
-            title: "从零到第一套牌组",
-            desc: "输入一个主题，自动生成初稿，几分钟内就能开始学习，而不是先花数小时整理。",
+            title: "下班后也能稳定学习",
+            desc: "低精力时用语音继续学，难点卡片随时对话，不再断片。",
           },
         ],
-        featuresTitle: "为什么更容易坚持",
+        cohortsTitle: "最受哪些人欢迎",
+        cohorts: [
+          {
+            title: "考试与证书学习者",
+            desc: "适合医学、执照和高压考试等需要稳定回忆的场景。",
+          },
+          {
+            title: "面试准备人群",
+            desc: "覆盖技术、咨询、金融、医疗、运营等多类面试。",
+          },
+          {
+            title: "在职提升人群",
+            desc: "把碎片学习沉淀成可调用记忆，适配忙碌节奏。",
+          },
+          {
+            title: "岗位实战人群",
+            desc: "在真实工作流、电话、流程和决策中更快想起关键点。",
+          },
+          {
+            title: "语言与表达提升者",
+            desc: "把“看懂”变成“能说、能解释、能输出”。",
+          },
+          {
+            title: "教学与带教者",
+            desc: "帮助学习者不只学一遍，而是能持续记住并讲清楚。",
+          },
+        ],
+        featuresTitle: "核心产品闭环",
         features: [
           {
-            title: "任意主题一键生成卡片",
-            desc: "从空白开始快速得到 AI 草稿，再按你的风格微调后直接开学。",
+            title: "任意主题生成卡片",
+            desc: "把分散输入快速收拢成可学习的卡组，而不是继续堆信息。",
           },
           {
-            title: "像和导师一样聊卡片",
-            desc: "在学习模式里直接问“为什么/怎么做”，立即得到聚焦解释。",
+            title: "先用学习模式学一遍",
+            desc: "按顺序逐张学习，先建立完整理解，再进入回忆测试。",
           },
           {
-            title: "自动间隔复习",
-            desc: "在你最容易遗忘的时间点重新出现，复习时间用在最关键的位置。",
+            title: "卡住就用对话与语音",
+            desc: "在学习当下直接问清楚，保留上下文，不用另开一堆窗口。",
           },
           {
-            title: "可免手操作的语音学习",
-            desc: "走路或通勤时也能听和答，减少必须盯屏的学习负担。",
+            title: "再用随机回忆模式做回忆",
+            desc: "检验真实提取能力，弱项反复出现；旧总结和对话可随时继续。",
           },
         ],
       },
       about: {
         title: "为",
-        titleHighlight: "真实学习而建",
-        intro: "Anki Flashcards 用一个简单闭环帮你从主题走向长期记忆：先生成卡片，再互动学习，最后在遗忘前复习。",
-        flowTitle: "这里的学习流程",
-        flowSteps: [
+        titleHighlight: "专注与记忆而建",
+        intro: "大多数学习者不缺信息，缺的是结构、提取和连续性。AIANKIPRO 的目标是把分散输入变成可持续记住的学习系统。",
+        problemTitle: "我们在解决什么问题",
+        problemBody:
+          "今天大家会看视频、读文章、问 AI，但知识常常停留在“看过”。等到考试、面试或真实决策时，提取失败。AIANKIPRO 就是为这个断层设计的。",
+        modesTitle: "这套学习是怎么运作的",
+        modes: [
           {
-            title: "先生成起步卡组",
-            desc: "输入任意主题，AI 可在几分钟内生成第一版学习卡片。",
+            title: "学习模式：先把理解走通",
+            desc: "按顺序逐卡学习，先建立完整知识路径，而不是随机跳。",
           },
           {
-            title: "再互动学习",
-            desc: "逐张进行回忆练习。遇到不清楚的概念时，再按需使用语音或卡片对话。",
+            title: "随机模式",
+            desc: "完成首轮学习后，进入回忆检验，让记忆更稳、更可调用。",
           },
           {
-            title: "最后间隔复习",
-            desc: "卡片会在合适间隔再次出现，让记忆随着时间更稳固。",
+            title: "卡片对话 + 语音：卡住时立即打通",
+            desc: "遇到疑点可直接问，保留总结与上下文，后续可继续同一条思路。",
           },
         ],
-        principlesTitle: "为什么更容易坚持",
+        flowTitle: "一次真实学习会话",
+        flowSteps: [
+          {
+            title: "先生成聚焦卡组",
+            desc: "从一个主题开始，AI 先给你可用初稿，避免从空白起步。",
+          },
+          {
+            title: "再按顺序学透",
+            desc: "在学习模式逐张学习，遇到难点就用卡片对话或语音即时澄清。",
+          },
+          {
+            title: "再切到回忆检验",
+            desc: "进入随机回忆模式，检验你是否能主动提取，而不是被动识别。",
+          },
+          {
+            title: "最后延续上下文",
+            desc: "旧总结与历史对话可随时打开继续，不用每次从零重新解释。",
+          },
+        ],
+        cohortsTitle: "按结果导向设计给这些人",
+        cohorts: [
+          {
+            title: "考试与证书通过",
+            desc: "面向需要高可靠回忆的高压学习目标。",
+          },
+          {
+            title: "面试表现提升",
+            desc: "面向需要快速提取并清晰表达的候选人。",
+          },
+          {
+            title: "职业成长与转型",
+            desc: "面向在职学习者，把输入转成可用能力。",
+          },
+          {
+            title: "岗位流程与决策稳定",
+            desc: "面向需要在真实场景中快速想起关键步骤的人。",
+          },
+          {
+            title: "语言表达与沟通",
+            desc: "面向需要从“看懂”走向“能说清”的学习者。",
+          },
+          {
+            title: "教学与新人培养",
+            desc: "面向希望学习成果能长期留存的教学者与管理者。",
+          },
+        ],
+        principlesTitle: "产品原则",
         principles: [
           {
             title: "主动学习优先",
             desc: "通过回答、复述和讲解来记忆，而不只是反复阅读。",
           },
           {
-            title: "AI 按需介入",
-            desc: "卡片对话和语音支持都是可选项，你始终掌控学习节奏。",
+            title: "在困惑点即时获得帮助",
+            desc: "学习模式和随机回忆模式两个阶段都能随时调用卡片对话与语音支持。",
           },
           {
-            title: "适配忙碌日程",
-            desc: "课间、通勤、会议间隙的短时学习也能累计成稳定进步。",
+            title: "连续性高于反复重来",
+            desc: "历史对话与总结会保留，下一次可以接着学，而不是重新解释一遍。",
           },
         ],
         backHome: "返回首页",
@@ -549,8 +701,8 @@ export const dictionaries = {
         hideAll: "关闭全部",
         allView: "查看全部",
         editAll: "编辑全部",
-        modeSmart: "智能",
-        modeLinear: "线性",
+        modeSmart: "随机模式",
+        modeLinear: "学习（线性）",
         done: "已完成",
         remaining: "剩余",
         allCardsInDeck: "本牌组全部卡片",
