@@ -22,7 +22,7 @@ export default function SignUpPage() {
         <button
           type="button"
           className="btn-primary mt-5 w-full justify-center"
-          onClick={() => signIn("google", { callbackUrl: "/cards/generate" })}
+          onClick={() => signIn("google", { callbackUrl: "/cards" })}
         >
           {t("common.continueWithGoogle")}
         </button>

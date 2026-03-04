@@ -9,7 +9,7 @@ import { useI18n } from "@/i18n/client";
 
 export default function SignInPage() {
   const search = useSearchParams();
-  const callbackUrl = search.get("callbackUrl") || "/cards/generate";
+  const callbackUrl = search.get("callbackUrl") || "/cards";
   const e2eUserId = search.get("e2eUserId") || "e2e-user";
   const magicToken = search.get("magicToken");
   const { t, locale } = useI18n();

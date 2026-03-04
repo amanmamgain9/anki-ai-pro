@@ -28,8 +28,9 @@ export async function POST() {
 
     await convex.mutation(api.billing.syncCurrentUser, {});
     const billing = await convex.query(api.billing.getMyBilling, {});
+    const onboarding = await convex.query(api.billing.getMyOnboardingState, {});
 
-    return NextResponse.json({ billing });
+    return NextResponse.json({ billing, onboarding });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bootstrap failed";
     return NextResponse.json({ error: message }, { status: 500 });

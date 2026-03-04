@@ -22,6 +22,9 @@ type BillingState = {
   trialActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
 };
+type OnboardingState = {
+  hasCompletedOnboarding?: boolean;
+};
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/cards") {
@@ -44,6 +47,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const bootstrapKeyRef = useRef<string | null>(null);
   const [billing, setBilling] = useState<BillingState | null>(null);
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const isSettingsRoute =
@@ -55,7 +59,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (status !== "unauthenticated") return;
     const callbackUrl =
       !initialPath || initialPath === "/cards"
-        ? "/cards/generate"
+        ? "/cards"
         : initialPath;
     router.replace(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }, [initialPath, router, status]);
@@ -64,6 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (status !== "authenticated") {
       bootstrapKeyRef.current = null;
       setBilling(null);
+      setOnboarding(null);
       setBootstrapStatus("idle");
       return;
     }
@@ -84,13 +89,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         });
         const payload = (await response.json().catch(() => ({}))) as {
           billing?: BillingState;
+          onboarding?: OnboardingState;
           error?: string;
         };
-        if (!response.ok || !payload.billing) {
+        if (!response.ok || !payload.billing || !payload.onboarding) {
           throw new Error(payload.error ?? `Bootstrap failed (${response.status})`);
         }
         if (cancelled) return;
         setBilling(payload.billing);
+        setOnboarding(payload.onboarding);
         setBootstrapStatus("ready");
       } catch (error) {
         if (cancelled) return;
@@ -102,6 +109,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [bootstrapAttempt, session?.user?.email, session?.user?.name, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (!initialPath) return;
+    if (bootstrapStatus !== "ready") return;
+    if (!onboarding) return;
+    if (onboarding.hasCompletedOnboarding) return;
+    if (initialPath !== "/cards" && !initialPath.startsWith("/cards?")) return;
+    router.replace("/cards/generate?onboarding=1");
+  }, [bootstrapStatus, initialPath, onboarding, router, status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
