@@ -3,12 +3,9 @@
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "convex/react";
-import { anyApi } from "convex/server";
 import { signOut, useSession } from "next-auth/react";
 import ThemeToggle from "@/components/ThemeToggle";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
-import UserSync from "@/components/UserSync";
 import GenerateChatsSidebar from "@/components/GenerateChatsSidebar";
 import { AppRouterProvider, AppLink, useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
@@ -19,8 +16,8 @@ const navItems = [
   { href: "/cards/generate", labelKey: "app.nav.generate", icon: GenerateIcon },
   { href: "/decks", labelKey: "app.nav.decks", icon: DeckIcon },
 ];
-const api = anyApi;
 type BillingState = {
+  hasUserRecord?: boolean;
   isActive?: boolean;
   trialActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
@@ -43,9 +40,12 @@ function isActiveRoute(pathname: string, href: string) {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const initialPath = usePathname();
   const router = useRouter();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const { t } = useI18n();
-  const billing = useQuery(api.billing.getMyBilling, {}) as BillingState | undefined;
+  const bootstrapKeyRef = useRef<string | null>(null);
+  const [billing, setBilling] = useState<BillingState | null>(null);
+  const [bootstrapStatus, setBootstrapStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const isSettingsRoute =
     initialPath === "/settings" || initialPath?.startsWith("/settings?");
   const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
@@ -61,20 +61,85 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [initialPath, router, status]);
 
   useEffect(() => {
+    if (status !== "authenticated") {
+      bootstrapKeyRef.current = null;
+      setBilling(null);
+      setBootstrapStatus("idle");
+      return;
+    }
+    const sessionKey =
+      session?.user?.email ??
+      session?.user?.name ??
+      "authenticated";
+    if (bootstrapKeyRef.current === sessionKey) {
+      return;
+    }
+    bootstrapKeyRef.current = sessionKey;
+    let cancelled = false;
+    setBootstrapStatus("loading");
+    void (async () => {
+      try {
+        const response = await fetch("/api/app/bootstrap", {
+          method: "POST",
+        });
+        const payload = (await response.json().catch(() => ({}))) as {
+          billing?: BillingState;
+          error?: string;
+        };
+        if (!response.ok || !payload.billing) {
+          throw new Error(payload.error ?? `Bootstrap failed (${response.status})`);
+        }
+        if (cancelled) return;
+        setBilling(payload.billing);
+        setBootstrapStatus("ready");
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Bootstrap failed", error);
+        setBootstrapStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapAttempt, session?.user?.email, session?.user?.name, status]);
+
+  useEffect(() => {
     if (status !== "authenticated") return;
     if (!initialPath) return;
+    if (bootstrapStatus !== "ready") return;
     if (!billing) return;
     if (isSettingsRoute) return;
     if (hasProAccess) return;
     router.replace(`/settings?upgrade=required&from=${encodeURIComponent(initialPath)}`);
-  }, [billing, hasProAccess, initialPath, isSettingsRoute, router, status]);
+  }, [billing, bootstrapStatus, hasProAccess, initialPath, isSettingsRoute, router, status]);
 
-  if (status === "loading" || (status === "authenticated" && !billing)) {
+  if (status === "loading" || (status === "authenticated" && (bootstrapStatus === "idle" || bootstrapStatus === "loading"))) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">
           {t("app.loadingAccount")}
         </p>
+      </div>
+    );
+  }
+
+  if (status === "authenticated" && bootstrapStatus === "error") {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4">
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          Could not load your account. Please retry.
+        </p>
+        <button
+          type="button"
+          className="btn-secondary !px-3 !py-1.5 !text-xs"
+          onClick={() => {
+            bootstrapKeyRef.current = null;
+            setBootstrapStatus("idle");
+            setBootstrapAttempt((n) => n + 1);
+          }}
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -101,7 +166,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppRouterProvider initialPath={initialPath}>
-      <UserSync />
       <AppShell showUpgradeCta={showUpgradeCta}>{children}</AppShell>
     </AppRouterProvider>
   );
