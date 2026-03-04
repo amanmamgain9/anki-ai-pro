@@ -69,9 +69,6 @@ export default async function MarketingHome() {
             <Link href="/about" className="btn-secondary !px-7 !py-3 !text-sm">
               {dict.marketing.home.learnMore}
             </Link>
-            <Link href="/blog" className="btn-secondary !px-7 !py-3 !text-sm">
-              {dict.marketing.home.watchDemo}
-            </Link>
             </>
           )}
           {isSignedIn && (
