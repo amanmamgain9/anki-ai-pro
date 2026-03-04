@@ -14,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/terms",
     "/privacy",
     "/refund-policy",
+    "/llm.txt",
   ];
 
   return routes.map((path) => ({

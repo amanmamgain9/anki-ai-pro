@@ -33,9 +33,9 @@ export const dictionaries = {
     marketing: {
       home: {
         badge: "Study that actually sticks",
-        titleTop: "Learn faster with",
-        titleHighlight: "voice, cards, and spaced repetition",
-        desc: "Turn any topic into a study flow. Talk to your cards, review at the right time, and stay focused even when your mind is everywhere.",
+        titleTop: "Generate cards, learn interactively,",
+        titleHighlight: "then review on time.",
+        desc: "Start with any topic. AI builds your first deck, card chat clarifies each concept, and spaced repetition brings cards back before you forget.",
         getStartedFree: "Start 3-day trial",
         learnMore: "How it works",
         watchDemo: "Watch demo",
@@ -74,34 +74,58 @@ export const dictionaries = {
         featuresTitle: "Why learners stick with it",
         features: [
           {
-            title: "Spaced repetition, automatically",
-            desc: "Cards come back when your memory is likely to fade, so review time goes where it matters most.",
+            title: "Generate cards from any topic",
+            desc: "Start from zero with AI-generated drafts, then edit and personalize before you hit study.",
           },
           {
             title: "Talk to cards like a tutor",
             desc: "Ask \"why\" and \"how\" questions directly from study mode and get instant, focused explanations.",
           },
           {
-            title: "Hands-free voice practice",
-            desc: "Listen and respond while walking or commuting when screen-heavy studying feels hard.",
+            title: "Spaced repetition, automatically",
+            desc: "Cards come back when your memory is likely to fade, so review time goes where it matters most.",
           },
           {
-            title: "Generate cards from any topic",
-            desc: "Start from zero with AI-generated drafts, then edit and personalize before you hit study.",
+            title: "Hands-free voice practice",
+            desc: "Listen and respond while walking or commuting when screen-heavy studying feels hard.",
           },
         ],
       },
       about: {
-        title: "Designed for",
-        titleHighlight: "serious study",
+        title: "Built for",
+        titleHighlight: "real learning",
         intro:
-          "Anki Flashcards helps you build recall with structured Markdown notes, diagrams, and real-time collaboration.",
-        whyTitle: "Why Markdown?",
-        whyBody:
-          "Markdown keeps your content portable and fast to edit. Pair it with Mermaid and you get visual context right where you need it, without leaving your study flow.",
-        realtimeTitle: "Real-time by default",
-        realtimeBody:
-          "Convex provides WebSocket-based reactivity. Edit a card on your laptop and see the change on your phone instantly.",
+          "Anki Flashcards helps you go from topic to long-term recall with one simple loop: generate cards, learn actively, then review before you forget.",
+        flowTitle: "How learning works here",
+        flowSteps: [
+          {
+            title: "Generate a starting deck",
+            desc: "Type any topic and AI creates your first draft cards in minutes.",
+          },
+          {
+            title: "Learn interactively",
+            desc: "Practice recall card by card. Use voice or card chat when a concept feels unclear.",
+          },
+          {
+            title: "Review with spaced repetition",
+            desc: "Cards come back at the right intervals so memory gets stronger over time.",
+          },
+        ],
+        principlesTitle: "Why learners stay consistent",
+        principles: [
+          {
+            title: "Active over passive",
+            desc: "Answer, speak, and explain instead of only rereading notes.",
+          },
+          {
+            title: "AI help when needed",
+            desc: "Card chat and voice support are optional, so the flow stays in your control.",
+          },
+          {
+            title: "Built for busy schedules",
+            desc: "Short sessions still count, whether you are between classes, meetings, or commutes.",
+          },
+        ],
         backHome: "Back home",
       },
       pricing: {
@@ -338,9 +362,9 @@ export const dictionaries = {
     marketing: {
       home: {
         badge: "让学习真正记住",
-        titleTop: "用以下方式更快学习",
-        titleHighlight: "语音 + 卡片 + 间隔复习",
-        desc: "任何主题都能快速进入学习流程：和卡片对话、在正确时间复习、即使注意力波动也能继续推进。",
+        titleTop: "先生成卡片并互动学习，",
+        titleHighlight: "再按时复习。",
+        desc: "从任意主题开始。AI 先生成首版卡组，卡片对话能讲清每个概念，再用间隔复习在遗忘前巩固记忆。",
         getStartedFree: "开始 3 天试用",
         learnMore: "了解工作方式",
         watchDemo: "观看演示",
@@ -379,33 +403,57 @@ export const dictionaries = {
         featuresTitle: "为什么更容易坚持",
         features: [
           {
-            title: "自动间隔复习",
-            desc: "在你最容易遗忘的时间点重新出现，复习时间用在最关键的位置。",
+            title: "任意主题一键生成卡片",
+            desc: "从空白开始快速得到 AI 草稿，再按你的风格微调后直接开学。",
           },
           {
             title: "像和导师一样聊卡片",
             desc: "在学习模式里直接问“为什么/怎么做”，立即得到聚焦解释。",
           },
           {
-            title: "可免手操作的语音学习",
-            desc: "走路或通勤时也能听和答，减少必须盯屏的学习负担。",
+            title: "自动间隔复习",
+            desc: "在你最容易遗忘的时间点重新出现，复习时间用在最关键的位置。",
           },
           {
-            title: "任意主题一键生成卡片",
-            desc: "从空白开始快速得到 AI 草稿，再按你的风格微调后直接开学。",
+            title: "可免手操作的语音学习",
+            desc: "走路或通勤时也能听和答，减少必须盯屏的学习负担。",
           },
         ],
       },
       about: {
         title: "为",
-        titleHighlight: "深度学习者",
-        intro: "Anki Flashcards 帮你用结构化 Markdown（轻量标记语言）、图表与实时协作提升记忆效果。",
-        whyTitle: "为什么是 Markdown？",
-        whyBody:
-          "Markdown 让内容更易编辑且可移植。结合 Mermaid，你可以在学习流程中直接加入可视化内容。",
-        realtimeTitle: "默认实时",
-        realtimeBody:
-          "Convex 提供基于 WebSocket 的响应式能力。你在电脑改卡片，手机会立即看到变化。",
+        titleHighlight: "真实学习而建",
+        intro: "Anki Flashcards 用一个简单闭环帮你从主题走向长期记忆：先生成卡片，再互动学习，最后在遗忘前复习。",
+        flowTitle: "这里的学习流程",
+        flowSteps: [
+          {
+            title: "先生成起步卡组",
+            desc: "输入任意主题，AI 可在几分钟内生成第一版学习卡片。",
+          },
+          {
+            title: "再互动学习",
+            desc: "逐张进行回忆练习。遇到不清楚的概念时，再按需使用语音或卡片对话。",
+          },
+          {
+            title: "最后间隔复习",
+            desc: "卡片会在合适间隔再次出现，让记忆随着时间更稳固。",
+          },
+        ],
+        principlesTitle: "为什么更容易坚持",
+        principles: [
+          {
+            title: "主动学习优先",
+            desc: "通过回答、复述和讲解来记忆，而不只是反复阅读。",
+          },
+          {
+            title: "AI 按需介入",
+            desc: "卡片对话和语音支持都是可选项，你始终掌控学习节奏。",
+          },
+          {
+            title: "适配忙碌日程",
+            desc: "课间、通勤、会议间隙的短时学习也能累计成稳定进步。",
+          },
+        ],
         backHome: "返回首页",
       },
       pricing: {

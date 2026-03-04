@@ -13,30 +13,7 @@ export default async function MarketingHome() {
   const { dict, locale } = await getServerDictionary();
   const focusItems = dict.marketing.home.focusItems;
   const stories = dict.marketing.home.stories;
-
-  const features = dict.marketing.home.features.map((feature, index) => ({
-    ...feature,
-    icon:
-      index === 0 ? (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" />
-        </svg>
-      ) : index === 1 ? (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="8" y="14" width="7" height="7" rx="1" /><path d="M6.5 10v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10" /><path d="M11.5 12.5V14" />
-        </svg>
-      ) : index === 2 ? (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-          <path d="M8 10h8" />
-          <path d="M8 14h5" />
-        </svg>
-      ) : (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-        </svg>
-      ),
-  }));
+  const features = dict.marketing.home.features;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -82,7 +59,6 @@ export default async function MarketingHome() {
         <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-[var(--color-text-secondary)] sm:text-lg">
           {dict.marketing.home.desc}
         </p>
-
         <div className="mt-9 flex flex-wrap justify-center gap-3">
           {!isSignedIn && (
             <>
@@ -106,7 +82,7 @@ export default async function MarketingHome() {
       </section>
 
       {/* ── Focus ───────────────────────────────────── */}
-      <section className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-6">
+      <section className="mx-auto w-full max-w-5xl px-4 pb-24 sm:px-6">
         <h2 className="mb-5 text-center text-xl font-bold tracking-tight sm:text-2xl">
           {dict.marketing.home.focusTitle}
         </h2>
@@ -116,33 +92,6 @@ export default async function MarketingHome() {
               <h3 className="text-sm font-bold uppercase tracking-wide">{item.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
                 {item.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Features ────────────────────────────────── */}
-      <section className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-6">
-        <h2 className="mb-5 text-center text-xl font-bold tracking-tight sm:text-2xl">
-          {dict.marketing.home.featuresTitle}
-        </h2>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {features.map((f) => (
-            <div
-              key={f.title}
-              className="card-surface glow-hover scanline p-6"
-            >
-              <div
-                className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
-              >
-                {f.icon}
-              </div>
-              <h3 className="text-sm font-bold uppercase tracking-wide">
-                {f.title}
-              </h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-                {f.desc}
               </p>
             </div>
           ))}
@@ -160,6 +109,28 @@ export default async function MarketingHome() {
               <h3 className="text-sm font-bold uppercase tracking-wide">{story.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
                 {story.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Features ────────────────────────────────── */}
+      <section className="mx-auto w-full max-w-5xl px-4 pb-24 sm:px-6">
+        <h2 className="mb-5 text-center text-xl font-bold tracking-tight sm:text-2xl">
+          {dict.marketing.home.featuresTitle}
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="card-surface glow-hover scanline p-5"
+            >
+              <h3 className="text-sm font-bold uppercase tracking-wide">
+                {f.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                {f.desc}
               </p>
             </div>
           ))}

@@ -1,0 +1,61 @@
+# AIANKIPRO - LLM Context
+
+Site: https://aiankipro.com
+Canonical: https://aiankipro.com/llm.txt
+
+## Summary
+
+AIANKIPRO is an AI-assisted flashcard learning app focused on one loop:
+Generate -> Learn -> Review.
+
+- Generate cards quickly from a topic.
+- Learn interactively with active recall.
+- Review with spaced repetition before forgetting.
+
+## Product Details
+
+### Core Capabilities
+
+- Topic-to-deck AI generation for a fast first draft.
+- Card-by-card study sessions with recall rating.
+- Spaced repetition scheduling and review tracking.
+- Optional card chat for difficult concepts.
+- Optional voice-based practice.
+
+### Typical Users
+
+- Students preparing for exams.
+- Busy professionals learning in short sessions.
+- Learners with attention challenges who prefer interactive flows.
+
+### Typical User Journey
+
+1. Sign in.
+2. Generate a starter deck from a topic or create cards manually.
+3. Learn cards with active recall.
+4. Use card chat if a concept is unclear.
+5. Continue review sessions from spaced repetition prompts.
+
+### Public URLs
+
+- Home: https://aiankipro.com/
+- About: https://aiankipro.com/about
+- Pricing: https://aiankipro.com/pricing
+- Blog: https://aiankipro.com/blog
+- Contact: https://aiankipro.com/contact
+- Terms: https://aiankipro.com/terms
+- Privacy: https://aiankipro.com/privacy
+- Refund Policy: https://aiankipro.com/refund-policy
+- Sitemap: https://aiankipro.com/sitemap.xml
+- Robots: https://aiankipro.com/robots.txt
+
+### Access and Indexing Guidance
+
+- Public marketing and legal pages are intended for crawling.
+- Signed-in routes (`/cards`, `/study`, `/decks`, `/settings`) are user-specific and should remain non-indexed.
+- API routes are not public content pages.
+
+### Policy and Billing Notes
+
+- Billing and subscriptions are handled via Paddle.
+- Legal, privacy, and refund terms are defined on public policy pages.
