@@ -32,30 +32,62 @@ export const dictionaries = {
     },
     marketing: {
       home: {
-        badge: "Open-source study tool",
-        titleTop: "Study smarter with",
-        titleHighlight: "Markdown cards.",
-        desc: "Create richly formatted flashcards, chat with each card through an AI tutor, and save markdown summaries with diagrams for later review.",
+        badge: "Study that actually sticks",
+        titleTop: "Learn faster with",
+        titleHighlight: "voice, cards, and spaced repetition",
+        desc: "Turn any topic into a study flow. Talk to your cards, review at the right time, and stay focused even when your mind is everywhere.",
         getStartedFree: "Start 3-day trial",
-        learnMore: "Learn more",
+        learnMore: "How it works",
+        watchDemo: "Watch demo",
         openApp: "Open app",
-        openCards: "Open your cards",
+        openCards: "Continue learning",
+        focusTitle: "Built for real study lives",
+        focusItems: [
+          {
+            title: "ADHD-friendly learning flow",
+            desc: "Short review loops, voice support, and active Q&A help reduce context switching and keep momentum.",
+          },
+          {
+            title: "Busy students and professionals",
+            desc: "Generate a starter deck quickly, then learn in small sessions between classes, meetings, or commutes.",
+          },
+          {
+            title: "Language and memory-heavy topics",
+            desc: "Use spaced repetition plus spoken review to improve recall for vocab, definitions, and core concepts.",
+          },
+        ],
+        storiesTitle: "How people use it",
+        stories: [
+          {
+            title: "Exam prep under pressure",
+            desc: "A student turns lecture notes into cards, asks follow-up tutor questions, and reviews daily in short sessions.",
+          },
+          {
+            title: "ADHD routine that holds up",
+            desc: "A distracted learner switches to voice + card chat to stay engaged, even on low-focus days.",
+          },
+          {
+            title: "From blank page to first deck",
+            desc: "A new user starts with one topic, auto-generates a deck, and begins studying in minutes instead of hours.",
+          },
+        ],
+        featuresTitle: "Why learners stick with it",
         features: [
           {
-            title: "Markdown-first",
-            desc: "Headings, code blocks, tables, and checklists. Your content stays portable.",
+            title: "Spaced repetition, automatically",
+            desc: "Cards come back when your memory is likely to fade, so review time goes where it matters most.",
           },
           {
-            title: "Mermaid diagrams",
-            desc: "Flowcharts, sequence diagrams, and architecture sketches inline.",
+            title: "Talk to cards like a tutor",
+            desc: "Ask \"why\" and \"how\" questions directly from study mode and get instant, focused explanations.",
           },
           {
-            title: "Card tutor chat",
-            desc: "Ask questions directly from Study, keep full per-card chat history, and end with a markdown summary.",
+            title: "Hands-free voice practice",
+            desc: "Listen and respond while walking or commuting when screen-heavy studying feels hard.",
           },
           {
-            title: "Real-time sync",
-            desc: "Convex pushes changes over WebSockets. Edits appear instantly everywhere.",
+            title: "Generate cards from any topic",
+            desc: "Start from zero with AI-generated drafts, then edit and personalize before you hit study.",
           },
         ],
       },
@@ -305,30 +337,62 @@ export const dictionaries = {
     },
     marketing: {
       home: {
-        badge: "开源学习工具",
-        titleTop: "用以下方式更高效学习",
-        titleHighlight: "Markdown（轻量标记语言）卡片",
-        desc: "创建高质量格式化闪卡，针对每张卡片与 AI 导师对话，并保存含图表的 Markdown 总结，便于后续复习。",
+        badge: "让学习真正记住",
+        titleTop: "用以下方式更快学习",
+        titleHighlight: "语音 + 卡片 + 间隔复习",
+        desc: "任何主题都能快速进入学习流程：和卡片对话、在正确时间复习、即使注意力波动也能继续推进。",
         getStartedFree: "开始 3 天试用",
-        learnMore: "了解更多",
+        learnMore: "了解工作方式",
+        watchDemo: "观看演示",
         openApp: "打开应用",
-        openCards: "打开我的卡片",
+        openCards: "继续学习",
+        focusTitle: "为真实学习场景而设计",
+        focusItems: [
+          {
+            title: "对 ADHD 更友好的节奏",
+            desc: "短回合复习、语音支持和主动问答，减少频繁切换带来的负担。",
+          },
+          {
+            title: "适合忙碌学生和职场人",
+            desc: "快速生成第一版牌组，在课间、通勤、碎片时间也能持续学习。",
+          },
+          {
+            title: "适合语言与记忆密集内容",
+            desc: "用间隔复习结合语音练习，提升词汇、定义和核心概念的长期记忆。",
+          },
+        ],
+        storiesTitle: "大家是这样使用它的",
+        stories: [
+          {
+            title: "考试冲刺更有节奏",
+            desc: "把课堂笔记转成卡片，边学边问 AI 导师，每天用短时复习稳步推进。",
+          },
+          {
+            title: "注意力不稳也能坚持",
+            desc: "容易分心的学习者改用语音 + 卡片对话，在低专注日也能完成学习闭环。",
+          },
+          {
+            title: "从零到第一套牌组",
+            desc: "输入一个主题，自动生成初稿，几分钟内就能开始学习，而不是先花数小时整理。",
+          },
+        ],
+        featuresTitle: "为什么更容易坚持",
         features: [
           {
-            title: "Markdown 优先",
-            desc: "支持标题、代码块、表格与清单，你的内容始终可迁移。",
+            title: "自动间隔复习",
+            desc: "在你最容易遗忘的时间点重新出现，复习时间用在最关键的位置。",
           },
           {
-            title: "Mermaid 图表",
-            desc: "可直接写流程图、时序图和架构图，不用离开编辑器。",
+            title: "像和导师一样聊卡片",
+            desc: "在学习模式里直接问“为什么/怎么做”，立即得到聚焦解释。",
           },
           {
-            title: "卡片导师对话",
-            desc: "在学习页直接提问，按卡片保存完整历史，并一键生成 Markdown 总结。",
+            title: "可免手操作的语音学习",
+            desc: "走路或通勤时也能听和答，减少必须盯屏的学习负担。",
           },
           {
-            title: "实时同步",
-            desc: "Convex 通过 WebSocket 推送更新，修改会立刻同步到所有设备。",
+            title: "任意主题一键生成卡片",
+            desc: "从空白开始快速得到 AI 草稿，再按你的风格微调后直接开学。",
           },
         ],
       },

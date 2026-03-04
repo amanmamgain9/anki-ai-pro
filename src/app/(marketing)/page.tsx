@@ -11,6 +11,8 @@ export default async function MarketingHome() {
   const session = await getServerSession(authOptions);
   const isSignedIn = !!session?.user;
   const { dict, locale } = await getServerDictionary();
+  const focusItems = dict.marketing.home.focusItems;
+  const stories = dict.marketing.home.stories;
 
   const features = dict.marketing.home.features.map((feature, index) => ({
     ...feature,
@@ -90,6 +92,9 @@ export default async function MarketingHome() {
             <Link href="/about" className="btn-secondary !px-7 !py-3 !text-sm">
               {dict.marketing.home.learnMore}
             </Link>
+            <Link href="/blog" className="btn-secondary !px-7 !py-3 !text-sm">
+              {dict.marketing.home.watchDemo}
+            </Link>
             </>
           )}
           {isSignedIn && (
@@ -100,8 +105,28 @@ export default async function MarketingHome() {
         </div>
       </section>
 
+      {/* ── Focus ───────────────────────────────────── */}
+      <section className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-6">
+        <h2 className="mb-5 text-center text-xl font-bold tracking-tight sm:text-2xl">
+          {dict.marketing.home.focusTitle}
+        </h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {focusItems.map((item) => (
+            <div key={item.title} className="card-surface p-5">
+              <h3 className="text-sm font-bold uppercase tracking-wide">{item.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                {item.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── Features ────────────────────────────────── */}
-      <section className="mx-auto w-full max-w-5xl px-4 pb-24 sm:px-6">
+      <section className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-6">
+        <h2 className="mb-5 text-center text-xl font-bold tracking-tight sm:text-2xl">
+          {dict.marketing.home.featuresTitle}
+        </h2>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((f) => (
             <div
@@ -118,6 +143,23 @@ export default async function MarketingHome() {
               </h3>
               <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-text-secondary)]">
                 {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Stories ─────────────────────────────────── */}
+      <section className="mx-auto w-full max-w-5xl px-4 pb-24 sm:px-6">
+        <h2 className="mb-5 text-center text-xl font-bold tracking-tight sm:text-2xl">
+          {dict.marketing.home.storiesTitle}
+        </h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {stories.map((story) => (
+            <div key={story.title} className="card-surface p-5">
+              <h3 className="text-sm font-bold uppercase tracking-wide">{story.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                {story.desc}
               </p>
             </div>
           ))}
