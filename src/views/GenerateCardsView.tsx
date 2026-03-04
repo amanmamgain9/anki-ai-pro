@@ -231,7 +231,7 @@ function GenerationDeckAnimation({
 }
 
 export default function GenerateCardsView() {
-  const { navigate, back, searchParams } = useAppRouter();
+  const { navigate, searchParams } = useAppRouter();
   const { t, locale } = useI18n();
   const zh = locale === "zh";
 
@@ -1052,7 +1052,7 @@ export default function GenerateCardsView() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={back}
+            onClick={() => navigate("/cards")}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] transition hover:border-[var(--color-border-strong)]"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -1121,7 +1121,7 @@ export default function GenerateCardsView() {
       <div className="flex items-center gap-3">
         <button
           type="button"
-          onClick={back}
+          onClick={() => navigate("/cards")}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] transition hover:border-[var(--color-border-strong)]"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
