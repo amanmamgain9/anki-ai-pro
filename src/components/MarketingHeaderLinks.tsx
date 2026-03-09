@@ -19,16 +19,16 @@ export default function MarketingHeaderLinks({
       className={className ?? "hidden items-center gap-5 md:flex"}
     >
       <Link
-        href="/pricing"
-        className="text-sm font-medium text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)]"
-      >
-        {pricingLabel}
-      </Link>
-      <Link
         href="/about"
         className="text-sm font-medium text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)]"
       >
         {aboutLabel}
+      </Link>
+      <Link
+        href="/pricing"
+        className="text-sm font-medium text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)]"
+      >
+        {pricingLabel}
       </Link>
       <Link
         href="/contact"

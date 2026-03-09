@@ -20,24 +20,23 @@ export default async function MarketingHome() {
   return (
     <div className="flex min-h-dvh flex-col">
       {/* ── Nav ─────────────────────────────────────── */}
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <div className="flex items-center gap-6">
+      <header className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
           <BrandLogo iconSize={28} priority />
           <MarketingHeaderLinks
             aboutLabel={dict.common.about}
             pricingLabel={dict.common.pricing}
             contactLabel={dict.common.contact}
-            className="hidden items-center gap-5 md:flex"
+            className="hidden items-center justify-center gap-6 md:flex"
           />
-        </div>
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-self-end">
           <LocaleSwitcher />
           <ThemeToggle />
           {!isSignedIn && (
             <>
             <Link
               href="/sign-in"
-              className="text-sm font-semibold text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)]"
+              className="hidden text-sm font-semibold text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)] sm:inline-flex"
             >
               {dict.common.signIn}
             </Link>
@@ -51,7 +50,14 @@ export default async function MarketingHome() {
               {dict.marketing.home.openApp}
             </Link>
           )}
+          </div>
         </div>
+        <MarketingHeaderLinks
+          aboutLabel={dict.common.about}
+          pricingLabel={dict.common.pricing}
+          contactLabel={dict.common.contact}
+          className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:hidden"
+        />
       </header>
 
       {/* ── Hero ────────────────────────────────────── */}
