@@ -4,6 +4,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
+import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { getServerDictionary } from "@/i18n/server";
 
 export const metadata: Metadata = {
@@ -13,18 +14,26 @@ export const metadata: Metadata = {
 };
 
 export default async function SleepLearningAudioBlogPage() {
-  const { locale } = await getServerDictionary();
+  const { dict, locale } = await getServerDictionary();
   const zh = locale === "zh";
 
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <BrandLogo iconSize={28} />
+        <div className="flex items-center gap-6">
+          <BrandLogo iconSize={28} />
+          <MarketingHeaderLinks
+            aboutLabel={dict.common.about}
+            pricingLabel={dict.common.pricing}
+            contactLabel={dict.common.contact}
+            className="hidden items-center gap-5 md:flex"
+          />
+        </div>
         <div className="flex items-center gap-2">
           <LocaleSwitcher />
           <ThemeToggle />
           <Link href="/sign-in" className="btn-primary">
-            {zh ? "开始使用" : "Get Started"}
+            {dict.common.getStarted}
           </Link>
         </div>
       </header>
