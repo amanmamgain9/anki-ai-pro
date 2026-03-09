@@ -33,17 +33,9 @@ export default async function MarketingHome() {
           <LocaleSwitcher />
           <ThemeToggle />
           {!isSignedIn && (
-            <>
-            <Link
-              href="/sign-in"
-              className="hidden text-sm font-semibold text-[var(--color-text-secondary)] transition hover:text-[var(--color-text)] sm:inline-flex"
-            >
-              {dict.common.signIn}
-            </Link>
             <Link href="/sign-in" className="btn-primary">
               {dict.common.getStarted}
             </Link>
-            </>
           )}
           {isSignedIn && (
             <Link href="/cards" className="btn-primary">

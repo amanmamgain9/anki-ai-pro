@@ -14,7 +14,7 @@ export const dictionaries = {
     common: {
       appName: "ANKI CARDS",
       signIn: "Sign in",
-      getStarted: "Get started",
+      getStarted: "Open App",
       pricing: "Pricing",
       about: "About",
       contact: "Contact",
@@ -425,7 +425,7 @@ export const dictionaries = {
     common: {
       appName: "ANKI CARDS",
       signIn: "登录",
-      getStarted: "开始使用",
+      getStarted: "打开应用",
       pricing: "定价",
       about: "关于",
       contact: "联系",
