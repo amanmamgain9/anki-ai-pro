@@ -87,6 +87,20 @@ export default async function PricingPage() {
             </div>
           ))}
         </div>
+
+        <div className="card-surface mt-8 w-full max-w-5xl p-6">
+          <h2 className="text-sm font-bold uppercase tracking-wide">
+            {dict.marketing.pricing.deliverablesTitle}
+          </h2>
+          <ul className="mt-3 space-y-2.5">
+            {dict.marketing.pricing.deliverables.map((item) => (
+              <li key={item} className="flex items-start gap-2 text-sm text-[var(--color-text-secondary)]">
+                <span className="mt-[0.45rem] block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-accent)]" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
       <MarketingFooter locale={locale} />
     </div>
