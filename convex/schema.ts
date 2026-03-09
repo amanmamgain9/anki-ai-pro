@@ -9,6 +9,7 @@ export default defineSchema({
     imageUrl: v.optional(v.string()),
     paddleCustomerId: v.optional(v.string()),
     onboardingCompletedAt: v.optional(v.number()),
+    trialEndsAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     lastSeenAt: v.number(),

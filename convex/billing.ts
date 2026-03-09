@@ -77,6 +77,11 @@ function pickEffectiveSubscription<T extends { status?: string | null }>(rows: T
 type BillingTier = "free" | "pro" | "pro_plus";
 const DAY_MS = 86_400_000;
 const PREMIUM_TTS_FEATURE = "premium_tts";
+const SUPPORT_OPERATOR_EMAILS = new Set([
+  "amanmamgain9@gmail.com",
+  "support@example.com",
+  "planmyworkday@gmail.com",
+]);
 
 function getTierFromPriceId(priceId: string | undefined): BillingTier {
   if (!priceId) return "pro";
@@ -129,6 +134,8 @@ export const syncCurrentUser = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
+    const trialDays = resolveFreeProPlusTrialDays();
+    const defaultTrialEndsAt = trialDays > 0 ? now + trialDays * DAY_MS : undefined;
 
     const email = typeof identity.email === "string" ? identity.email : undefined;
     const name = typeof identity.name === "string" ? identity.name : undefined;
@@ -140,10 +147,17 @@ export const syncCurrentUser = mutationGeneric({
       .first();
 
     if (existing) {
+      const fallbackTrialEndsAt =
+        trialDays > 0 && existing.trialEndsAt === undefined
+          ? existing.createdAt + trialDays * DAY_MS
+          : undefined;
       await ctx.db.patch(existing._id, {
         email,
         name,
         imageUrl,
+        ...(fallbackTrialEndsAt !== undefined
+          ? { trialEndsAt: fallbackTrialEndsAt }
+          : {}),
         updatedAt: now,
         lastSeenAt: now,
       });
@@ -159,6 +173,7 @@ export const syncCurrentUser = mutationGeneric({
       email,
       name,
       imageUrl,
+      ...(defaultTrialEndsAt !== undefined ? { trialEndsAt: defaultTrialEndsAt } : {}),
       createdAt: now,
       updatedAt: now,
       lastSeenAt: now,
@@ -167,6 +182,55 @@ export const syncCurrentUser = mutationGeneric({
       userId,
       externalId: identity.subject,
       paddleCustomerId: null,
+    };
+  },
+});
+
+export const supportSetTrialEndsAtAndClearSubscriptions = mutationGeneric({
+  args: {
+    externalId: v.string(),
+    trialEndsAt: v.number(),
+    clearSubscriptions: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { externalId, trialEndsAt, clearSubscriptions }) => {
+    const identity = await requireIdentity(ctx);
+    const callerEmail = (identity.email ?? "").toLowerCase();
+    if (!SUPPORT_OPERATOR_EMAILS.has(callerEmail)) {
+      throw new ConvexError("Unauthorized");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_externalId", (q) => q.eq("externalId", externalId))
+      .first();
+    if (!user) {
+      throw new ConvexError("User not found");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, {
+      trialEndsAt,
+      updatedAt: now,
+      lastSeenAt: now,
+    });
+
+    let deletedSubscriptions = 0;
+    if (clearSubscriptions) {
+      const subscriptions = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
+        .collect();
+      for (const row of subscriptions) {
+        await ctx.db.delete(row._id);
+        deletedSubscriptions += 1;
+      }
+    }
+
+    return {
+      userId: user._id,
+      externalId: user.externalId,
+      trialEndsAt,
+      deletedSubscriptions,
     };
   },
 });
@@ -450,9 +514,10 @@ export const getMyBilling = queryGeneric({
     const isActive = isSubscriptionActive(status);
     const tier = isActive ? getTierFromPriceId(subscription?.priceId) : "free";
     const trialDays = resolveFreeProPlusTrialDays();
-    const trialEndsAt = user.createdAt + trialDays * DAY_MS;
+    const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
+    const trialEndsAt = user.trialEndsAt ?? fallbackTrialEndsAt;
     const trialActive =
-      trialDays > 0 && !isActive && now < trialEndsAt;
+      !isActive && trialEndsAt !== null && now < trialEndsAt;
     const hasPremiumVoice = isActive
       ? tier === "pro_plus"
       : trialActive;
