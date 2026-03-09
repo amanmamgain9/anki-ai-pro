@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import ThemeToggle from "@/components/ThemeToggle";
-import LocaleSwitcher from "@/components/LocaleSwitcher";
+import DisplayMenu from "@/components/DisplayMenu";
 import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
+import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { getServerDictionary } from "@/i18n/server";
 
@@ -30,18 +30,18 @@ export default async function MarketingHome() {
             className="hidden items-center justify-center gap-6 md:flex"
           />
           <div className="flex items-center gap-2 justify-self-end">
-          <LocaleSwitcher />
-          <ThemeToggle />
-          {!isSignedIn && (
-            <Link href="/sign-in" className="btn-primary">
-              {dict.common.getStarted}
-            </Link>
-          )}
-          {isSignedIn && (
-            <Link href="/cards" className="btn-primary">
-              {dict.marketing.home.openApp}
-            </Link>
-          )}
+            <DisplayMenu />
+            {!isSignedIn && (
+              <MarketingAuthActions
+                signInLabel={dict.common.signIn}
+                signUpLabel={dict.common.signUp}
+              />
+            )}
+            {isSignedIn && (
+              <Link href="/cards" className="btn-primary">
+                {dict.marketing.home.openApp}
+              </Link>
+            )}
           </div>
         </div>
         <MarketingHeaderLinks

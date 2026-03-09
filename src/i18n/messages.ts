@@ -14,6 +14,7 @@ export const dictionaries = {
     common: {
       appName: "ANKI CARDS",
       signIn: "Sign in",
+      signUp: "Sign up",
       getStarted: "Open App",
       pricing: "Pricing",
       about: "About",
@@ -36,7 +37,7 @@ export const dictionaries = {
         titleTop: "Stop collecting knowledge.",
         titleHighlight: "Start retaining it.",
         desc: "AIANKIPRO turns videos, notes, and AI chats into one clear loop: Learn mode for first-pass understanding, Shuffle mode for recall, plus card chat or voice whenever you get stuck.",
-        getStartedFree: "Start 3-day trial",
+        getStartedFree: "Open App and Start Learning",
         learnMore: "How it works",
         openApp: "Open app",
         openCards: "Continue learning",
@@ -425,6 +426,7 @@ export const dictionaries = {
     common: {
       appName: "ANKI CARDS",
       signIn: "登录",
+      signUp: "注册",
       getStarted: "打开应用",
       pricing: "定价",
       about: "关于",
@@ -447,7 +449,7 @@ export const dictionaries = {
         titleTop: "别再只收集知识。",
         titleHighlight: "开始真正记住。",
         desc: "AIANKIPRO 把视频、笔记和 AI 对话整理成一个清晰学习闭环：先用学习模式学第一遍，再在卡片卡住时用对话/语音，最后用随机回忆模式做巩固。",
-        getStartedFree: "开始 3 天试用",
+        getStartedFree: "打开应用，开始学习",
         learnMore: "了解工作方式",
         openApp: "打开应用",
         openCards: "继续学习",
