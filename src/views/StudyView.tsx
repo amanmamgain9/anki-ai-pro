@@ -1243,6 +1243,14 @@ export default function StudyView() {
               <textarea
                 value={tutorInput}
                 onChange={(e) => setTutorInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  if (e.shiftKey) return;
+                  if (e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  if (tutorBusy || summaryBusy || !tutorInput.trim()) return;
+                  void sendTutorMessage();
+                }}
                 rows={3}
                 placeholder={t("app.study.tutor.textareaPlaceholder")}
                 disabled={tutorBusy || summaryBusy}

@@ -46,9 +46,9 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
   }
 
   const trialDays = resolveFreeProPlusTrialDays();
-  if (trialDays <= 0) return null;
-  const trialEndsAt = user.createdAt + trialDays * DAY_MS;
-  if (Date.now() < trialEndsAt) return externalId;
+  const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
+  const trialEndsAt = user.trialEndsAt ?? fallbackTrialEndsAt;
+  if (trialEndsAt !== null && Date.now() < trialEndsAt) return externalId;
 
   return null;
 }
