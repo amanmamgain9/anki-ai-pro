@@ -54,7 +54,6 @@ function buildCoverageTargets(
       focus: subtopic.focus.trim(),
     }))
     .filter((subtopic) => subtopic.name.length > 0 && subtopic.focus.length > 0)
-    .sort((a, b) => b.weight - a.weight)
     .slice(0, Math.min(count, 8));
 
   if (cleaned.length === 0) {
@@ -166,10 +165,11 @@ export async function POST(req: Request) {
     const coveragePlan = await planner.invoke([
       new SystemMessage(
         [
-          "You design syllabus coverage plans for Anki generation.",
+          "You design learning plans for flashcard decks.",
           "Return strictly valid JSON matching the schema.",
-          "Choose subtopics that span fundamentals, process understanding, and applied recall.",
-          "Weights should represent relative card volume.",
+          "Order subtopics exactly in the sequence you would teach them in a good textbook chapter.",
+          "Start with foundations, then build to applied understanding and recall.",
+          "Weights should represent relative card volume per subtopic.",
         ].join(" "),
       ),
       new HumanMessage(
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
           `Topic: ${parsedRequest.topic}`,
           `Learner level: ${parsedRequest.level}`,
           `Target card count: ${targetCount}`,
-          "Create a balanced subtopic plan with 3-8 subtopics.",
+          "Create a balanced subtopic plan with 3-8 subtopics in teaching order.",
           "Each subtopic must include a short focus note and weight (1-10).",
         ].join("\n"),
       ),
@@ -197,6 +197,9 @@ export async function POST(req: Request) {
           "Every card must map to one of the provided subtopics.",
           "Card fronts should be concise prompts/questions.",
           "Card backs should be clear, accurate, and can include markdown bullet points or short examples.",
+          "Keep cards in a teaching sequence, like a well-written chapter.",
+          "Teach prerequisites first, then build complexity.",
+          "Start with core ideas, then processes, then applied comparisons and exam-style recall.",
           "Avoid fluff. Focus on retention and exam-style recall.",
           "Do not include duplicate cards or overlapping cards.",
           "Respect the requested subtopic card counts for coverage.",
@@ -210,7 +213,8 @@ export async function POST(req: Request) {
           `Target card count: ${targetCount}`,
           "Subtopic coverage targets:",
           ...coverageLines,
-          "Generate cards that progress from fundamentals to stronger recall.",
+          "Order cards from easiest foundations to harder application.",
+          "Do not jump ahead before introducing needed ideas.",
           "Each card must have subtopic, front, and back.",
           "Return exactly the target number of cards.",
         ].join("\n"),
