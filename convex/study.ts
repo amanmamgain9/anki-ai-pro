@@ -49,7 +49,7 @@ async function listCardsByDeck(
 ) {
   if (deckId) {
     const deck = await db.get(deckId);
-    if (!deck || deck.userId !== userId) {
+    if (!deck || deck.userId !== userId || deck.deleted) {
       return null;
     }
     const cards = await db
@@ -65,7 +65,23 @@ async function listCardsByDeck(
     .query("cards")
     .withIndex("by_user_updatedAt", (q: any) => q.eq("userId", userId))
     .collect();
-  return cards.sort((a: any, b: any) => a.createdAt - b.createdAt);
+  const deckState = new Map<string, boolean>();
+  const visible = [];
+  for (const card of cards) {
+    if (!card.deckId) {
+      visible.push(card);
+      continue;
+    }
+    const key = String(card.deckId);
+    let active = deckState.get(key);
+    if (active === undefined) {
+      const deck = await db.get(card.deckId);
+      active = Boolean(deck && deck.userId === userId && !deck.deleted);
+      deckState.set(key, active);
+    }
+    if (active) visible.push(card);
+  }
+  return visible.sort((a: any, b: any) => a.createdAt - b.createdAt);
 }
 
 async function withProgress(db: any, cards: any[]) {
@@ -181,7 +197,23 @@ export const getLinearCards = queryGeneric({
       const linkedCards = await Promise.all(
         orderedLinks.map((link) => db.get(link.cardId)),
       );
-      cards = linkedCards.filter((card) => card && card.userId === userId);
+      const candidateCards = linkedCards.filter((card) => card && card.userId === userId);
+      const deckState = new Map<string, boolean>();
+      cards = [];
+      for (const card of candidateCards) {
+        if (!card.deckId) {
+          cards.push(card);
+          continue;
+        }
+        const key = String(card.deckId);
+        let active = deckState.get(key);
+        if (active === undefined) {
+          const deck = await db.get(card.deckId);
+          active = Boolean(deck && deck.userId === userId && !deck.deleted);
+          deckState.set(key, active);
+        }
+        if (active) cards.push(card);
+      }
 
       if (cards.length === 0) {
         const fallbackCards = await listCardsByDeck(db, userId, deckId || chat.deckId);

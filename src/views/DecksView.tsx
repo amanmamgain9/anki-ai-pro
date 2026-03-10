@@ -16,8 +16,24 @@ export default function DecksView() {
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
   const removeDeck = useMutation(api.decks.remove);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeck, setConfirmDeck] = useState<Deck | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const deckList: Deck[] = decks ?? [];
+
+  async function confirmDeleteDeck() {
+    if (!confirmDeck) return;
+    setDeletingId(confirmDeck._id);
+    setDeleteError(null);
+    try {
+      await removeDeck({ id: confirmDeck._id });
+      setConfirmDeck(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : zh ? "删除失败" : "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -58,7 +74,10 @@ export default function DecksView() {
               <div className="flex items-center gap-2">
                 <AppLink href={`/decks/new?edit=${deck._id}`} className="btn-secondary !px-3 !py-1.5 !text-xs">{zh ? "编辑" : "Edit"}</AppLink>
                 <button type="button" disabled={deletingId === deck._id}
-                  onClick={async () => { setDeletingId(deck._id); await removeDeck({ id: deck._id }); setDeletingId(null); }}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setConfirmDeck(deck);
+                  }}
                   className="btn-danger !px-3 !py-1.5 !text-xs disabled:opacity-50">{zh ? "删除" : "Delete"}</button>
                 <div className="ml-auto flex items-center gap-3">
                   <AppLink href={`/study?deck=${deck._id}`} className="btn-primary !px-3 !py-1.5 !text-xs">{zh ? "学习" : "Study"}</AppLink>
@@ -67,6 +86,44 @@ export default function DecksView() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmDeck && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <div className="card-surface w-full max-w-md p-5">
+            <h2 className="text-lg font-bold tracking-tight">
+              {zh ? "删除牌组？" : "Delete deck?"}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+              {zh
+                ? `“${confirmDeck.name}”将被移到已删除状态，不会从数据库中永久移除。`
+                : `"${confirmDeck.name}" will be marked deleted and hidden, not permanently removed from the database.`}
+            </p>
+            {deleteError && (
+              <p className="mt-3 text-sm text-[var(--color-danger)]">{deleteError}</p>
+            )}
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary !px-3 !py-1.5 !text-xs"
+                onClick={() => setConfirmDeck(null)}
+                disabled={deletingId === confirmDeck._id}
+              >
+                {zh ? "取消" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="btn-danger !px-3 !py-1.5 !text-xs disabled:opacity-50"
+                onClick={() => void confirmDeleteDeck()}
+                disabled={deletingId === confirmDeck._id}
+              >
+                {deletingId === confirmDeck._id
+                  ? (zh ? "删除中..." : "Deleting...")
+                  : (zh ? "确认删除" : "Confirm delete")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

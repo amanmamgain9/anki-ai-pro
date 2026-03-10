@@ -12,7 +12,7 @@ async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<any> 
 async function assertOwnsDeck(db: any, userId: string, deckId?: any) {
   if (!deckId) return;
   const deck = await db.get(deckId);
-  if (!deck || deck.userId !== userId) {
+  if (!deck || deck.userId !== userId || deck.deleted) {
     throw new ConvexError("Deck not found");
   }
 }

@@ -10,11 +10,12 @@ export const list = queryGeneric({
     const userId = await getEntitledExternalUserId(ctx);
     if (!userId) return [];
     const { db } = ctx;
-    return await db
+    const rows = await db
       .query("decks")
       .withIndex("by_user_updatedAt", (q: any) => q.eq("userId", userId))
       .order("desc")
-      .take(100);
+      .take(300);
+    return rows.filter((deck: any) => !deck.deleted).slice(0, 100);
   },
 });
 
@@ -31,6 +32,7 @@ export const create = mutationGeneric({
       userId,
       name: name.trim(),
       description: description?.trim() || undefined,
+      deleted: false,
       createdAt: now,
       updatedAt: now,
     });
@@ -47,7 +49,7 @@ export const update = mutationGeneric({
     const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
     const deck = await db.get(id);
-    if (!deck || deck.userId !== userId) {
+    if (!deck || deck.userId !== userId || deck.deleted) {
       throw new Error("Deck not found");
     }
     await db.patch(id, {
@@ -66,23 +68,12 @@ export const remove = mutationGeneric({
     const userId = await requireEntitledExternalUserId(ctx);
     const { db } = ctx;
     const deck = await db.get(id);
-    if (!deck || deck.userId !== userId) {
+    if (!deck || deck.userId !== userId || deck.deleted) {
       throw new Error("Deck not found");
     }
-    const cards = await db
-      .query("cards")
-      .withIndex("by_user_deck_updatedAt", (q: any) =>
-        q.eq("userId", userId).eq("deckId", id),
-      )
-      .collect();
-    for (const card of cards) {
-      const progress = await db
-        .query("cardProgress")
-        .withIndex("by_cardId", (q) => q.eq("cardId", card._id))
-        .first();
-      if (progress) await db.delete(progress._id);
-      await db.delete(card._id);
-    }
-    await db.delete(id);
+    await db.patch(id, {
+      deleted: true,
+      updatedAt: Date.now(),
+    });
   },
 });

@@ -18,6 +18,40 @@ const sampleCards = [
   },
 ];
 
+async function isActiveDeckOwnedByUser(
+  db: any,
+  userId: string,
+  deckId: any,
+) {
+  const deck = await db.get(deckId);
+  return Boolean(deck && deck.userId === userId && !deck.deleted);
+}
+
+async function filterCardsInActiveDecks(
+  db: any,
+  userId: string,
+  cards: any[],
+  limit: number,
+) {
+  const deckState = new Map<string, boolean>();
+  const visible: any[] = [];
+  for (const card of cards) {
+    if (!card.deckId) {
+      visible.push(card);
+    } else {
+      const key = String(card.deckId);
+      let active = deckState.get(key);
+      if (active === undefined) {
+        active = await isActiveDeckOwnedByUser(db, userId, card.deckId);
+        deckState.set(key, active);
+      }
+      if (active) visible.push(card);
+    }
+    if (visible.length >= limit) break;
+  }
+  return visible;
+}
+
 export const list = queryGeneric({
   args: {
     deckId: v.optional(v.id("decks")),
@@ -28,8 +62,8 @@ export const list = queryGeneric({
     const { db } = ctx;
 
     if (deckId) {
-      const deck = await db.get(deckId);
-      if (!deck || deck.userId !== userId) return [];
+      const deckOk = await isActiveDeckOwnedByUser(db, userId, deckId);
+      if (!deckOk) return [];
       return await db
         .query("cards")
         .withIndex("by_user_deck_updatedAt", (q: any) =>
@@ -38,11 +72,13 @@ export const list = queryGeneric({
         .order("desc")
         .take(200);
     }
-    return await db
+
+    const rows = await db
       .query("cards")
       .withIndex("by_user_updatedAt", (q: any) => q.eq("userId", userId))
       .order("desc")
-      .take(200);
+      .take(400);
+    return await filterCardsInActiveDecks(db, userId, rows, 200);
   },
 });
 
@@ -58,8 +94,8 @@ export const create = mutationGeneric({
     const { db } = ctx;
 
     if (deckId) {
-      const deck = await db.get(deckId);
-      if (!deck || deck.userId !== userId) {
+      const deckOk = await isActiveDeckOwnedByUser(db, userId, deckId);
+      if (!deckOk) {
         throw new Error("Deck not found");
       }
     }
@@ -99,8 +135,8 @@ export const update = mutationGeneric({
       throw new Error("Card not found");
     }
     if (deckId) {
-      const deck = await db.get(deckId);
-      if (!deck || deck.userId !== userId) {
+      const deckOk = await isActiveDeckOwnedByUser(db, userId, deckId);
+      if (!deckOk) {
         throw new Error("Deck not found");
       }
     }
@@ -181,8 +217,8 @@ export const bulkCreate = mutationGeneric({
     const { db } = ctx;
 
     if (deckId) {
-      const deck = await db.get(deckId);
-      if (!deck || deck.userId !== userId) {
+      const deckOk = await isActiveDeckOwnedByUser(db, userId, deckId);
+      if (!deckOk) {
         throw new Error("Deck not found");
       }
     }
@@ -219,6 +255,7 @@ export const seed = mutationGeneric({
       userId,
       name: "Sample Deck",
       description: "Example cards with Markdown + Mermaid.",
+      deleted: false,
       createdAt: now,
       updatedAt: now,
     });

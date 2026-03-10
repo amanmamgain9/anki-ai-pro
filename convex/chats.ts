@@ -102,7 +102,7 @@ function sanitizeSnapshot(
 
 async function assertDeckOwner(db: any, userId: string, deckId: any) {
   const deck = await db.get(deckId);
-  if (!deck || deck.userId !== userId) {
+  if (!deck || deck.userId !== userId || deck.deleted) {
     throw new ConvexError("Deck not found");
   }
   return deck;
@@ -367,6 +367,7 @@ export const commit = mutationGeneric({
         description: snapshot.topic
           ? `Auto-created from AI chat (${snapshot.topic})`
           : "Auto-created from AI chat",
+        deleted: false,
         createdAt: now,
         updatedAt: now,
       });
