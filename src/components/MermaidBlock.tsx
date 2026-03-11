@@ -2,20 +2,29 @@
 
 import mermaid from "mermaid";
 import { useEffect, useId, useState } from "react";
+import { normalizeMermaidChart } from "@/lib/mermaid";
 
 type MermaidBlockProps = {
   chart: string;
 };
 
+type MermaidRenderState = {
+  chart: string;
+  svg: string;
+  error: string | null;
+};
+
 export default function MermaidBlock({ chart }: MermaidBlockProps) {
-  const [svg, setSvg] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [renderState, setRenderState] = useState<MermaidRenderState>({
+    chart: "",
+    svg: "",
+    error: null,
+  });
   const id = useId().replace(/:/g, "");
+  const normalizedChart = normalizeMermaidChart(chart);
 
   useEffect(() => {
     let isActive = true;
-    setSvg("");
-    setError(null);
 
     mermaid.initialize({
       startOnLoad: false,
@@ -24,15 +33,22 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
 
     const render = async () => {
       try {
-        const { svg } = await mermaid.render(`mermaid-${id}`, chart);
+        const { svg } = await mermaid.render(`mermaid-${id}`, normalizedChart);
         if (isActive) {
-          setSvg(svg);
+          setRenderState({
+            chart: normalizedChart,
+            svg,
+            error: null,
+          });
         }
       } catch (err) {
         if (isActive) {
-          setError(
-            err instanceof Error ? err.message : "Unable to render diagram.",
-          );
+          console.error("Mermaid render failed", err);
+          setRenderState({
+            chart: normalizedChart,
+            svg: "",
+            error: "Diagram could not be rendered. Showing source instead.",
+          });
         }
       }
     };
@@ -41,17 +57,20 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
     return () => {
       isActive = false;
     };
-  }, [chart, id]);
+  }, [id, normalizedChart]);
 
-  if (error) {
+  if (renderState.chart === normalizedChart && renderState.error) {
     return (
-      <pre className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger-soft)] p-4 text-xs text-[var(--color-danger)]">
-        {error}
-      </pre>
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-[var(--color-danger)]">{renderState.error}</div>
+        <pre className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-4 text-xs text-[var(--color-text-secondary)]">
+          {normalizedChart}
+        </pre>
+      </div>
     );
   }
 
-  if (!svg) {
+  if (renderState.chart !== normalizedChart || !renderState.svg) {
     return (
       <div className="text-xs font-medium text-[var(--color-text-tertiary)]">
         Rendering diagram...
@@ -62,7 +81,7 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
   return (
     <div
       className="w-full overflow-x-auto"
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: renderState.svg }}
     />
   );
 }

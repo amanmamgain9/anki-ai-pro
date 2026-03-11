@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { normalizeMermaidMarkdown } from "@/lib/mermaid";
 import { ensureProAccess } from "@/lib/server-entitlements";
 
 export const runtime = "nodejs";
@@ -29,9 +30,16 @@ function contentToText(content: unknown) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((part: any) => {
+      .map((part: unknown) => {
         if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
+        if (
+          typeof part === "object" &&
+          part !== null &&
+          "text" in part &&
+          typeof part.text === "string"
+        ) {
+          return part.text;
+        }
         return "";
       })
       .join("\n")
@@ -101,6 +109,10 @@ export async function POST(req: Request) {
           "Output clean markdown only, no JSON.",
           "Focus on conceptual clarity and recall usefulness.",
           "If a diagram helps understanding, include Mermaid in a fenced code block.",
+          "Use only valid Mermaid flowchart syntax.",
+          "Keep each edge on one line and write labeled edges as -->|label|.",
+          "Quote node labels when they contain punctuation, math notation, or parentheses.",
+          "If you are not sure the Mermaid will be valid, omit the diagram.",
         ].join(" "),
       ),
       new HumanMessage(
@@ -121,7 +133,7 @@ export async function POST(req: Request) {
       ),
     ]);
 
-    const summary = contentToText(response.content).trim();
+    const summary = normalizeMermaidMarkdown(contentToText(response.content).trim());
     if (!summary) {
       return NextResponse.json(
         { error: "Model returned empty summary" },

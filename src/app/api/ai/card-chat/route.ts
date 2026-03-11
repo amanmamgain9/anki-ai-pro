@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { normalizeMermaidMarkdown } from "@/lib/mermaid";
 import { ensureProAccess } from "@/lib/server-entitlements";
 
 export const runtime = "nodejs";
@@ -30,9 +31,16 @@ function contentToText(content: unknown) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((part: any) => {
+      .map((part: unknown) => {
         if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
+        if (
+          typeof part === "object" &&
+          part !== null &&
+          "text" in part &&
+          typeof part.text === "string"
+        ) {
+          return part.text;
+        }
         return "";
       })
       .join("\n")
@@ -103,6 +111,10 @@ export async function POST(req: Request) {
           "Help the learner deeply understand what this card is testing.",
           "Use markdown with short sections and bullets when helpful.",
           "If a visual explanation helps, include a Mermaid diagram in a fenced block.",
+          "Use only valid Mermaid flowchart syntax.",
+          "Keep each edge on one line and write labeled edges as -->|label|.",
+          "Quote node labels when they contain punctuation, math notation, or parentheses.",
+          "If you are not sure the Mermaid will be valid, omit the diagram.",
           "Stay focused on this card's topic and avoid unrelated tangents.",
         ].join(" "),
       ),
@@ -122,7 +134,7 @@ export async function POST(req: Request) {
       new HumanMessage(userMessage),
     ]);
 
-    const reply = contentToText(response.content).trim();
+    const reply = normalizeMermaidMarkdown(contentToText(response.content).trim());
     if (!reply) {
       return NextResponse.json(
         { error: "Model returned empty reply" },
