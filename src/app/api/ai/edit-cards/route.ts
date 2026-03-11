@@ -23,7 +23,7 @@ const requestSchema = z.object({
 
 const responseSchema = z.object({
   cards: z.array(cardSchema).min(1).max(80),
-  summary: z.string().trim().min(1).max(220).optional(),
+  summary: z.string().trim().max(220),
 });
 
 function normalizeCards(cards: Array<{ front: string; back: string; tags?: string[] }>) {
@@ -106,6 +106,7 @@ export async function POST(req: Request) {
           "Rewrite the provided card set according to the user instruction.",
           "Keep the same language as the existing cards unless the instruction explicitly asks otherwise.",
           "Preserve useful scope and avoid hallucinations.",
+          "Always include a summary string. Use an empty string if there is nothing useful to say.",
           "Return strictly valid JSON matching the output schema.",
         ].join(" "),
       ),
@@ -134,7 +135,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       cards,
-      summary: output.summary?.trim(),
+      summary: output.summary.trim() || undefined,
       model,
     });
   } catch (error) {

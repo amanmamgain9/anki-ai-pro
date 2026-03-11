@@ -22,7 +22,7 @@ const requestSchema = z.object({
 
 const responseSchema = z.object({
   card: cardSchema,
-  summary: z.string().trim().min(1).max(220).optional(),
+  summary: z.string().trim().max(220),
 });
 
 function normalizeCard(card: { front: string; back: string; tags?: string[] }) {
@@ -96,6 +96,7 @@ export async function POST(req: Request) {
           "Keep the same language as the existing card unless the instruction explicitly asks otherwise.",
           "Preserve useful scope and avoid hallucinations.",
           "If Mermaid is used, keep it valid and concise.",
+          "Always include a summary string. Use an empty string if there is nothing useful to say.",
           "Return strictly valid JSON matching the output schema.",
         ].join(" "),
       ),
@@ -124,7 +125,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       card,
-      summary: output.summary?.trim(),
+      summary: output.summary.trim() || undefined,
       model,
     });
   } catch (error) {
