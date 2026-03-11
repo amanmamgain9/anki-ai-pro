@@ -4,7 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { normalizeMermaidMarkdown } from "@/lib/mermaid";
+import { cardAuthoringRules, normalizeCardMarkdown } from "@/lib/card-markdown";
 import { ensureProAccess } from "@/lib/server-entitlements";
 
 export const runtime = "nodejs";
@@ -27,8 +27,8 @@ const responseSchema = z.object({
 
 function normalizeCard(card: { front: string; back: string; tags?: string[] }) {
   return {
-    front: normalizeMermaidMarkdown(card.front.trim()),
-    back: normalizeMermaidMarkdown(card.back.trim()),
+    front: normalizeCardMarkdown(card.front),
+    back: normalizeCardMarkdown(card.back),
     tags:
       card.tags
         ?.map((tag) => tag.trim().toLowerCase())
@@ -96,6 +96,7 @@ export async function POST(req: Request) {
           "Keep the same language as the existing card unless the instruction explicitly asks otherwise.",
           "Preserve useful scope and avoid hallucinations.",
           "If Mermaid is used, keep it valid and concise.",
+          cardAuthoringRules,
           "Always include a summary string. Use an empty string if there is nothing useful to say.",
           "Return strictly valid JSON matching the output schema.",
         ].join(" "),

@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { cardAuthoringRules, normalizeCardMarkdown } from "@/lib/card-markdown";
 import { ensureProAccess } from "@/lib/server-entitlements";
 
 export const runtime = "nodejs";
@@ -99,8 +100,8 @@ function normalizeCards(
 ) {
   return cards.map((card) => ({
     subtopic: card.subtopic.trim(),
-    front: card.front.trim(),
-    back: card.back.trim(),
+    front: normalizeCardMarkdown(card.front),
+    back: normalizeCardMarkdown(card.back),
   }));
 }
 
@@ -203,6 +204,7 @@ export async function POST(req: Request) {
           "Avoid fluff. Focus on retention and exam-style recall.",
           "Do not include duplicate cards or overlapping cards.",
           "Respect the requested subtopic card counts for coverage.",
+          cardAuthoringRules,
         ].join(" "),
       ),
       new HumanMessage(
