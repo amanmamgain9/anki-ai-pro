@@ -4,6 +4,7 @@ import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
+import Link from "next/link";
 import { getServerDictionary } from "@/i18n/server";
 import { SUPPORT_EMAIL } from "@/lib/support";
 
@@ -72,6 +73,31 @@ export default async function RefundPolicyPage() {
                 ? "通过 Paddle 完成的购买，其退款请求将依据 Paddle 的退款政策以及适用的消费者法律处理。"
                 : "Refund requests for purchases completed through Paddle will be handled in accordance with Paddle's refund policy and applicable consumer law."}
             </p>
+            <p className="mt-2">
+              {zh ? "你也可以查看 Paddle 官方帮助页面与买家条款：" : "You can also review Paddle's official buyer help pages and buyer terms:"}
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                <a
+                  href="https://paddle.net/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--color-accent)] hover:underline"
+                >
+                  https://paddle.net/
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://www.paddle.com/legal/invoiced-consumer-terms"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--color-accent)] hover:underline"
+                >
+                  https://www.paddle.com/legal/invoiced-consumer-terms
+                </a>
+              </li>
+            </ul>
           </section>
 
           <section>
@@ -102,8 +128,8 @@ export default async function RefundPolicyPage() {
             </h2>
             <p className="mt-2">
               {zh
-                ? "如需账单协助或希望就退款请求获得帮助，请附上 Paddle 收据号与账户邮箱联系我们。"
-                : "If you need billing assistance or help with a refund request, contact us with your Paddle receipt number and account email."}
+                ? "如需账单协助或希望就退款请求获得帮助，请先查看 Paddle 的买家帮助页面，或附上 Paddle 收据号与账户邮箱联系我们。"
+                : "If you need billing assistance or help with a refund request, first check Paddle's buyer help pages, or contact us with your Paddle receipt number and account email."}
             </p>
             <p className="mt-2">
               {zh ? "请发送邮件至 " : "Email "}{" "}
@@ -113,6 +139,11 @@ export default async function RefundPolicyPage() {
               {zh
                 ? "并附上 Paddle 收据号与账户邮箱。我们通常会在 1 个工作日内回复。"
                 : "with your Paddle receipt number and account email for billing support. We typically respond within 1 business day."}
+            </p>
+            <p className="mt-2">
+              <Link href="/contact" className="text-[var(--color-accent)] hover:underline">
+                {zh ? "前往联系页面" : "Go to the contact page"}
+              </Link>
             </p>
           </section>
         </div>
