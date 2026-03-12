@@ -69,8 +69,8 @@ export default async function RefundPolicyPage() {
             </h2>
             <p className="mt-2">
               {zh
-                ? "退款由 Paddle 按个案酌情处理。若 Paddle 发现欺诈、退款滥用或其他操纵行为，可能拒绝退款请求。"
-                : "Refunds are provided at Paddle's sole discretion, on a case-by-case basis, and may be refused. Paddle may refuse a refund request where there is evidence of fraud, refund abuse, or other manipulative behaviour."}
+                ? "通过 Paddle 完成的购买，其退款请求将依据 Paddle 的退款政策以及适用的消费者法律处理。"
+                : "Refund requests for purchases completed through Paddle will be handled in accordance with Paddle's refund policy and applicable consumer law."}
             </p>
           </section>
 
