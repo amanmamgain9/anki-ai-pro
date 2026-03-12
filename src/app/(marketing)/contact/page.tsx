@@ -6,6 +6,7 @@ import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { getServerDictionary } from "@/i18n/server";
+import { SUPPORT_EMAIL } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "Contact | Anki Cards",
@@ -58,8 +59,8 @@ export default async function ContactPage() {
             </h2>
             <p className="mt-2">
               {zh ? "如需帮助，请联系：" : "For support, contact:"}{" "}
-              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
-                planmyworkday@gmail.com
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
+                {SUPPORT_EMAIL}
               </a>
             </p>
           </section>

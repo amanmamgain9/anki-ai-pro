@@ -5,6 +5,7 @@ import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { getServerDictionary } from "@/i18n/server";
+import { SUPPORT_EMAIL } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "Privacy Notice | Anki Cards",
@@ -112,8 +113,8 @@ export default async function PrivacyPage() {
             </h2>
             <p className="mt-2">
               {zh ? "如有隐私相关请求或问题，请联系：" : "For privacy requests or questions, contact:"}{" "}
-              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
-                planmyworkday@gmail.com
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
+                {SUPPORT_EMAIL}
               </a>
             </p>
           </section>

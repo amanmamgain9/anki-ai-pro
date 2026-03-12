@@ -43,13 +43,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as { plan?: unknown };
+    const body = (await request.json()) as { plan?: unknown; acceptedPolicies?: unknown };
     const plan = parseBillingPlan(body.plan);
     if (!plan) {
       return NextResponse.json(
         {
           error:
             "Invalid plan. Expected one of: 'pro_monthly', 'pro_yearly', 'pro_plus_monthly', 'pro_plus_yearly'.",
+        },
+        { status: 400 },
+      );
+    }
+    if (body.acceptedPolicies !== true) {
+      return NextResponse.json(
+        {
+          error:
+            "You must confirm agreement to the Terms of Service, Privacy Notice, and Refund Policy before checkout.",
         },
         { status: 400 },
       );

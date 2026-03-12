@@ -41,6 +41,7 @@ export default function SettingsView() {
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [planAvailability, setPlanAvailability] = useState<PlanAvailability>(
     DEFAULT_PLAN_AVAILABILITY,
   );
@@ -80,10 +81,17 @@ export default function SettingsView() {
     setBillingError(null);
     setBusyAction(plan);
     try {
+      if (!acceptedPolicies) {
+        throw new Error(
+          zh
+            ? "结账前请先确认你已阅读并同意服务条款、隐私政策和退款政策。"
+            : "Before checkout, confirm that you agree to the Terms of Service, Privacy Notice, and Refund Policy.",
+        );
+      }
       const response = await fetch("/api/paddle/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, acceptedPolicies: true }),
       });
       const payload = (await response.json()) as { checkoutUrl?: string; error?: string };
       if (!response.ok || !payload.checkoutUrl) {
@@ -271,6 +279,29 @@ export default function SettingsView() {
                 )}
               </div>
             </div>
+            <label className="mt-4 flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-3 text-sm text-[var(--color-text-secondary)]">
+              <input
+                type="checkbox"
+                checked={acceptedPolicies}
+                onChange={(e) => setAcceptedPolicies(e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span>
+                {zh ? "我已阅读并同意 " : "I have read and agree to the "}
+                <Link href="/terms" className="text-[var(--color-accent)] hover:underline">
+                  {zh ? "服务条款" : "Terms of Service"}
+                </Link>
+                {zh ? "、" : ", "}
+                <Link href="/privacy" className="text-[var(--color-accent)] hover:underline">
+                  {zh ? "隐私政策" : "Privacy Notice"}
+                </Link>
+                {zh ? " 和 " : ", and the "}
+                <Link href="/refund-policy" className="text-[var(--color-accent)] hover:underline">
+                  {zh ? "退款政策" : "Refund Policy"}
+                </Link>
+                .
+              </span>
+            </label>
           </div>
         </div>
       )}

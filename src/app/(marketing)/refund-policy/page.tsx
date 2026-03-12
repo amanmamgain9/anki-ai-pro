@@ -5,6 +5,7 @@ import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { getServerDictionary } from "@/i18n/server";
+import { SUPPORT_EMAIL } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "Refund Policy | Anki Cards",
@@ -106,8 +107,8 @@ export default async function RefundPolicyPage() {
             </p>
             <p className="mt-2">
               {zh ? "请发送邮件至 " : "Email "}{" "}
-              <a href="mailto:planmyworkday@gmail.com" className="text-[var(--color-accent)] hover:underline">
-                planmyworkday@gmail.com
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
+                {SUPPORT_EMAIL}
               </a>{" "}
               {zh
                 ? "并附上 Paddle 收据号与账户邮箱。我们通常会在 1 个工作日内回复。"
