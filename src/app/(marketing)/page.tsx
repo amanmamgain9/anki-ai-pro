@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -7,6 +8,31 @@ import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { getServerDictionary } from "@/i18n/server";
+import {
+  SITE_ALTERNATE_NAME,
+  SITE_DESCRIPTION,
+  SITE_LOGO_URL,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "AI Flashcards for Study, Recall, and Exam Prep",
+  description: SITE_DESCRIPTION,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+  },
+  twitter: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+};
 
 export default async function MarketingHome() {
   const session = await getServerSession(authOptions);
@@ -16,9 +42,37 @@ export default async function MarketingHome() {
   const stories = dict.marketing.home.stories;
   const cohorts = dict.marketing.home.cohorts;
   const features = dict.marketing.home.features;
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAME,
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      inLanguage: locale === "zh" ? "zh-CN" : "en",
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: {
+        "@type": "ImageObject",
+        url: SITE_LOGO_URL,
+        width: 512,
+        height: 512,
+      },
+      image: SITE_LOGO_URL,
+    },
+  ];
 
   return (
     <div className="flex min-h-dvh flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       {/* ── Nav ─────────────────────────────────────── */}
       <header className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">

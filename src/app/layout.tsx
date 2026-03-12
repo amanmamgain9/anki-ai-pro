@@ -5,6 +5,13 @@ import { LocaleProvider } from "@/i18n/client";
 import { getServerLocale } from "@/i18n/server";
 import AuthSessionProvider from "@/components/AuthSessionProvider";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
+import {
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_LOGO_PATH,
+  SITE_NAME,
+  SITE_URL,
+} from "@/lib/site";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -19,8 +26,46 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Anki Flashcards",
-  description: "Markdown + Mermaid flashcards with real-time sync.",
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
+  title: {
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  keywords: SITE_KEYWORDS,
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180" }],
+    shortcut: ["/favicon.ico"],
+  },
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: SITE_LOGO_PATH,
+        width: 512,
+        height: 512,
+        alt: `${SITE_NAME} logo`,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [SITE_LOGO_PATH],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 const themeScript = `
