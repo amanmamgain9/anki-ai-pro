@@ -49,6 +49,20 @@ export default defineSchema({
     rawBody: v.optional(v.string()),
   }).index("by_eventId", ["eventId"]),
 
+  billingPlanPrices: defineTable({
+    plan: v.string(),
+    tier: v.string(),
+    interval: v.string(),
+    trialEligible: v.boolean(),
+    paddlePriceId: v.string(),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_plan", ["plan"])
+    .index("by_priceId", ["paddlePriceId"])
+    .index("by_active_plan", ["active", "plan"]),
+
   magicLinks: defineTable({
     tokenHash: v.string(),
     userId: v.string(),

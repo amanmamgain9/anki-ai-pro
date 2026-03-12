@@ -2,6 +2,7 @@ import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric, queryGeneric } from "convex/server";
 import type { Id } from "./_generated/dataModel";
+import { resolveBillingTierByPriceId } from "./billingPlans";
 
 type AuthCtx = {
   auth: {
@@ -74,7 +75,6 @@ function pickEffectiveSubscription<T extends { status?: string | null }>(rows: T
   return rows[0] ?? null;
 }
 
-type BillingTier = "free" | "pro" | "pro_plus";
 const DAY_MS = 86_400_000;
 const PREMIUM_TTS_FEATURE = "premium_tts";
 const SUPPORT_OPERATOR_EMAILS = new Set([
@@ -82,32 +82,6 @@ const SUPPORT_OPERATOR_EMAILS = new Set([
   "support@example.com",
   "planmyworkday@gmail.com",
 ]);
-
-function getTierFromPriceId(priceId: string | undefined): BillingTier {
-  if (!priceId) return "pro";
-
-  const proPlusPriceIds = new Set(
-    [
-      process.env.PADDLE_PRICE_ID_PRO_PLUS_MONTHLY,
-      process.env.PADDLE_PRICE_ID_PRO_PLUS_YEARLY,
-    ].filter((value): value is string => Boolean(value)),
-  );
-  if (proPlusPriceIds.has(priceId)) return "pro_plus";
-
-  const proPriceIds = new Set(
-    [
-      process.env.PADDLE_PRICE_ID_PRO_MONTHLY,
-      process.env.PADDLE_PRICE_ID_PRO_YEARLY,
-      process.env.PADDLE_PRICE_ID_MONTHLY,
-      process.env.PADDLE_PRICE_ID_YEARLY,
-    ].filter((value): value is string => Boolean(value)),
-  );
-  if (proPriceIds.size === 0) return "pro";
-  if (proPriceIds.has(priceId)) return "pro";
-
-  // Unknown active paid price IDs default to pro so access is not unexpectedly blocked.
-  return "pro";
-}
 
 function resolveFreeProPlusTrialDays() {
   const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
@@ -512,7 +486,9 @@ export const getMyBilling = queryGeneric({
     const now = Date.now();
     const status = subscription?.status ?? null;
     const isActive = isSubscriptionActive(status);
-    const tier = isActive ? getTierFromPriceId(subscription?.priceId) : "free";
+    const tier = isActive
+      ? await resolveBillingTierByPriceId(ctx.db, subscription?.priceId)
+      : "free";
     const trialDays = resolveFreeProPlusTrialDays();
     const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
     const trialEndsAt = user.trialEndsAt ?? fallbackTrialEndsAt;

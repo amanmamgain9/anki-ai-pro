@@ -1,6 +1,7 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric } from "convex/server";
+import { resolveBillingTierByPriceId } from "./billingPlans";
 
 type AuthCtx = {
   auth: {
@@ -32,30 +33,6 @@ function resolveFreeProPlusTrialDays() {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return 3;
   return Math.max(0, Math.floor(parsed));
-}
-
-function getTierFromPriceId(priceId: string | undefined): BillingTier {
-  if (!priceId) return "pro";
-
-  const proPlusPriceIds = new Set(
-    [
-      process.env.PADDLE_PRICE_ID_PRO_PLUS_MONTHLY,
-      process.env.PADDLE_PRICE_ID_PRO_PLUS_YEARLY,
-    ].filter((value): value is string => Boolean(value)),
-  );
-  if (proPlusPriceIds.has(priceId)) return "pro_plus";
-
-  const proPriceIds = new Set(
-    [
-      process.env.PADDLE_PRICE_ID_PRO_MONTHLY,
-      process.env.PADDLE_PRICE_ID_PRO_YEARLY,
-      process.env.PADDLE_PRICE_ID_MONTHLY,
-      process.env.PADDLE_PRICE_ID_YEARLY,
-    ].filter((value): value is string => Boolean(value)),
-  );
-  if (proPriceIds.size === 0) return "pro";
-  if (proPriceIds.has(priceId)) return "pro";
-  return "pro";
 }
 
 function isSubscriptionActive(status: string | null | undefined) {
@@ -115,7 +92,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
     const tier: BillingTier = trialActive
       ? "pro_plus"
       : isActive
-        ? getTierFromPriceId(subscription?.priceId)
+        ? await resolveBillingTierByPriceId(ctx.db, subscription?.priceId)
         : "free";
 
     const monthKey = getCurrentMonthKey(now);

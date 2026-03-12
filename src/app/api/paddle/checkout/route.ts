@@ -7,7 +7,6 @@ import { parseBillingPlan } from "@/lib/billing-plans";
 import {
   getPaddleClient,
   getPaddleForwardSecret,
-  getPaddlePriceId,
 } from "@/lib/paddle";
 
 const api = anyApi;
@@ -93,7 +92,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const priceId = getPaddlePriceId(plan);
+    const planConfig = (await convex.query(api.billingPlans.getPriceForPlan, {
+      plan,
+    })) as { priceId: string | null; checkoutEnabled: boolean };
+    if (!planConfig.checkoutEnabled || !planConfig.priceId) {
+      return NextResponse.json(
+        { error: `Checkout is not configured for ${plan}` },
+        { status: 503 },
+      );
+    }
+
+    const priceId = planConfig.priceId;
     const paddle = getPaddleClient();
     let customerId = user.paddleCustomerId;
     if (!customerId) {
