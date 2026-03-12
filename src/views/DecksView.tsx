@@ -9,17 +9,20 @@ import { useI18n } from "@/i18n/client";
 const api = anyApi;
 
 type Deck = { _id: string; name: string; description?: string };
+type LinearStudyState = { deckId: string };
 
 export default function DecksView() {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const zh = locale === "zh";
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
+  const linearStudyStates = useQuery(api.study.listLinearStudyStates, {}) as LinearStudyState[] | undefined;
   const removeDeck = useMutation(api.decks.remove);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeck, setConfirmDeck] = useState<Deck | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const deckList: Deck[] = decks ?? [];
+  const activeStudyDecks = new Set((linearStudyStates ?? []).map((state) => String(state.deckId)));
 
   async function confirmDeleteDeck() {
     if (!confirmDeck) return;
@@ -80,7 +83,11 @@ export default function DecksView() {
                   }}
                   className="btn-danger !px-3 !py-1.5 !text-xs disabled:opacity-50">{zh ? "删除" : "Delete"}</button>
                 <div className="ml-auto flex items-center gap-3">
-                  <AppLink href={`/study?deck=${deck._id}`} className="btn-primary !px-3 !py-1.5 !text-xs">{zh ? "学习" : "Study"}</AppLink>
+                  <AppLink href={`/study?deck=${deck._id}`} className="btn-primary !px-3 !py-1.5 !text-xs">
+                    {activeStudyDecks.has(String(deck._id))
+                      ? t("app.study.resumeLearning")
+                      : t("app.study.studyDeck")}
+                  </AppLink>
                   <AppLink href={`/cards?deck=${deck._id}`} className="text-xs font-bold text-[var(--color-accent)] transition hover:underline">{zh ? "卡片 →" : "Cards →"}</AppLink>
                 </div>
               </div>

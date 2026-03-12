@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import {
@@ -9,6 +10,20 @@ const DAY_MS = 86_400_000;
 
 function dayStart(ts: number) {
   return ts - (ts % DAY_MS);
+}
+
+function hashOrderedCardIds(cards: Array<{ _id: unknown }>) {
+  let hash = 2166136261;
+  for (const card of cards) {
+    const value = String(card._id);
+    for (let i = 0; i < value.length; i += 1) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= 124;
+    hash = Math.imul(hash, 16777619);
+  }
+  return `v1-${cards.length}-${(hash >>> 0).toString(36)}`;
 }
 
 /**
@@ -82,6 +97,42 @@ async function listCardsByDeck(
     if (active) visible.push(card);
   }
   return visible.sort((a: any, b: any) => a.createdAt - b.createdAt);
+}
+
+async function assertOwnsDeck(db: any, userId: string, deckId: any) {
+  const deck = await db.get(deckId);
+  if (!deck || deck.userId !== userId || deck.deleted) {
+    return null;
+  }
+  return deck;
+}
+
+async function assertOwnsChat(db: any, userId: string, chatId?: any) {
+  if (!chatId) return null;
+  const chat = await db.get(chatId);
+  if (!chat || chat.userId !== userId) {
+    return null;
+  }
+  return chat;
+}
+
+async function getStudyStateRow(
+  db: any,
+  userId: string,
+  deckId: any,
+  mode: string,
+  sourceChatId?: any,
+) {
+  return await db
+    .query("studyStates")
+    .withIndex("by_user_deck_mode_chat", (q: any) =>
+      q
+        .eq("userId", userId)
+        .eq("deckId", deckId)
+        .eq("mode", mode)
+        .eq("sourceChatId", sourceChatId),
+    )
+    .first();
 }
 
 async function withProgress(db: any, cards: any[]) {
@@ -253,7 +304,147 @@ export const getLinearCards = queryGeneric({
       reviewed: cardsWithProgress.filter(
         ({ progress }) => progress && progress.dueAt > now,
       ).length,
+      orderFingerprint: hashOrderedCardIds(orderedUniqueCards),
     };
+  },
+});
+
+export const getStudyState = queryGeneric({
+  args: {
+    deckId: v.id("decks"),
+    mode: v.string(),
+    sourceChatId: v.optional(v.id("chats")),
+  },
+  handler: async (ctx, { deckId, mode, sourceChatId }) => {
+    const userId = await getEntitledExternalUserId(ctx);
+    if (!userId) return null;
+    const { db } = ctx;
+
+    const deck = await assertOwnsDeck(db, userId, deckId);
+    if (!deck) return null;
+
+    const chat = await assertOwnsChat(db, userId, sourceChatId);
+    if (sourceChatId && !chat) return null;
+
+    const state = await getStudyStateRow(db, userId, deckId, mode, sourceChatId);
+    if (!state) return null;
+
+    return {
+      deckId: state.deckId,
+      mode: state.mode,
+      sourceChatId: state.sourceChatId ?? null,
+      currentCardId: state.currentCardId ?? null,
+      currentIndex: state.currentIndex,
+      totalCards: state.totalCards,
+      orderFingerprint: state.orderFingerprint,
+      startedAt: state.startedAt,
+      lastSeenAt: state.lastSeenAt,
+      completedAt: state.completedAt ?? null,
+    };
+  },
+});
+
+export const listLinearStudyStates = queryGeneric({
+  handler: async (ctx) => {
+    const userId = await getEntitledExternalUserId(ctx);
+    if (!userId) return [];
+    const { db } = ctx;
+
+    const rows = await db
+      .query("studyStates")
+      .withIndex("by_user_mode_updatedAt", (q: any) =>
+        q.eq("userId", userId).eq("mode", "linear"),
+      )
+      .order("desc")
+      .collect();
+
+    const seen = new Set<string>();
+    const active: any[] = [];
+    for (const row of rows) {
+      if (row.completedAt || !row.currentCardId) continue;
+      const key = `${String(row.deckId)}:${row.sourceChatId ? String(row.sourceChatId) : ""}`;
+      if (seen.has(key)) continue;
+      const deck = await db.get(row.deckId);
+      if (!deck || deck.userId !== userId || deck.deleted) continue;
+      seen.add(key);
+      active.push({
+        deckId: row.deckId,
+        sourceChatId: row.sourceChatId ?? null,
+        currentCardId: row.currentCardId,
+        currentIndex: row.currentIndex,
+        totalCards: row.totalCards,
+        lastSeenAt: row.lastSeenAt,
+      });
+    }
+
+    return active;
+  },
+});
+
+export const saveStudyState = mutationGeneric({
+  args: {
+    deckId: v.id("decks"),
+    mode: v.string(),
+    sourceChatId: v.optional(v.id("chats")),
+    currentCardId: v.optional(v.id("cards")),
+    currentIndex: v.number(),
+    totalCards: v.number(),
+    orderFingerprint: v.string(),
+    completed: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    { deckId, mode, sourceChatId, currentCardId, currentIndex, totalCards, orderFingerprint, completed },
+  ) => {
+    const userId = await requireEntitledExternalUserId(ctx);
+    const { db } = ctx;
+
+    const deck = await assertOwnsDeck(db, userId, deckId);
+    if (!deck) {
+      throw new Error("Deck not found");
+    }
+
+    const chat = await assertOwnsChat(db, userId, sourceChatId);
+    if (sourceChatId && !chat) {
+      throw new Error("Chat not found");
+    }
+
+    if (currentCardId) {
+      const card = await db.get(currentCardId);
+      if (!card || card.userId !== userId) {
+        throw new Error("Card not found");
+      }
+    }
+
+    const existing = await getStudyStateRow(db, userId, deckId, mode, sourceChatId);
+    const now = Date.now();
+    const safeIndex = Math.max(0, Math.round(currentIndex));
+    const safeTotal = Math.max(0, Math.round(totalCards));
+    const isCompleted = Boolean(completed);
+
+    const payload = {
+      currentCardId: isCompleted ? undefined : currentCardId,
+      currentIndex: isCompleted ? safeTotal : safeIndex,
+      totalCards: safeTotal,
+      orderFingerprint,
+      lastSeenAt: now,
+      updatedAt: now,
+      completedAt: isCompleted ? now : undefined,
+    };
+
+    if (existing) {
+      await db.patch(existing._id, payload);
+      return existing._id;
+    }
+
+    return await db.insert("studyStates", {
+      userId,
+      deckId,
+      mode,
+      sourceChatId,
+      startedAt: now,
+      ...payload,
+    });
   },
 });
 

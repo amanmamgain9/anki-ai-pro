@@ -197,6 +197,24 @@ export default defineSchema({
     .index("by_user_reviewedAt", ["userId", "reviewedAt"])
     .index("by_user_dayStart", ["userId", "dayStart"]),
 
+  studyStates: defineTable({
+    userId: v.string(),
+    deckId: v.id("decks"),
+    mode: v.string(),
+    sourceChatId: v.optional(v.id("chats")),
+    currentCardId: v.optional(v.id("cards")),
+    currentIndex: v.number(),
+    totalCards: v.number(),
+    orderFingerprint: v.string(),
+    startedAt: v.number(),
+    lastSeenAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user_deck_mode_chat", ["userId", "deckId", "mode", "sourceChatId"])
+    .index("by_user_mode_updatedAt", ["userId", "mode", "updatedAt"])
+    .index("by_user_deck_updatedAt", ["userId", "deckId", "updatedAt"]),
+
   voiceSessions: defineTable({
     userId: v.string(),
     deckId: v.optional(v.id("decks")),

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { anyApi } from "convex/server";
@@ -14,6 +15,16 @@ type Deck = { _id: string; name: string };
 type DueCard = { _id: string; front: string; back: string };
 type Card = { _id: string; front: string; back: string };
 type StudyMode = "smart" | "linear";
+type LinearStudyState = {
+  deckId: string;
+  sourceChatId: string | null;
+  currentCardId: string | null;
+  currentIndex: number;
+  totalCards: number;
+  orderFingerprint: string;
+  lastSeenAt: number;
+  completedAt: number | null;
+};
 type BillingState = {
   isActive: boolean;
   plan: "free" | "pro" | "pro_plus";
@@ -95,16 +106,15 @@ export default function StudyView() {
   const deckId = searchParams.get("deck") || undefined;
   const sourceChatId = searchParams.get("chat") || undefined;
   const modeParam = searchParams.get("mode");
-  const mode: StudyMode = modeParam === "linear" || (!modeParam && !!sourceChatId)
-    ? "linear"
-    : "smart";
-  const isLinearMode = mode === "linear";
-  const ratings = [
-    { label: t("app.study.ratings.again.label"), quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: t("app.study.ratings.again.desc") },
-    { label: t("app.study.ratings.hard.label"), quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: t("app.study.ratings.hard.desc") },
-    { label: t("app.study.ratings.good.label"), quality: 2, color: "#10b981", border: "rgba(16,185,129,0.45)", desc: t("app.study.ratings.good.desc") },
-    { label: t("app.study.ratings.easy.label"), quality: 3, color: "#8b5cf6", border: "rgba(139,92,246,0.45)", desc: t("app.study.ratings.easy.desc") },
-  ] as const;
+  const ratings = useMemo(
+    () => [
+      { label: t("app.study.ratings.again.label"), quality: 0, color: "#ef4444", border: "rgba(239,68,68,0.45)", desc: t("app.study.ratings.again.desc") },
+      { label: t("app.study.ratings.hard.label"), quality: 1, color: "#f59e0b", border: "rgba(245,158,11,0.45)", desc: t("app.study.ratings.hard.desc") },
+      { label: t("app.study.ratings.good.label"), quality: 2, color: "#10b981", border: "rgba(16,185,129,0.45)", desc: t("app.study.ratings.good.desc") },
+      { label: t("app.study.ratings.easy.label"), quality: 3, color: "#8b5cf6", border: "rgba(139,92,246,0.45)", desc: t("app.study.ratings.easy.desc") },
+    ] as const,
+    [t],
+  );
 
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
   const billing = useQuery(api.billing.getMyBilling, {}) as BillingState | undefined;
@@ -113,6 +123,7 @@ export default function StudyView() {
   const [animating, setAnimating] = useState(false);
   const [sessionDone, setSessionDone] = useState(0);
   const [linearIndex, setLinearIndex] = useState(0);
+  const [linearResumeReady, setLinearResumeReady] = useState(false);
   const [showAllView, setShowAllView] = useState(false);
   const [showTutorPanel, setShowTutorPanel] = useState(false);
   const [selectedTutorChatId, setSelectedTutorChatId] = useState<string | null>(null);
@@ -128,6 +139,21 @@ export default function StudyView() {
   const closeAfterReplyRef = useRef(false);
   const tutorDictationRef = useRef<any>(null);
   const voiceModeRef = useRef(false);
+  const linearStudyState = useQuery(
+    api.study.getStudyState,
+    deckId
+      ? {
+          deckId: deckId as any,
+          mode: "linear",
+          sourceChatId: sourceChatId ? (sourceChatId as any) : undefined,
+        }
+      : "skip",
+  ) as LinearStudyState | null | undefined;
+  const hasLinearResume = Boolean(linearStudyState && !linearStudyState.completedAt);
+  const mode: StudyMode = modeParam === "linear" || (!modeParam && (!!sourceChatId || hasLinearResume))
+    ? "linear"
+    : "smart";
+  const isLinearMode = mode === "linear";
 
   // Only fetch the active study source based on mode
   const dueData = useQuery(
@@ -142,7 +168,18 @@ export default function StudyView() {
           chatId: sourceChatId ? (sourceChatId as any) : undefined,
         }
       : "skip",
-  ) as { due: DueCard[]; total: number; reviewed: number } | undefined;
+  ) as { due: DueCard[]; total: number; reviewed: number; orderFingerprint: string } | undefined;
+  const activeLinearStudyStates = useQuery(
+    api.study.listLinearStudyStates,
+    {},
+  ) as Array<{
+    deckId: string;
+    sourceChatId: string | null;
+    currentCardId: string;
+    currentIndex: number;
+    totalCards: number;
+    lastSeenAt: number;
+  }> | undefined;
   const activeData = isLinearMode ? linearData : dueData;
   const allCards = useQuery(
     api.flashcards.list,
@@ -150,10 +187,11 @@ export default function StudyView() {
   ) as Card[] | undefined;
 
   useEffect(() => {
-    setLinearIndex(0);
     setSessionDone(0);
     setFlipped(false);
-  }, [deckId, mode, sourceChatId]);
+    setLinearIndex(0);
+    setLinearResumeReady(!isLinearMode);
+  }, [deckId, isLinearMode, mode, sourceChatId]);
 
   const statsAllDecks = useQuery(api.study.getSessionStats, {}) as
     | { total: number; newCount: number; dueCount: number; reviewedToday: number }
@@ -162,14 +200,61 @@ export default function StudyView() {
     | HeatmapData
     | undefined;
   const recordReview = useMutation(api.study.recordReview);
+  const saveStudyState = useMutation(api.study.saveStudyState);
   const startTutorChat = useMutation(api.cardChats.start);
   const appendTutorTurn = useMutation(api.cardChats.appendTurn);
   const completeTutorChat = useMutation(api.cardChats.complete);
 
-  const linearCards = linearData?.due ?? [];
+  const linearCards = useMemo(() => linearData?.due ?? [], [linearData]);
   const allCardsList = allCards ?? [];
+  const linearStateByDeck = useMemo(
+    () => new Map((activeLinearStudyStates ?? []).map((state) => [String(state.deckId), state])),
+    [activeLinearStudyStates],
+  );
+
+  useEffect(() => {
+    if (!isLinearMode) {
+      setLinearResumeReady(true);
+      return;
+    }
+    if (!deckId || !linearData) return;
+
+    if (linearCards.length === 0) {
+      setLinearIndex(0);
+      setLinearResumeReady(true);
+      return;
+    }
+
+    if (linearStudyState?.completedAt) {
+      setLinearIndex(0);
+      setLinearResumeReady(true);
+      return;
+    }
+
+    let nextIndex = 0;
+    if (linearStudyState?.currentCardId) {
+      const exactIndex = linearCards.findIndex((card) => card._id === linearStudyState.currentCardId);
+      if (exactIndex >= 0) {
+        nextIndex = exactIndex;
+      } else if (linearStudyState.currentIndex > 0) {
+        nextIndex = Math.min(
+          Math.max(0, linearStudyState.currentIndex),
+          Math.max(0, linearCards.length - 1),
+        );
+      }
+    } else if (linearStudyState && linearStudyState.currentIndex > 0) {
+      nextIndex = Math.min(
+        Math.max(0, linearStudyState.currentIndex),
+        Math.max(0, linearCards.length - 1),
+      );
+    }
+
+    setLinearIndex(nextIndex);
+    setLinearResumeReady(true);
+  }, [deckId, isLinearMode, linearCards, linearData, linearStudyState]);
+
   const currentCard = isLinearMode
-    ? linearCards[linearIndex] ?? null
+    ? (linearResumeReady ? linearCards[linearIndex] ?? null : null)
     : dueData?.due[0] ?? null;
   const tutorChats = useQuery(
     api.cardChats.listForCard,
@@ -180,7 +265,7 @@ export default function StudyView() {
     selectedTutorChatId ? { id: selectedTutorChatId as any } : "skip",
   ) as TutorChatDetail | undefined;
   const remaining = isLinearMode
-    ? Math.max(0, linearCards.length - linearIndex)
+    ? (linearResumeReady ? Math.max(0, linearCards.length - linearIndex) : 0)
     : dueData
       ? dueData.due.length
       : 0;
@@ -197,6 +282,47 @@ export default function StudyView() {
       ? (Math.min(linearIndex, activeData.total) / activeData.total) * 100
       : ((activeData.reviewed + sessionDone) / activeData.total) * 100
     : 0;
+
+  useEffect(() => {
+    if (!isLinearMode || !deckId || !linearResumeReady || !linearData) return;
+    const orderFingerprint = linearData.orderFingerprint;
+    if (linearCards.length === 0) return;
+
+    if (linearIndex >= linearCards.length) {
+      void saveStudyState({
+        deckId: deckId as any,
+        mode: "linear",
+        sourceChatId: sourceChatId ? (sourceChatId as any) : undefined,
+        currentIndex: linearCards.length,
+        totalCards: linearCards.length,
+        orderFingerprint,
+        completed: true,
+      });
+      return;
+    }
+
+    const activeCard = linearCards[linearIndex];
+    if (!activeCard) return;
+    void saveStudyState({
+      deckId: deckId as any,
+      mode: "linear",
+      sourceChatId: sourceChatId ? (sourceChatId as any) : undefined,
+      currentCardId: activeCard._id as any,
+      currentIndex: linearIndex,
+      totalCards: linearCards.length,
+      orderFingerprint,
+      completed: false,
+    });
+  }, [
+    deckId,
+    isLinearMode,
+    linearCards,
+    linearData,
+    linearIndex,
+    linearResumeReady,
+    saveStudyState,
+    sourceChatId,
+  ]);
 
   const heatWeeks = useMemo(() => {
     if (!heatmap?.days?.length) return [] as Array<Array<HeatCell | null>>;
@@ -605,8 +731,7 @@ export default function StudyView() {
       const query = new URLSearchParams(searchParams.toString());
       query.set("deck", deckId);
       query.delete("draft");
-      if (nextMode === "linear") query.set("mode", "linear");
-      else query.delete("mode");
+      query.set("mode", nextMode);
       navigate(`/study?${query.toString()}`);
     },
     [deckId, interruptVoiceTurn, navigate, searchParams],
@@ -774,7 +899,11 @@ export default function StudyView() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{deck.name}</p>
-                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{t("app.study.tapToStudy")}</p>
+                  <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
+                    {linearStateByDeck.has(String(deck._id))
+                      ? t("app.study.tapToResume")
+                      : t("app.study.tapToStudy")}
+                  </p>
                 </div>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                   className="shrink-0 text-[var(--color-text-tertiary)] transition group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]">
@@ -911,7 +1040,9 @@ export default function StudyView() {
       )}
 
       <div className={`flex flex-1 flex-col items-center ${currentCard ? "justify-start pt-2" : "justify-center"}`}>
-        {!activeData && <p className="text-[var(--color-text-secondary)]">{t("app.study.loadingCards")}</p>}
+        {(!activeData || (isLinearMode && !linearResumeReady)) && (
+          <p className="text-[var(--color-text-secondary)]">{t("app.study.loadingCards")}</p>
+        )}
 
         {activeData && remaining === 0 && (
           <div className="card-surface mx-auto flex w-full max-w-lg flex-col items-center px-6 py-16 text-center">
