@@ -53,61 +53,56 @@ export default async function RefundPolicyPage() {
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "1. 试用说明" : "1. Trial"}
+              {zh ? "1. Paddle 作为 Merchant of Record" : "1. Paddle as Merchant of Record"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "我们为 Pro+ 提供 3 天试用。试用结束后，如未取消，订阅将按所选计费周期（月付或年付）续费。"
-                : "We offer a 3-day trial for Pro+. After the trial ends, the subscription renews on the selected billing cycle (monthly or yearly) unless canceled before renewal."}
+                ? "aiankipro.com 上的付款由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 是 Merchant of Record。"
+                : "Payments on aiankipro.com are processed by Paddle. For purchases completed through Paddle, Paddle acts as the Merchant of Record."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "2. 订阅收费" : "2. Subscription Charges"}
+              {zh ? "2. 退款请求" : "2. Refund Requests"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "付费方案按周期预先扣费，若未在下一个计费日前取消，则会自动续费。"
-                : "Paid plans are charged in advance and renew automatically unless canceled before the next billing date."}
+                ? "退款由 Paddle 按个案酌情处理。若 Paddle 发现欺诈、退款滥用或其他操纵行为，可能拒绝退款请求。"
+                : "Refunds are provided at Paddle's sole discretion, on a case-by-case basis, and may be refused. Paddle may refuse a refund request where there is evidence of fraud, refund abuse, or other manipulative behaviour."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "3. 退款资格" : "3. Refund Eligibility"}
+              {zh ? "3. 消费者法定权利" : "3. Consumer Rights"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "试用结束后的首笔订阅收费，可在收费后 14 天内申请退款。"
-                : "The first paid subscription charge after trial conversion is eligible for a refund if requested within 14 days of that charge."}
+                ? "本政策不会影响你作为消费者就“与描述不符、存在缺陷或不适合其用途”的产品所享有的法定权利。"
+                : "This policy does not affect your statutory rights as a consumer in relation to products or services that are not as described, faulty, or not fit for purpose."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "4. 续费与部分周期规则" : "4. Renewals and Partial-Period Rules"}
+              {zh ? "4. 取消订阅" : "4. Subscription Cancellations"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "续费款项通常不退款，且不提供按未使用时长比例退款。"
-                : "Renewal charges are generally non-refundable, and we do not provide prorated refunds for unused time in a billing period."}
-            </p>
-            <p className="mt-2">
-              {zh
-                ? "如遇重复扣费、未经授权付款、技术性账单错误，或适用法律另有要求的情况，我们会按个案处理。"
-                : "We will review exceptions for duplicate charges, unauthorized payments, technical billing errors, or where refunds are required by applicable law."}
+                ? "你可随时取消订阅以停止未来续费。取消后，当前已付费订阅期内的访问权限将持续至该计费周期结束。"
+                : "You may cancel your subscription at any time to stop future renewals. After cancellation, access continues until the end of the current paid billing period."}
             </p>
           </section>
 
           <section>
             <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "5. 取消与账单支持" : "5. Cancellation and Billing Support"}
+              {zh ? "5. 联系方式与账单支持" : "5. Contact and Billing Support"}
             </h2>
             <p className="mt-2">
               {zh
-                ? "你可随时取消订阅。取消后可继续使用至当前计费周期结束，之后不再自动续费。"
-                : "You may cancel at any time. Access continues until the end of the current billing period, after which the subscription will not renew."}
+                ? "如需账单协助或希望就退款请求获得帮助，请附上 Paddle 收据号与账户邮箱联系我们。"
+                : "If you need billing assistance or help with a refund request, contact us with your Paddle receipt number and account email."}
             </p>
             <p className="mt-2">
               {zh ? "请发送邮件至 " : "Email "}{" "}
