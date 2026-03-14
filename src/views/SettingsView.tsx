@@ -10,9 +10,7 @@ import { useI18n } from "@/i18n/client";
 const api = anyApi;
 type CheckoutPlan =
   | "pro_monthly"
-  | "pro_yearly"
-  | "pro_plus_monthly"
-  | "pro_plus_yearly";
+  | "pro_plus_monthly";
 type BillingState = {
   isActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
@@ -28,9 +26,7 @@ type PlanAvailability = Record<CheckoutPlan, boolean>;
 
 const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
   pro_monthly: true,
-  pro_yearly: true,
   pro_plus_monthly: true,
-  pro_plus_yearly: true,
 };
 
 export default function SettingsView() {
@@ -207,7 +203,7 @@ export default function SettingsView() {
               <div>
                 <h3 className="text-base font-bold">{zh ? "选择套餐" : "Choose your plan"}</h3>
                 <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                  {zh ? "选择结算周期后将跳转到 Paddle 结账页面。" : "Pick a billing cycle to continue to Paddle checkout."}
+                  {zh ? "确认后将跳转到 Paddle 结账页面。" : "Continue to Paddle checkout."}
                 </p>
               </div>
               <button
@@ -223,27 +219,19 @@ export default function SettingsView() {
               <div className="rounded-xl border border-[var(--color-border)] p-3">
                 <p className="text-sm font-semibold">{zh ? "Pro" : "Pro"}</p>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$8 / 月" : "$8 / month"}</p>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3">
                   <button
                     type="button"
                     onClick={() => startCheckout("pro_monthly")}
                     className="btn-primary !px-3 !py-1.5 !text-xs"
                     disabled={busyAction !== null || !planAvailability.pro_monthly}
                   >
-                    {busyAction === "pro_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startCheckout("pro_yearly")}
-                    className="btn-secondary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null || !planAvailability.pro_yearly}
-                  >
-                    {busyAction === "pro_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
+                    {busyAction === "pro_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "开始 Pro" : "Start Pro")}
                   </button>
                 </div>
-                {(!planAvailability.pro_monthly || !planAvailability.pro_yearly) && (
+                {!planAvailability.pro_monthly && (
                   <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
-                    {zh ? "部分结算周期暂不可用" : "Some billing cycles are currently unavailable"}
+                    {zh ? "当前不可结账" : "Checkout is currently unavailable"}
                   </p>
                 )}
               </div>
@@ -254,27 +242,19 @@ export default function SettingsView() {
                 <p className="mt-1 text-[11px] text-[var(--color-accent)]">
                   {zh ? "含 3 天免费试用" : "Includes 3-day free trial"}
                 </p>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3">
                   <button
                     type="button"
                     onClick={() => startCheckout("pro_plus_monthly")}
                     className="btn-primary !px-3 !py-1.5 !text-xs"
                     disabled={busyAction !== null || !planAvailability.pro_plus_monthly}
                   >
-                    {busyAction === "pro_plus_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "月付" : "Monthly")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startCheckout("pro_plus_yearly")}
-                    className="btn-secondary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null || !planAvailability.pro_plus_yearly}
-                  >
-                    {busyAction === "pro_plus_yearly" ? (zh ? "打开中..." : "Opening...") : (zh ? "年付" : "Yearly")}
+                    {busyAction === "pro_plus_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "开始 Pro+" : "Start Pro+")}
                   </button>
                 </div>
-                {(!planAvailability.pro_plus_monthly || !planAvailability.pro_plus_yearly) && (
+                {!planAvailability.pro_plus_monthly && (
                   <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
-                    {zh ? "部分结算周期暂不可用" : "Some billing cycles are currently unavailable"}
+                    {zh ? "当前不可结账" : "Checkout is currently unavailable"}
                   </p>
                 )}
               </div>

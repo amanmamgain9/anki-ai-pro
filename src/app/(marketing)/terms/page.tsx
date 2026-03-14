@@ -87,7 +87,7 @@ export default async function TermsPage() {
             <p className="mt-2">
               {zh
                 ? "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供 Pro 与 Pro+ 的月付和年付方案。新用户可获得 3 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。"
-                : "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly and yearly Pro and Pro+ plans. New users receive a 3-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal."}
+                : "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. New users receive a 3-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal."}
             </p>
           </section>
 
