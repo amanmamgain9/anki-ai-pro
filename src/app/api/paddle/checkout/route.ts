@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as { plan?: unknown; acceptedPolicies?: unknown };
+    const body = (await request.json()) as { plan?: unknown };
     const plan = parseBillingPlan(body.plan);
     if (!plan) {
       return NextResponse.json(
@@ -48,16 +48,6 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (body.acceptedPolicies !== true) {
-      return NextResponse.json(
-        {
-          error:
-            "You must confirm agreement to the Terms of Service, Privacy Notice, and Refund Policy before checkout.",
-        },
-        { status: 400 },
-      );
-    }
-
     const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
     if (!convexUrl) {
       return NextResponse.json(
