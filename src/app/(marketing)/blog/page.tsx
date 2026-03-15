@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default async function BlogIndexPage() {
   const { dict, locale } = await getServerDictionary();
-  const zh = locale === "zh";
+  const blog = dict.marketing.blogIndex;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -45,36 +45,30 @@ export default async function BlogIndexPage() {
 
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-12 sm:px-6 sm:py-14">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--color-accent)]">
-          {zh ? "博客" : "Blog"}
+          {blog.badge}
         </p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-          {zh ? "学习系统设计与实战" : "Learning Systems, Built for Real Life"}
+          {blog.title}
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--color-text-secondary)] sm:text-base">
-          {zh
-            ? "关于如何把碎片时间变成稳定学习习惯。"
-            : "Practical ideas for turning scattered screen time into consistent learning progress."}
+          {blog.subtitle}
         </p>
 
         <div className="mt-10 border-y border-[var(--color-border)]">
           <article className="py-7">
             <div className="flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
-              <span>{zh ? "2026-03-02" : "March 2, 2026"}</span>
+              <span>{blog.date}</span>
               <span aria-hidden>•</span>
-              <span>{zh ? "用户故事" : "User story"}</span>
+              <span>{blog.category}</span>
             </div>
             <h2 className="mt-2 text-2xl font-bold tracking-tight">
-              {zh
-                ? "我如何在睡前用 AnkiPro 音频学习，替代刷屏"
-                : "I Started Learning in Bed Instead of Doom Scrolling"}
+              {blog.articleTitle}
             </h2>
             <p className="mt-3 text-base leading-relaxed text-[var(--color-text-secondary)]">
-              {zh
-                ? "一个真实夜间学习故事：把“再刷十分钟”换成“再复习十分钟”，结果是更稳定的学习与更平静的睡前状态。"
-                : "A first-person story about replacing late-night scrolling with audio flashcard sessions and how that changed my sleep and consistency."}
+              {blog.articleDesc}
             </p>
             <Link href="/blog/sleep-learning-audio" className="mt-4 inline-flex text-sm font-semibold text-[var(--color-accent)] hover:underline">
-              {zh ? "阅读全文 →" : "Read full story →"}
+              {blog.readMore}
             </Link>
           </article>
         </div>

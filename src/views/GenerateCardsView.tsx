@@ -12,6 +12,8 @@ import {
 } from "react";
 import { useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
+import { dictionaries, type Locale } from "@/i18n/messages";
+import { generateChatKeywords } from "@/i18n/non-ui-text";
 
 const api = anyApi;
 const DEFAULT_COUNT = 20;
@@ -62,45 +64,33 @@ type ChatAction =
   | { kind: "saveNow" }
   | { kind: "openEditor" };
 
-const starterTopics = [
-  "JavaScript closures",
-  "Operating systems memory management",
-  "Probability for machine learning",
-  "Indian polity basics",
-];
-
 function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function levelLabel(level: Level, zh: boolean) {
-  if (!zh) return level;
-  if (level === "beginner") return "初学";
-  if (level === "intermediate") return "中级";
-  return "高级";
+function levelLabel(level: Level, t: (path: string, params?: Record<string, string | number>) => string) {
+  return t(`app.generate.level.${level}`);
 }
 
-function introText(zh: boolean) {
-  return zh
-    ? "告诉我你想学什么。我会尽量少问问题，尽快给你可编辑草稿。"
-    : "Tell me what you want to learn. I will ask as little as possible and get you to an editable draft fast.";
+function introText(t: (path: string, params?: Record<string, string | number>) => string) {
+  return t("app.generate.intro");
 }
 
-function defaultDeckName(topic: string, zh: boolean) {
-  return `${topic}${zh ? " 牌组" : " Deck"}`;
+function defaultDeckName(topic: string, t: (path: string, params?: Record<string, string | number>) => string) {
+  return `${topic}${t("app.generate.deckSuffix")}`;
 }
 
 function parseLevelFromText(raw: string): Level | null {
   const txt = raw.trim().toLowerCase();
   if (!txt) return null;
-  if (txt.includes("beginner") || txt.includes("basic") || txt.includes("初")) return "beginner";
-  if (txt.includes("intermediate") || txt.includes("medium") || txt.includes("中级")) return "intermediate";
-  if (txt.includes("advanced") || txt.includes("hard") || txt.includes("高级")) return "advanced";
+  if (generateChatKeywords.beginnerLevel.some((term) => txt.includes(term))) return "beginner";
+  if (generateChatKeywords.intermediateLevel.some((term) => txt.includes(term))) return "intermediate";
+  if (generateChatKeywords.advancedLevel.some((term) => txt.includes(term))) return "advanced";
   return null;
 }
 
 function parseCountFromText(raw: string): number | null {
-  const match = raw.match(/(\d{1,2})\s*(cards?|flashcards?|张)/i);
+  const match = raw.match(generateChatKeywords.cardCountUnits);
   if (!match) return null;
   const value = Number(match[1]);
   if (!Number.isFinite(value)) return null;
@@ -108,11 +98,11 @@ function parseCountFromText(raw: string): number | null {
 }
 
 function hasGenerateIntent(raw: string) {
-  return /(generate|create|start|go|now|生成|开始|来吧|做吧)/i.test(raw);
+  return generateChatKeywords.generateIntent.test(raw);
 }
 
 function hasRegenerateIntent(raw: string) {
-  return /(regenerate|again|rebuild|new draft|from scratch|重新生成|重做|再来)/i.test(raw);
+  return generateChatKeywords.regenerateIntent.test(raw);
 }
 
 function parseChatAction(raw: string, decks: Deck[]): ChatAction | null {
@@ -120,26 +110,26 @@ function parseChatAction(raw: string, decks: Deck[]): ChatAction | null {
   if (!txt) return null;
   const lower = txt.toLowerCase();
 
-  if (/(save now|commit|finali[sz]e|publish|提交|立即保存|保存到题库)/i.test(txt)) {
+  if (generateChatKeywords.saveNowIntent.test(txt)) {
     return { kind: "saveNow" };
   }
 
-  if (/(open editor|open draft|edit draft|打开编辑|编辑草稿|回到编辑)/i.test(txt)) {
+  if (generateChatKeywords.openEditorIntent.test(txt)) {
     return { kind: "openEditor" };
   }
 
   const count = parseCountFromText(txt);
-  if (count && /(cards?|flashcards?|张)/i.test(txt)) {
+  if (count && generateChatKeywords.countIntent.test(txt)) {
     return { kind: "setCount", value: count };
   }
 
-  if (/(new deck|create deck|auto deck|新牌组|自动牌组)/i.test(txt)) {
+  if (generateChatKeywords.autoDeckIntent.test(txt)) {
     const nameByColon = txt.match(/[:：]\s*(.+)$/)?.[1]?.trim();
     const nameByQuote = txt.match(/["“”']([^"“”']+)["“”']/)?.[1]?.trim();
     return { kind: "setSaveAuto", name: nameByColon || nameByQuote || undefined };
   }
 
-  if (/(use deck|existing deck|save to|用牌组|现有牌组|保存到)/i.test(txt)) {
+  if (generateChatKeywords.existingDeckIntent.test(txt)) {
     const sortedDecks = [...decks].sort((a, b) => b.name.length - a.name.length);
     const match = sortedDecks.find((deck) => lower.includes(deck.name.toLowerCase()));
     if (match) return { kind: "setSaveExisting", deckId: match._id, deckName: match.name };
@@ -190,28 +180,20 @@ function IconTune({ className = "h-4 w-4" }: { className?: string }) {
 }
 
 function GenerationDeckAnimation({
-  zh,
   phase,
+  t,
 }: {
-  zh: boolean;
   phase: GenerationPhase;
+  t: (path: string, params?: Record<string, string | number>) => string;
 }) {
   const title =
     phase === "saving"
-      ? zh
-        ? "即将开始学习"
-        : "Almost ready to study"
-      : zh
-        ? "正在为你制作卡片"
-        : "Crafting your cards";
+      ? t("app.generate.animation.almostReady")
+      : t("app.generate.animation.crafting");
   const subtitle =
     phase === "saving"
-      ? zh
-        ? "正在保存卡片并打开学习模式..."
-        : "Saving cards and opening study mode..."
-      : zh
-        ? "AI 正在按子主题构建你的第一套牌组..."
-        : "AI is building your first deck by subtopic...";
+      ? t("app.generate.animation.saving")
+      : t("app.generate.animation.building");
 
   return (
     <div className="onboarding-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
@@ -233,7 +215,8 @@ function GenerationDeckAnimation({
 export default function GenerateCardsView() {
   const { navigate, searchParams } = useAppRouter();
   const { t, locale } = useI18n();
-  const zh = locale === "zh";
+  const localeDict = dictionaries[locale as Locale];
+  const starterTopics = localeDict.app.generate.landing.starterTopics as readonly string[];
 
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
   const onboardingState = useQuery(api.billing.getMyOnboardingState) as
@@ -301,7 +284,7 @@ export default function GenerateCardsView() {
   const [draftDirty, setDraftDirty] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: uid(), role: "assistant", text: introText(zh) },
+    { id: uid(), role: "assistant", text: introText(t) },
   ]);
 
   const deckList = useMemo(() => decks ?? [], [decks]);
@@ -337,8 +320,8 @@ export default function GenerateCardsView() {
     setCommitBusy(false);
     setDraftDirty(false);
     pendingChatIdRef.current = null;
-    setMessages([{ id: uid(), role: "assistant", text: introText(zh) }]);
-  }, [zh]);
+    setMessages([{ id: uid(), role: "assistant", text: introText(t) }]);
+  }, [t]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -385,8 +368,8 @@ export default function GenerateCardsView() {
     );
     setMessages(
       (chatDoc.messages ?? []).length
-        ? (chatDoc.messages ?? [])
-        : [{ id: uid(), role: "assistant", text: introText(zh) }],
+            ? (chatDoc.messages ?? [])
+            : [{ id: uid(), role: "assistant", text: introText(t) }],
     );
     setSavedCount(0);
     setCommitBusy(false);
@@ -397,7 +380,7 @@ export default function GenerateCardsView() {
     pendingChatIdRef.current = requestedChatId;
 
     loadedChatIdRef.current = requestedChatId;
-  }, [requestedChatId, wantsNew, chatDoc, navigate, resetLocal, zh, buildGenerateRoute]);
+  }, [requestedChatId, wantsNew, chatDoc, navigate, resetLocal, t, buildGenerateRoute]);
 
   function addMessage(role: ChatMessage["role"], text: string) {
     setMessages((prev) => [...prev, { id: uid(), role, text }]);
@@ -504,15 +487,13 @@ export default function GenerateCardsView() {
     setWorkspace("coach");
 
     if (saveMode === "auto" && !autoDeckName.trim()) {
-      setAutoDeckName(defaultDeckName(clean, zh));
+      setAutoDeckName(defaultDeckName(clean, t));
     }
 
     addMessage("user", clean);
     addMessage(
       "assistant",
-      zh
-        ? "这个主题很好。你现在是初学、中级，还是高级？"
-        : "Nice topic. What's your level: beginner, intermediate, or advanced?",
+      t("app.generate.topicLevelQuestion"),
     );
   }
 
@@ -534,9 +515,10 @@ export default function GenerateCardsView() {
 
     addMessage(
       "assistant",
-      zh
-        ? `${options?.reason ? `${options.reason}。` : ""}正在生成 ${targetCount} 张卡片草稿...`
-        : `${options?.reason ? `${options.reason}. ` : ""}Generating a ${targetCount}-card draft...`,
+      t("app.generate.generatingDraft", {
+        reason: options?.reason ? t("app.generate.reasonPrefix", { reason: options.reason }) : "",
+        count: targetCount,
+      }),
     );
 
     try {
@@ -557,7 +539,7 @@ export default function GenerateCardsView() {
       };
 
       if (!response.ok || !payload.cards || payload.cards.length === 0) {
-        throw new Error(payload.error ?? (zh ? "生成失败" : "Generation failed"));
+        throw new Error(payload.error ?? t("app.generate.generationFailed"));
       }
 
       const preparedCards = payload.cards
@@ -570,7 +552,7 @@ export default function GenerateCardsView() {
         .filter((card) => card.front && card.back);
 
       if (preparedCards.length === 0) {
-        throw new Error(zh ? "模型返回空卡片" : "Model returned empty cards");
+        throw new Error(t("app.generate.modelReturnedEmpty"));
       }
 
       setPhase("done");
@@ -581,9 +563,7 @@ export default function GenerateCardsView() {
 
       addMessage(
         "assistant",
-        zh
-          ? `草稿完成，共 ${preparedCards.length} 张。正在保存到题库并进入学习...`
-          : `Draft ready with ${preparedCards.length} cards. Saving to your library and opening study...`,
+        t("app.generate.draftReadyAndSaving", { count: preparedCards.length }),
       );
 
       const generationSnapshot = buildSnapshotPayload({
@@ -591,7 +571,7 @@ export default function GenerateCardsView() {
         count: targetCount,
         autoDeckName:
           saveMode === "auto"
-            ? autoDeckName.trim() || defaultDeckName(topic.trim(), zh)
+            ? autoDeckName.trim() || defaultDeckName(topic.trim(), t)
             : undefined,
         cards: preparedCards.map((card) => ({
           front: card.front.trim(),
@@ -608,10 +588,10 @@ export default function GenerateCardsView() {
         markOnboardingComplete: isOnboardingFlow,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : zh ? "生成失败" : "Generation failed";
+      const message = err instanceof Error ? err.message : t("app.generate.generationFailed");
       setError(message);
       setPhase("idle");
-      addMessage("assistant", zh ? `生成失败：${message}` : `Generation failed: ${message}`);
+      addMessage("assistant", t("app.generate.failedPrefix", { message }));
     } finally {
       setBusy(false);
     }
@@ -626,7 +606,7 @@ export default function GenerateCardsView() {
 
     addMessage(
       "assistant",
-      zh ? "收到，正在按你的要求重写草稿..." : "Got it. Rewriting the draft to match your request...",
+      t("app.generate.refineWorking"),
     );
 
     try {
@@ -648,7 +628,7 @@ export default function GenerateCardsView() {
       };
 
       if (!response.ok || !payload.cards || payload.cards.length === 0) {
-        throw new Error(payload.error ?? (zh ? "编辑失败" : "Draft edit failed"));
+        throw new Error(payload.error ?? t("app.generate.draftEditFailed"));
       }
 
       const nextCards = payload.cards
@@ -661,7 +641,7 @@ export default function GenerateCardsView() {
         .filter((card) => card.front && card.back);
 
       if (nextCards.length === 0) {
-        throw new Error(zh ? "编辑后无有效卡片" : "No valid cards after edit");
+        throw new Error(t("app.generate.noValidCardsAfterEdit"));
       }
 
       setCards(nextCards);
@@ -673,15 +653,13 @@ export default function GenerateCardsView() {
         "assistant",
         payload.summary
           ? payload.summary
-          : zh
-            ? "已更新草稿。"
-            : "Draft updated.",
+          : t("app.generate.draftUpdated"),
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : zh ? "编辑失败" : "Draft edit failed";
+      const message = err instanceof Error ? err.message : t("app.generate.draftEditFailed");
       setError(message);
       setPhase("idle");
-      addMessage("assistant", zh ? `编辑失败：${message}` : `Draft edit failed: ${message}`);
+      addMessage("assistant", t("app.generate.failedPrefix", { message }));
     } finally {
       setBusy(false);
     }
@@ -691,7 +669,7 @@ export default function GenerateCardsView() {
     if (!topic.trim() || busy) return;
     setLevel(nextLevel);
     setDraftDirty(true);
-    addMessage("user", levelLabel(nextLevel, zh));
+    addMessage("user", levelLabel(nextLevel, t));
     await generateDraft(nextLevel);
   }
 
@@ -702,7 +680,7 @@ export default function GenerateCardsView() {
     if (!baseTopic) {
       addMessage(
         "assistant",
-        zh ? "先给我一个主题，我就能秒出草稿。" : "Give me a topic first and I can generate instantly.",
+        t("app.generate.quickNeedTopic"),
       );
       return;
     }
@@ -715,7 +693,7 @@ export default function GenerateCardsView() {
       setPhase("idle");
       setDraftDirty(true);
       if (saveMode === "auto" && !autoDeckName.trim()) {
-        setAutoDeckName(defaultDeckName(baseTopic, zh));
+        setAutoDeckName(defaultDeckName(baseTopic, t));
       }
       addMessage("user", baseTopic);
     }
@@ -726,13 +704,11 @@ export default function GenerateCardsView() {
       setDraftDirty(true);
       addMessage(
         "assistant",
-        zh
-          ? `我先用${levelLabel(chosen, zh)}，直接开始。`
-          : `Using ${levelLabel(chosen, zh)} for now and starting immediately.`,
+        t("app.generate.usingDefaultLevel", { level: levelLabel(chosen, t) }),
       );
     }
 
-    await generateDraft(chosen, { reason: zh ? "极速模式" : "Quick mode" });
+    await generateDraft(chosen, { reason: t("app.generate.quickModeReason") });
   }
 
   async function commitDraft(options?: {
@@ -744,9 +720,7 @@ export default function GenerateCardsView() {
     const snapshot = options?.snapshot ?? buildSnapshotPayload();
     if (!snapshot.cards.length || commitBusy) return;
     if (snapshot.saveMode === "existing" && !snapshot.deckId) {
-      const message = zh
-        ? "请先指定要保存的牌组，或切换为自动建牌组。"
-        : "Choose a destination deck first, or switch to auto-create deck.";
+      const message = t("app.generate.chooseDestinationFirst");
       setError(message);
       addMessage("assistant", message);
       return;
@@ -790,16 +764,14 @@ export default function GenerateCardsView() {
       if (!options?.suppressSavedMessage) {
         addMessage(
           "assistant",
-          zh
-            ? `已保存 ${result.created} 张卡片到你的题库。`
-            : `Saved ${result.created} cards to your library.`,
+          t("app.generate.savedToLibrary", { count: result.created }),
         );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : zh ? "保存失败" : "Save failed";
+      const message = err instanceof Error ? err.message : t("app.generate.saveFailed");
       setError(message);
       setPhase("idle");
-      addMessage("assistant", zh ? `保存失败：${message}` : `Save failed: ${message}`);
+      addMessage("assistant", t("app.generate.saveFailedPrefix", { message }));
     } finally {
       setCommitBusy(false);
     }
@@ -826,7 +798,7 @@ export default function GenerateCardsView() {
       setDraftDirty(true);
       addMessage(
         "assistant",
-        zh ? `好的，默认卡片数改为 ${action.value}。` : `Done. Default card count is now ${action.value}.`,
+        t("app.generate.countUpdated", { count: action.value }),
       );
       return;
     }
@@ -836,14 +808,16 @@ export default function GenerateCardsView() {
       if (action.name?.trim()) {
         setAutoDeckName(action.name.trim());
       } else if (topic.trim()) {
-        setAutoDeckName(defaultDeckName(topic, zh));
+        setAutoDeckName(defaultDeckName(topic, t));
       }
       setDraftDirty(true);
       addMessage(
         "assistant",
-        zh
-          ? `好的，将自动建牌组保存${action.name?.trim() ? `（${action.name.trim()}）` : ""}。`
-          : `Done. I will auto-create a deck${action.name?.trim() ? ` (${action.name.trim()})` : ""}.`,
+        t("app.generate.autoCreateDeckSaved", {
+          name: action.name?.trim()
+            ? t("app.generate.autoCreateDeckName", { name: action.name.trim() })
+            : "",
+        }),
       );
       return;
     }
@@ -854,7 +828,7 @@ export default function GenerateCardsView() {
       setDraftDirty(true);
       addMessage(
         "assistant",
-        zh ? `好的，后续会保存到“${action.deckName}”。` : `Done. Future saves will go to "${action.deckName}".`,
+        t("app.generate.existingDeckSaved", { name: action.deckName }),
       );
       return;
     }
@@ -863,12 +837,12 @@ export default function GenerateCardsView() {
       if (!cards.length) {
         addMessage(
           "assistant",
-          zh ? "还没有草稿可编辑，先生成一版。" : "No draft to edit yet. Generate one first.",
+          t("app.generate.noDraftToEdit"),
         );
         return;
       }
       setWorkspace("editor");
-      addMessage("assistant", zh ? "已打开编辑器。" : "Opened editor.");
+      addMessage("assistant", t("app.generate.editorOpened"));
       return;
     }
 
@@ -876,7 +850,7 @@ export default function GenerateCardsView() {
       if (!cards.length) {
         addMessage(
           "assistant",
-          zh ? "还没有草稿可保存，先生成一版。" : "No draft to save yet. Generate one first.",
+          t("app.generate.noDraftToSave"),
         );
         return;
       }
@@ -911,9 +885,7 @@ export default function GenerateCardsView() {
       addMessage("user", text);
       addMessage(
         "assistant",
-        zh
-          ? "告诉我你的水平（初学/中级/高级）就行。你也可以直接说“直接生成”，我会先帮你选一个默认水平。"
-          : "Just tell me your level (beginner/intermediate/advanced). Or say \"generate now\" and I'll pick a sensible default.",
+        t("app.generate.levelHelp"),
       );
       return;
     }
@@ -929,13 +901,13 @@ export default function GenerateCardsView() {
     if (!cards.length) {
       if (hasGenerateIntent(text)) {
         await generateDraft(level, {
-          reason: zh ? "按你的要求开始生成" : "Starting with your direction",
+          reason: t("app.generate.startWithDirectionReason"),
         });
         return;
       }
       await generateDraft(level, {
         guidance: text,
-        reason: zh ? "已应用额外要求" : "Applied your extra guidance",
+        reason: t("app.generate.applyGuidanceReason"),
       });
       return;
     }
@@ -943,7 +915,7 @@ export default function GenerateCardsView() {
     if (hasRegenerateIntent(text)) {
       await generateDraft(level, {
         guidance: text,
-        reason: zh ? "按你的要求重新生成" : "Regenerating per your request",
+        reason: t("app.generate.regenerateReason"),
       });
       return;
     }
@@ -975,8 +947,8 @@ export default function GenerateCardsView() {
     setCards((prev) => [
       ...prev,
       {
-        front: zh ? "新问题" : "New question",
-        back: zh ? "新答案" : "New answer",
+        front: t("app.generate.newQuestion"),
+        back: t("app.generate.newAnswer"),
         tags: [],
         manuallyModified: true,
       },
@@ -985,58 +957,50 @@ export default function GenerateCardsView() {
   }
 
   const statusText = useMemo(() => {
-    if (phase === "thinking") return zh ? "理解中..." : "Understanding...";
-    if (phase === "generating") return zh ? "生成草稿中..." : "Generating draft...";
-    if (phase === "saving") return zh ? "保存中..." : "Saving...";
-    if (savedCount > 0) return zh ? `已保存 ${savedCount} 张` : `${savedCount} saved`;
-    if (draftDirty) return zh ? "草稿已保存" : "Draft saved";
-    if (canAskLevel) return zh ? "等待水平" : "Waiting for level";
-    return zh ? "准备就绪" : "Ready";
-  }, [phase, savedCount, draftDirty, canAskLevel, zh]);
+    if (phase === "thinking") return t("app.generate.status.thinking");
+    if (phase === "generating") return t("app.generate.status.generating");
+    if (phase === "saving") return t("app.generate.status.saving");
+    if (savedCount > 0) return t("app.generate.status.saved", { count: savedCount });
+    if (draftDirty) return t("app.generate.status.draftSaved");
+    if (canAskLevel) return t("app.generate.status.waitingLevel");
+    return t("app.generate.status.ready");
+  }, [phase, savedCount, draftDirty, canAskLevel, t]);
 
   const destinationPreview = useMemo(() => {
     if (saveMode === "existing") {
-      return selectedDeckName || (zh ? "未选择牌组" : "No deck selected");
+      return selectedDeckName || t("app.generate.noDeckSelected");
     }
     if (autoDeckName.trim()) return autoDeckName.trim();
-    if (topic.trim()) return defaultDeckName(topic.trim(), zh);
-    return zh ? "自动建牌组" : "Auto-create deck";
-  }, [saveMode, selectedDeckName, autoDeckName, topic, zh]);
+    if (topic.trim()) return defaultDeckName(topic.trim(), t);
+    return t("app.generate.autoCreateDeck");
+  }, [saveMode, selectedDeckName, autoDeckName, topic, t]);
 
   const showCustomAutoName =
     saveMode === "auto" &&
     topic.trim().length > 0 &&
     autoDeckName.trim().length > 0 &&
-    autoDeckName.trim() !== defaultDeckName(topic, zh);
+    autoDeckName.trim() !== defaultDeckName(topic, t);
 
   const refineActions = useMemo(
     () => [
       {
-        label: zh ? "更详细" : "More detail",
-        instruction: zh
-          ? "让每张卡更详细，并补充关键例子。"
-          : "Make each card more detailed and add concrete examples.",
+        label: t("app.generate.refine.moreDetailLabel"),
+        instruction: t("app.generate.refine.moreDetailInstruction"),
       },
       {
-        label: zh ? "更精简" : "Concise",
-        instruction: zh
-          ? "压缩每张卡片，用更精炼表述。"
-          : "Make each card shorter and more concise.",
+        label: t("app.generate.refine.conciseLabel"),
+        instruction: t("app.generate.refine.conciseInstruction"),
       },
       {
-        label: zh ? "更难" : "Harder",
-        instruction: zh
-          ? "提高难度，增加推理题与易错点。"
-          : "Increase difficulty with reasoning-heavy prompts and edge cases.",
+        label: t("app.generate.refine.harderLabel"),
+        instruction: t("app.generate.refine.harderInstruction"),
       },
       {
-        label: zh ? "去重" : "Remove overlap",
-        instruction: zh
-          ? "删除重复内容并合并相似卡片。"
-          : "Remove overlaps and merge redundant cards.",
+        label: t("app.generate.refine.removeOverlapLabel"),
+        instruction: t("app.generate.refine.removeOverlapInstruction"),
       },
     ],
-    [zh],
+    [t],
   );
 
   const showGenerationAnimation =
@@ -1066,14 +1030,10 @@ export default function GenerateCardsView() {
 
         <div className="mx-auto w-full max-w-3xl pt-10">
           <p className="mb-6 text-center text-3xl font-semibold tracking-tight text-[var(--color-text)] md:text-4xl">
-            {zh
-              ? "今天想学什么？"
-              : "What do you want to learn today?"}
+            {t("app.generate.landing.title")}
           </p>
           <p className="mb-6 text-center text-sm text-[var(--color-text-secondary)]">
-            {zh
-              ? "输入主题后我会先生成草稿，你可以继续对话修改，或直接开始学习。"
-              : "Type a topic and I will generate a draft. You can refine in chat, or jump straight into study."}
+            {t("app.generate.landing.subtitle")}
           </p>
 
           <form
@@ -1083,21 +1043,14 @@ export default function GenerateCardsView() {
             <input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder={
-                zh
-                  ? "输入主题（比如：细胞生物学）"
-                  : "Type a topic (e.g. cell biology)"
-              }
+              placeholder={t("app.generate.landing.placeholder")}
               className="w-full border-0 bg-transparent px-2 py-2 text-base focus:ring-0"
               disabled={busy}
             />
           </form>
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {(zh
-              ? ["JavaScript 闭包", "操作系统内存管理", "机器学习概率基础", "中国近现代史基础"]
-              : starterTopics
-            ).map((preset) => (
+            {starterTopics.map((preset) => (
               <button
                 key={preset}
                 type="button"
@@ -1117,7 +1070,7 @@ export default function GenerateCardsView() {
 
   return (
     <div className="space-y-5">
-      {showGenerationAnimation && <GenerationDeckAnimation zh={zh} phase={phase} />}
+      {showGenerationAnimation && <GenerationDeckAnimation t={t} phase={phase} />}
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -1133,7 +1086,7 @@ export default function GenerateCardsView() {
             <span className="gradient-text">{t("app.generate.title")}</span>
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {zh ? "边聊边生成，边编辑边完善。" : "Generate in chat, refine in editor."}
+            {t("app.generate.headerSubtitle")}
           </p>
         </div>
       </div>
@@ -1149,7 +1102,7 @@ export default function GenerateCardsView() {
           }`}
         >
           <IconChat className="h-3.5 w-3.5" />
-          {zh ? "教练对话" : "Coach Chat"}
+          {t("app.generate.coachChat")}
         </button>
         <button
           type="button"
@@ -1161,7 +1114,7 @@ export default function GenerateCardsView() {
           }`}
         >
           <IconEdit className="h-3.5 w-3.5" />
-          {zh ? `草稿编辑 (${cards.length})` : `Draft Editor (${cards.length})`}
+          {t("app.generate.draftEditor", { count: cards.length })}
         </button>
         <span className="ml-auto rounded-md bg-[var(--color-surface-alt)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
           {statusText}
@@ -1173,30 +1126,30 @@ export default function GenerateCardsView() {
           <div className="card-surface p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                {zh ? "主题" : "Topic"}: {topic}
+                {t("app.generate.chips.topic")}: {topic}
               </span>
 
               {level && (
                 <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {zh ? "水平" : "Level"}: {levelLabel(level, zh)}
+                  {t("app.generate.chips.level")}: {levelLabel(level, t)}
                 </span>
               )}
 
               {count !== DEFAULT_COUNT && (
                 <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {count} {zh ? "张" : "cards"}
+                  {count} {t("app.generate.chips.cards")}
                 </span>
               )}
 
               {saveMode === "existing" && selectedDeckName && (
                 <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {zh ? "保存到" : "Saving to"}: {selectedDeckName}
+                  {t("app.generate.chips.savingTo")}: {selectedDeckName}
                 </span>
               )}
 
               {showCustomAutoName && (
                 <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {zh ? "新牌组" : "New deck"}: {autoDeckName}
+                  {t("app.generate.chips.newDeck")}: {autoDeckName}
                 </span>
               )}
             </div>
@@ -1219,7 +1172,7 @@ export default function GenerateCardsView() {
 
               {busy && (
                 <div className="max-w-[90%] rounded-2xl bg-[var(--color-surface-alt)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-                  <span className="inline-block animate-pulse">{zh ? "处理中..." : "Working..."}</span>
+                  <span className="inline-block animate-pulse">{t("app.generate.working")}</span>
                 </div>
               )}
               <div ref={chatEndRef} />
@@ -1228,7 +1181,7 @@ export default function GenerateCardsView() {
             {canAskLevel && (
               <div className="border-t border-[var(--color-border)] px-4 pt-3">
                 <p className="mb-2 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {zh ? "你的水平" : "Your level"}
+                  {t("app.generate.yourLevel")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {(["beginner", "intermediate", "advanced"] as const).map((lv) => (
@@ -1243,7 +1196,7 @@ export default function GenerateCardsView() {
                           : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-strong)]"
                       } disabled:opacity-50`}
                     >
-                      {levelLabel(lv, zh)}
+                      {levelLabel(lv, t)}
                     </button>
                   ))}
                   <button
@@ -1253,7 +1206,7 @@ export default function GenerateCardsView() {
                     className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-accent)] transition hover:opacity-90 disabled:opacity-50"
                   >
                     <IconZap className="h-3.5 w-3.5" />
-                    {zh ? "直接生成" : "Generate now"}
+                    {t("app.generate.generateNow")}
                   </button>
                 </div>
               </div>
@@ -1262,7 +1215,7 @@ export default function GenerateCardsView() {
             {canRefine && (
               <div className="border-t border-[var(--color-border)] px-4 pt-3">
                 <p className="mb-2 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {zh ? "快捷调整" : "Quick refinements"}
+                  {t("app.generate.quickRefinements")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {refineActions.map((action) => (
@@ -1289,12 +1242,8 @@ export default function GenerateCardsView() {
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder={
                   !level
-                    ? zh
-                      ? "输入水平，或说“直接生成”"
-                      : "Type level, or say 'generate now'"
-                    : zh
-                      ? "继续说：改详细、删冗余、保存到某个牌组..."
-                      : "Keep going: make detailed, trim fluff, save to deck..."
+                    ? t("app.generate.chatPlaceholderLevel")
+                    : t("app.generate.chatPlaceholderRefine")
                 }
                 className="flex-1"
                 disabled={busy}
@@ -1312,14 +1261,14 @@ export default function GenerateCardsView() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-xs font-semibold text-[var(--color-accent)] transition hover:opacity-90 disabled:opacity-50"
               >
                 <IconZap className="h-3.5 w-3.5" />
-                {zh ? "秒出草稿" : "Instant"}
+                {t("app.generate.instant")}
               </button>
               <button
                 type="submit"
                 className="btn-primary"
                 disabled={busy || chatInput.trim().length < 2}
               >
-                {zh ? "发送" : "Send"}
+                {t("app.generate.send")}
               </button>
             </form>
 
@@ -1330,13 +1279,7 @@ export default function GenerateCardsView() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)]"
               >
                 <IconTune className="h-3.5 w-3.5" />
-                {showAdvanced
-                  ? zh
-                    ? "收起设置"
-                    : "Hide setup"
-                  : zh
-                    ? "调整设置"
-                    : "Adjust setup"}
+                {showAdvanced ? t("app.generate.hideSetup") : t("app.generate.adjustSetup")}
               </button>
             </div>
 
@@ -1344,7 +1287,7 @@ export default function GenerateCardsView() {
               <div className="border-t border-[var(--color-border)] px-4 pb-4 pt-3">
                 <div className="grid gap-3 md:grid-cols-2">
                   <label>
-                    {zh ? "默认卡片数" : "Default card count"}
+                    {t("app.generate.defaultCardCount")}
                     <div className="mt-1.5 flex flex-wrap gap-2">
                       {[12, 20, 24, 30].map((n) => (
                         <button
@@ -1365,7 +1308,7 @@ export default function GenerateCardsView() {
                   </label>
 
                   <label>
-                    {zh ? "保存位置" : "Save destination"}
+                    {t("app.generate.saveDestination")}
                     <div className="mt-1.5 space-y-2">
                       <div className="flex gap-2">
                         <button
@@ -1377,7 +1320,7 @@ export default function GenerateCardsView() {
                               : "border-[var(--color-border)] text-[var(--color-text-secondary)]"
                           }`}
                         >
-                          {zh ? "自动建牌组" : "Auto-create deck"}
+                          {t("app.generate.autoCreateDeck")}
                         </button>
                         <button
                           type="button"
@@ -1388,13 +1331,13 @@ export default function GenerateCardsView() {
                               : "border-[var(--color-border)] text-[var(--color-text-secondary)]"
                           }`}
                         >
-                          {zh ? "现有牌组" : "Existing deck"}
+                          {t("app.generate.existingDeck")}
                         </button>
                       </div>
 
                       {saveMode === "existing" ? (
                         <select value={deckId} onChange={(e) => setDeckId(e.target.value)} disabled={busy}>
-                          <option value="">{zh ? "选择牌组" : "Choose deck"}</option>
+                          <option value="">{t("app.generate.chooseDeck")}</option>
                           {deckList.map((deck) => (
                             <option key={deck._id} value={deck._id}>
                               {deck.name}
@@ -1405,7 +1348,7 @@ export default function GenerateCardsView() {
                         <input
                           value={autoDeckName}
                           onChange={(e) => setAutoDeckName(e.target.value)}
-                          placeholder={zh ? "新牌组名称（可选）" : "New deck name (optional)"}
+                          placeholder={t("app.generate.newDeckNamePlaceholder")}
                           disabled={busy}
                         />
                       )}
@@ -1426,10 +1369,10 @@ export default function GenerateCardsView() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-sm font-bold">
                 <IconEdit className="h-4 w-4" />
-                {zh ? `草稿编辑器 (${cards.length})` : `Draft Editor (${cards.length})`}
+                {t("app.generate.draftEditor", { count: cards.length })}
               </span>
               <span className="rounded-md bg-[var(--color-surface-alt)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                {zh ? "保存位置" : "Save destination"}: {destinationPreview}
+                {t("app.generate.saveDestination")}: {destinationPreview}
               </span>
               <div className="ml-auto flex flex-wrap gap-2">
                 <button
@@ -1437,14 +1380,14 @@ export default function GenerateCardsView() {
                   onClick={() => setWorkspace("coach")}
                   className="btn-secondary !text-xs"
                 >
-                  {zh ? "回到对话" : "Back to chat"}
+                  {t("app.generate.backToChat")}
                 </button>
                 <button
                   type="button"
                   onClick={addManualCard}
                   className="btn-secondary !text-xs"
                 >
-                  {zh ? "手动加卡片" : "Add card"}
+                  {t("app.generate.addCard")}
                 </button>
                 <button
                   type="button"
@@ -1452,14 +1395,14 @@ export default function GenerateCardsView() {
                   disabled={commitBusy || busy || cards.length === 0}
                   className="btn-primary !text-xs"
                 >
-                  {commitBusy ? (zh ? "保存中..." : "Saving...") : zh ? "保存到题库" : "Save to library"}
+                  {commitBusy ? t("app.generate.status.saving") : t("app.generate.saveToLibrary")}
                 </button>
                 <button
                   type="button"
                   onClick={() => void clearDraft()}
                   className="btn-danger !text-xs"
                 >
-                  {zh ? "丢弃草稿" : "Discard draft"}
+                  {t("app.generate.discardDraft")}
                 </button>
               </div>
             </div>
@@ -1467,14 +1410,14 @@ export default function GenerateCardsView() {
             {savedCount > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <p className="text-sm text-[var(--color-success)]">
-                  {zh ? `已成功保存 ${savedCount} 张卡片。` : `Successfully saved ${savedCount} cards.`}
+                  {t("app.generate.savedSuccess", { count: savedCount })}
                 </p>
                 <button
                   type="button"
                   onClick={() => navigate("/cards")}
                   className="btn-primary !text-xs"
                 >
-                  {zh ? "打开卡片库" : "Open cards"}
+                  {t("app.generate.openCards")}
                 </button>
               </div>
             )}
@@ -1484,7 +1427,7 @@ export default function GenerateCardsView() {
 
           {cards.length === 0 && (
             <div className="card-surface p-6 text-center text-sm text-[var(--color-text-secondary)]">
-              {zh ? "还没有草稿卡片。先去对话区生成。" : "No draft cards yet. Generate from chat first."}
+              {t("app.generate.noDraftCards")}
             </div>
           )}
 
@@ -1494,19 +1437,19 @@ export default function GenerateCardsView() {
                 <div key={`${idx}-${card.front.slice(0, 30)}`} className="card-surface p-4">
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-                      {zh ? `卡片 ${idx + 1}` : `Card ${idx + 1}`}
+                      {t("app.generate.cardTitle", { count: idx + 1 })}
                     </p>
                     <button
                       type="button"
                       onClick={() => removeCardAt(idx)}
                       className="text-xs font-semibold text-[var(--color-danger)] hover:underline"
                     >
-                      {zh ? "删除" : "Remove"}
+                      {t("app.generate.remove")}
                     </button>
                   </div>
 
                   <label>
-                    {zh ? "正面" : "Front"}
+                    {t("app.generate.front")}
                     <textarea
                       rows={2}
                       value={card.front}
@@ -1515,7 +1458,7 @@ export default function GenerateCardsView() {
                   </label>
 
                   <label className="mt-2 block">
-                    {zh ? "背面" : "Back"}
+                    {t("app.generate.back")}
                     <textarea
                       rows={5}
                       value={card.back}
@@ -1524,7 +1467,7 @@ export default function GenerateCardsView() {
                   </label>
 
                   <label className="mt-2 block">
-                    {zh ? "标签（逗号分隔）" : "Tags (comma separated)"}
+                    {t("app.generate.tags")}
                     <input
                       value={card.tags.join(", ")}
                       onChange={(e) =>

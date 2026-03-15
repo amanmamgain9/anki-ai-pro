@@ -11,6 +11,7 @@ import {
   shortSpeechText,
 } from "@/lib/voice";
 import type { VoiceCommand } from "@/lib/voice";
+import { voiceCommandKeywords } from "@/i18n/non-ui-text";
 
 const api = anyApi;
 
@@ -93,9 +94,7 @@ function looksLikeExplainRequest(text: string) {
     normalized.includes("expliquer") ||
     normalized.includes("explica") ||
     normalized.includes("erkl") ||
-    normalized.includes("解释") ||
-    normalized.includes("详细") ||
-    normalized.includes("举例")
+    voiceCommandKeywords.explainIntent.some((term) => normalized.includes(term))
   );
 }
 

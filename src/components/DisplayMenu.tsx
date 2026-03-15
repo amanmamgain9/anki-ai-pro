@@ -9,7 +9,7 @@ type Theme = "light" | "dark";
 
 export default function DisplayMenu() {
   const router = useRouter();
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() =>
     typeof document !== "undefined" && document.documentElement.classList.contains("dark")
@@ -17,8 +17,7 @@ export default function DisplayMenu() {
       : "light",
   );
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const zh = locale === "zh";
-  const settingsLabel = zh ? "设置" : "Settings";
+  const settingsLabel = t("app.displayMenu.settings");
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -74,7 +73,7 @@ export default function DisplayMenu() {
       {open && (
         <div className="absolute right-0 z-30 mt-2 w-44 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-lg">
           <p className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-            {zh ? "语言" : "Language"}
+            {t("app.displayMenu.language")}
           </p>
           <button
             type="button"
@@ -88,27 +87,27 @@ export default function DisplayMenu() {
             onClick={() => applyLocale("zh")}
             className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition ${locale === "zh" ? "bg-[var(--color-surface-alt)] text-[var(--color-text)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"}`}
           >
-            中文
+            {t("locale.chinese")}
           </button>
 
           <div className="my-2 h-px bg-[var(--color-border)]" />
 
           <p className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-            {zh ? "主题" : "Theme"}
+            {t("app.displayMenu.theme")}
           </p>
           <button
             type="button"
             onClick={() => applyTheme("light")}
             className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition ${theme === "light" ? "bg-[var(--color-surface-alt)] text-[var(--color-text)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"}`}
           >
-            {zh ? "浅色" : "Light"}
+            {t("app.displayMenu.light")}
           </button>
           <button
             type="button"
             onClick={() => applyTheme("dark")}
             className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition ${theme === "dark" ? "bg-[var(--color-surface-alt)] text-[var(--color-text)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"}`}
           >
-            {zh ? "深色" : "Dark"}
+            {t("app.displayMenu.dark")}
           </button>
         </div>
       )}

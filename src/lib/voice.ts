@@ -1,3 +1,5 @@
+import { voiceCommandKeywords } from "@/i18n/non-ui-text";
+
 export type VoiceCommand =
   | { kind: "flip" }
   | { kind: "showFront" }
@@ -49,68 +51,54 @@ export function parseVoiceCommand(text: string): VoiceCommand | null {
   if (!input) return null;
 
   // Rating commands first: users often speak these naturally.
-  if (includesAny(input, ["again", "forgot", "dont know", "don't know", "重来", "忘了", "不会"])) {
+  if (includesAny(input, [...voiceCommandKeywords.rateAgain])) {
     return { kind: "rate", quality: 0 };
   }
-  if (includesAny(input, ["hard", "difficult", "困难", "吃力"])) {
+  if (includesAny(input, [...voiceCommandKeywords.rateHard])) {
     return { kind: "rate", quality: 1 };
   }
-  if (includesAny(input, ["good", "ok", "okay", "got it", "良好", "还行", "答对"])) {
+  if (includesAny(input, [...voiceCommandKeywords.rateGood])) {
     return { kind: "rate", quality: 2 };
   }
-  if (includesAny(input, ["easy", "very easy", "simple", "简单", "秒答"])) {
+  if (includesAny(input, [...voiceCommandKeywords.rateEasy])) {
     return { kind: "rate", quality: 3 };
   }
 
-  if (includesAny(input, ["apply", "use that", "go with that", "采用", "就这个", "确认"])) {
+  if (includesAny(input, [...voiceCommandKeywords.applySuggested])) {
     return { kind: "applySuggested" };
   }
 
-  const tutorPrefix = /^(ask tutor|tutor|open tutor|问导师|导师)\s*(.*)$/i.exec(text.trim());
+  const tutorPrefix = voiceCommandKeywords.tutorPrefix.exec(text.trim());
   if (tutorPrefix) {
     const prompt = tutorPrefix[2]?.trim();
     return prompt ? { kind: "openTutor", prompt } : { kind: "openTutor" };
   }
-  if (
-    includesAny(input, [
-      "explain this",
-      "explain this card",
-      "explain more",
-      "more detail",
-      "elaborate",
-      "clarify",
-      "give example",
-      "解释一下",
-      "详细讲",
-      "讲详细",
-      "举个例子",
-    ])
-  ) {
+  if (includesAny(input, [...voiceCommandKeywords.tutorExplain])) {
     return { kind: "openTutor", prompt: text.trim() };
   }
 
-  if (includesAny(input, ["close tutor", "back to study", "退出导师", "关闭导师", "返回学习"])) {
+  if (includesAny(input, [...voiceCommandKeywords.closeTutor])) {
     return { kind: "closeTutor" };
   }
-  if (includesAny(input, ["stop voice", "voice off", "stop listening", "关闭语音", "停止语音"])) {
+  if (includesAny(input, [...voiceCommandKeywords.stopVoice])) {
     return { kind: "stopVoiceMode" };
   }
-  if (includesAny(input, ["show front", "front side", "read front", "正面", "读正面"])) {
+  if (includesAny(input, [...voiceCommandKeywords.showFront])) {
     return { kind: "showFront" };
   }
-  if (includesAny(input, ["show back", "read back", "背面", "读背面"])) {
+  if (includesAny(input, [...voiceCommandKeywords.showBack])) {
     return { kind: "showBack" };
   }
-  if (includesAny(input, ["flip", "turn card", "翻面"])) {
+  if (includesAny(input, [...voiceCommandKeywords.flip])) {
     return { kind: "flip" };
   }
-  if (includesAny(input, ["next", "next card", "下一个"])) {
+  if (includesAny(input, [...voiceCommandKeywords.nextCard])) {
     return { kind: "nextCard" };
   }
-  if (includesAny(input, ["previous", "prev card", "上一张", "上一个"])) {
+  if (includesAny(input, [...voiceCommandKeywords.previousCard])) {
     return { kind: "previousCard" };
   }
-  if (includesAny(input, ["repeat", "say again", "再读一遍", "重复"])) {
+  if (includesAny(input, [...voiceCommandKeywords.repeat])) {
     return { kind: "repeat" };
   }
 

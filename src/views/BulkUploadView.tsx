@@ -144,8 +144,7 @@ function parseInput(text: string, format: Format): ParsedCard[] {
 
 export default function BulkUploadView() {
   const { navigate, back } = useAppRouter();
-  const { locale } = useI18n();
-  const zh = locale === "zh";
+  const { t } = useI18n();
   const decks = useQuery(api.decks.list) as Deck[] | undefined;
   const bulkCreate = useMutation(api.flashcards.bulkCreate);
   const createDeck = useMutation(api.decks.create);
@@ -186,7 +185,11 @@ export default function BulkUploadView() {
         })),
       });
       navigate(`/cards`);
-      alert(zh ? `已创建 ${created} 张卡片！` : `Created ${created} cards!`);
+      alert(
+        t(created === 1 ? "app.bulkUpload.createdAlertSingular" : "app.bulkUpload.createdAlertPlural", {
+          count: created,
+        }),
+      );
     } finally {
       setSaving(false);
     }
@@ -230,10 +233,10 @@ export default function BulkUploadView() {
         </button>
         <div>
           <h1 className="text-xl font-bold tracking-tight">
-            <span className="gradient-text">{zh ? "批量导入" : "Bulk upload"}</span>
+            <span className="gradient-text">{t("app.bulkUpload.title")}</span>
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)]">
-            {zh ? "粘贴 Markdown 或 TSV，或加载文件。" : "Paste Markdown or TSV, or load a file."}
+            {t("app.bulkUpload.subtitle")}
           </p>
         </div>
       </div>
@@ -244,24 +247,24 @@ export default function BulkUploadView() {
           {/* Controls row */}
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex-1">
-              <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "牌组" : "Deck"}</span>
+              <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.bulkUpload.deck")}</span>
               {deckId !== "__new__" ? (
                 <select value={deckId} onChange={(e) => {
                   if (e.target.value === "__new__") { setDeckId("__new__"); setNewDeckName(""); }
                   else setDeckId(e.target.value);
                 }}>
-                  <option value="">{zh ? "无牌组" : "No deck"}</option>
+                  <option value="">{t("app.bulkUpload.noDeck")}</option>
                   {(decks ?? []).map((d) => (
                     <option key={d._id} value={d._id}>{d.name}</option>
                   ))}
-                  <option value="__new__">{zh ? "+ 新建牌组" : "+ New deck"}</option>
+                  <option value="__new__">{t("app.bulkUpload.newDeck")}</option>
                 </select>
               ) : (
                 <div className="flex gap-2">
                   <input
                     value={newDeckName}
                     onChange={(e) => setNewDeckName(e.target.value)}
-                    placeholder={zh ? "牌组名称" : "Deck name"}
+                    placeholder={t("app.bulkUpload.deckNamePlaceholder")}
                     className="flex-1"
                     autoFocus
                     onKeyDown={(e) => {
@@ -284,23 +287,23 @@ export default function BulkUploadView() {
                     }}
                     className="btn-primary whitespace-nowrap"
                   >
-                    {creatingDeck ? "..." : zh ? "创建" : "Create"}
+                    {creatingDeck ? "..." : t("app.bulkUpload.create")}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setDeckId(""); setNewDeckName(""); }}
                     className="btn-secondary"
                   >
-                    {zh ? "取消" : "Cancel"}
+                    {t("app.bulkUpload.cancel")}
                   </button>
                 </div>
               )}
             </label>
 
             <label className="w-36">
-              <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "格式" : "Format"}</span>
+              <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.bulkUpload.format")}</span>
               <select value={format} onChange={(e) => setFormat(e.target.value as Format)}>
-                <option value="auto">{zh ? "自动识别" : "Auto-detect"}</option>
+                <option value="auto">{t("app.bulkUpload.autoDetect")}</option>
                 <option value="markdown">Markdown</option>
                 <option value="tsv">TSV</option>
               </select>
@@ -312,14 +315,14 @@ export default function BulkUploadView() {
                 onClick={() => fileRef.current?.click()}
                 className="btn-secondary"
               >
-                {zh ? "加载文件" : "Load file"}
+                {t("app.bulkUpload.loadFile")}
               </button>
               <button
                 type="button"
                 onClick={copyPrompt}
                 className="btn-secondary"
               >
-                {promptCopied ? (zh ? "已复制！" : "Copied!") : (zh ? "复制 AI 提示词" : "Copy AI prompt")}
+                {promptCopied ? t("app.bulkUpload.copied") : t("app.bulkUpload.copyPrompt")}
               </button>
               <input
                 ref={fileRef}
@@ -335,7 +338,7 @@ export default function BulkUploadView() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={zh ? "在这里粘贴你的卡片...&#10;&#10;## 卡片1正面&#10;&#10;卡片1背面&#10;&#10;## 卡片2正面&#10;&#10;卡片2背面" : "Paste your cards here...&#10;&#10;## Front of card 1&#10;&#10;Back of card 1&#10;&#10;## Front of card 2&#10;&#10;Back of card 2"}
+            placeholder={t("app.bulkUpload.textareaPlaceholder")}
             rows={16}
             className="w-full font-mono text-sm"
           />
@@ -343,7 +346,7 @@ export default function BulkUploadView() {
           {/* Format hint */}
           {!input.trim() && (
             <div className="card-surface space-y-3 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "支持的格式" : "Supported formats"}</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.bulkUpload.supportedFormats")}</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
@@ -352,9 +355,9 @@ export default function BulkUploadView() {
                 >
                   <p className="text-sm font-bold">Markdown</p>
                   <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-                    {zh ? "使用 ## 作为正面标题，其下内容作为背面。支持图表、代码、图片。" : "## headings as fronts, content below as backs. Supports diagrams, code, images."}
+                    {t("app.bulkUpload.markdownDesc")}
                   </p>
-                  <code className="mt-2 block text-xs text-[var(--color-text-tertiary)]">{zh ? "点击加载示例" : "Click to load example"}</code>
+                  <code className="mt-2 block text-xs text-[var(--color-text-tertiary)]">{t("app.bulkUpload.loadExample")}</code>
                 </button>
                 <button
                   type="button"
@@ -363,9 +366,9 @@ export default function BulkUploadView() {
                 >
                   <p className="text-sm font-bold">TSV (tab-separated)</p>
                   <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-                    {zh ? "每行一张卡：front⇥back⇥tags。兼容 Anki 导出格式。" : "One card per line. front⇥back⇥tags. Compatible with Anki exports."}
+                    {t("app.bulkUpload.tsvDesc")}
                   </p>
-                  <code className="mt-2 block text-xs text-[var(--color-text-tertiary)]">{zh ? "点击加载示例" : "Click to load example"}</code>
+                  <code className="mt-2 block text-xs text-[var(--color-text-tertiary)]">{t("app.bulkUpload.loadExample")}</code>
                 </button>
               </div>
             </div>
@@ -376,11 +379,13 @@ export default function BulkUploadView() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 text-sm">
                 <span className="font-bold text-[var(--color-accent)]">
-                  {zh ? `发现 ${parsed.length} 张卡片` : `${parsed.length} card${parsed.length !== 1 ? "s" : ""} found`}
+                  {t(parsed.length === 1 ? "app.bulkUpload.foundSingular" : "app.bulkUpload.foundPlural", {
+                    count: parsed.length,
+                  })}
                 </span>
                 {detected && format === "auto" && (
                   <span className="text-[var(--color-text-tertiary)]">
-                    {zh ? `(识别为: ${detected})` : `(detected: ${detected})`}
+                    {t("app.bulkUpload.detected", { format: detected })}
                   </span>
                 )}
               </div>
@@ -390,7 +395,14 @@ export default function BulkUploadView() {
                 disabled={parsed.length === 0 || saving}
                 className="btn-primary"
               >
-                {saving ? (zh ? "创建中..." : "Creating...") : (zh ? `创建 ${parsed.length} 张卡片` : `Create ${parsed.length} card${parsed.length !== 1 ? "s" : ""}`)}
+                {saving
+                  ? t("app.bulkUpload.creating")
+                  : t(
+                      parsed.length === 1
+                        ? "app.bulkUpload.createCardsSingular"
+                        : "app.bulkUpload.createCardsPlural",
+                      { count: parsed.length },
+                    )}
               </button>
             </div>
           )}
@@ -399,18 +411,18 @@ export default function BulkUploadView() {
         {/* Right: preview */}
         <div className="space-y-3 lg:col-span-2">
           <p className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-            {zh ? "预览" : "Preview"} {parsed.length > 0 ? `(${parsed.length})` : ""}
+            {t("app.bulkUpload.preview")} {parsed.length > 0 ? `(${parsed.length})` : ""}
           </p>
 
           {parsed.length === 0 && input.trim() && (
             <div className="card-surface p-6 text-center text-sm text-[var(--color-text-secondary)]">
-              {zh ? "未检测到有效卡片，请检查格式。" : "No valid cards detected. Check the format."}
+              {t("app.bulkUpload.invalid")}
             </div>
           )}
 
           {parsed.length === 0 && !input.trim() && (
             <div className="card-surface p-6 text-center text-sm text-[var(--color-text-secondary)]">
-              {zh ? "粘贴或加载卡片后可查看预览。" : "Paste or load cards to see a preview."}
+              {t("app.bulkUpload.emptyPreview")}
             </div>
           )}
 
@@ -500,7 +512,7 @@ export default function BulkUploadView() {
 
             {/* Front */}
             <div className="mb-4">
-              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "正面" : "Front"}</p>
+              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.bulkUpload.front")}</p>
               <div className="prose-sm">
                 <MarkdownRenderer content={previewCard.front} />
               </div>
@@ -510,7 +522,7 @@ export default function BulkUploadView() {
 
             {/* Back */}
             <div className="mt-4">
-              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "背面" : "Back"}</p>
+              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.bulkUpload.back")}</p>
               <div className="prose-sm">
                 <MarkdownRenderer content={previewCard.back} />
               </div>
@@ -539,7 +551,7 @@ export default function BulkUploadView() {
           >
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-bold">
-                <span className="gradient-text">{zh ? "提示词已复制！" : "Prompt copied!"}</span>
+                <span className="gradient-text">{t("app.bulkUpload.promptCopied")}</span>
               </p>
               <button
                 type="button"
@@ -553,7 +565,7 @@ export default function BulkUploadView() {
             </div>
             <pre className="whitespace-pre-wrap rounded-lg bg-[var(--color-surface-alt)] p-4 text-xs leading-relaxed text-[var(--color-text-secondary)]">{PROMPT_RULES}</pre>
             <p className="mt-3 text-xs text-[var(--color-text-tertiary)]">
-              {zh ? "把此提示词粘贴到 ChatGPT / Claude，替换 [YOUR TOPIC]，再将输出粘贴回这里。" : "Paste this into ChatGPT / Claude, replace [YOUR TOPIC], and paste the output back here."}
+              {t("app.bulkUpload.promptHelp")}
             </p>
           </div>
         </div>

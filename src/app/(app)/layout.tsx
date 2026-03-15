@@ -144,7 +144,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Could not load your account. Please retry.
+          {t("app.appShell.loadFailed")}
         </p>
         <button
           type="button"
@@ -155,7 +155,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             setBootstrapAttempt((n) => n + 1);
           }}
         >
-          Retry
+          {t("app.appShell.retry")}
         </button>
       </div>
     );
@@ -352,12 +352,11 @@ function UserMenu({
   mobile?: boolean;
 }) {
   const { data: session } = useSession();
-  const { t, locale } = useI18n();
-  const zh = locale === "zh";
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const label = session?.user?.name?.trim()?.charAt(0).toUpperCase() ?? "U";
-  const name = session?.user?.name?.trim() || (zh ? "账户" : "Account");
+  const name = session?.user?.name?.trim() || t("app.account");
 
   useEffect(() => {
     if (!open) return;

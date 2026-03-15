@@ -12,8 +12,7 @@ export default function SignInPage() {
   const callbackUrl = search.get("callbackUrl") || "/cards";
   const e2eUserId = search.get("e2eUserId") || "e2e-user";
   const magicToken = search.get("magicToken");
-  const { t, locale } = useI18n();
-  const zh = locale === "zh";
+  const { t } = useI18n();
   const showE2ELogin = process.env.NEXT_PUBLIC_E2E_AUTH_ENABLED === "1";
   const [email, setEmail] = useState("");
   const [magicStatus, setMagicStatus] = useState<"idle" | "sending" | "sent" | "error">(
@@ -26,9 +25,7 @@ export default function SignInPage() {
     let cancelled = false;
     void (async () => {
       setMagicStatus("sending");
-      setMagicMessage(
-        zh ? "正在完成邮箱登录..." : "Completing email sign-in...",
-      );
+      setMagicMessage(t("auth.magicLink.completing"));
       const result = await signIn("magic-link", {
         redirect: false,
         token: magicToken,
@@ -37,11 +34,7 @@ export default function SignInPage() {
       if (cancelled) return;
       if (!result || result.error) {
         setMagicStatus("error");
-        setMagicMessage(
-          zh
-            ? "邮箱登录链接无效或已过期。请重新获取。"
-            : "Magic link is invalid or expired. Request a new one.",
-        );
+        setMagicMessage(t("auth.magicLink.invalid"));
         return;
       }
       if (result.url) {
@@ -49,25 +42,17 @@ export default function SignInPage() {
         return;
       }
       setMagicStatus("error");
-      setMagicMessage(
-        zh
-          ? "邮箱登录失败，请重试。"
-          : "Email sign-in failed. Please try again.",
-      );
+      setMagicMessage(t("auth.magicLink.failed"));
     })().catch(() => {
       if (!cancelled) {
         setMagicStatus("error");
-        setMagicMessage(
-          zh
-            ? "邮箱登录链接无效或已过期。请重新获取。"
-            : "Magic link is invalid or expired. Request a new one.",
-        );
+        setMagicMessage(t("auth.magicLink.invalid"));
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [callbackUrl, magicToken, zh]);
+  }, [callbackUrl, magicToken, t]);
 
   async function requestMagicLink() {
     setMagicStatus("sending");
@@ -86,19 +71,13 @@ export default function SignInPage() {
         throw new Error(payload.error ?? "Failed to send magic link");
       }
       setMagicStatus("sent");
-      setMagicMessage(
-        zh
-          ? "登录链接已发送，请检查邮箱。"
-          : "Magic sign-in link sent. Check your email.",
-      );
+      setMagicMessage(t("auth.magicLink.sent"));
     } catch (error) {
       setMagicStatus("error");
       setMagicMessage(
         error instanceof Error
           ? error.message
-          : zh
-            ? "发送失败，请稍后重试。"
-            : "Failed to send link. Try again.",
+          : t("auth.magicLink.sendFailed"),
       );
     }
   }
@@ -123,10 +102,10 @@ export default function SignInPage() {
         </button>
         <div className="mt-4 rounded-xl border border-[var(--color-border)] p-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-            {zh ? "邮箱登录（免 Google）" : "Email magic link (no Google)"}
+            {t("auth.magicLink.title")}
           </p>
           <label className="mt-2 block text-xs text-[var(--color-text-secondary)]">
-            {zh ? "邮箱" : "Email"}
+            {t("auth.magicLink.emailLabel")}
           </label>
           <input
             data-testid="magic-link-email"
@@ -134,7 +113,7 @@ export default function SignInPage() {
             inputMode="email"
             autoComplete="email"
             className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
-            placeholder={zh ? "you@example.com" : "you@example.com"}
+            placeholder={t("auth.magicLink.placeholder")}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
@@ -145,9 +124,7 @@ export default function SignInPage() {
             className="btn-secondary mt-3 w-full justify-center disabled:opacity-60"
             onClick={requestMagicLink}
           >
-            {magicStatus === "sending"
-              ? (zh ? "发送中..." : "Sending...")
-              : (zh ? "发送登录链接" : "Send magic link")}
+            {magicStatus === "sending" ? t("auth.magicLink.sending") : t("auth.magicLink.send")}
           </button>
           {magicMessage && (
             <p

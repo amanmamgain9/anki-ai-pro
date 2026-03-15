@@ -68,8 +68,7 @@ function initializePaddleForBilling() {
 }
 
 export default function SettingsView() {
-  const { locale } = useI18n();
-  const zh = locale === "zh";
+  const { t } = useI18n();
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
@@ -126,14 +125,12 @@ export default function SettingsView() {
     try {
       if (!PADDLE_CLIENT_TOKEN) {
         throw new Error(
-          zh
-            ? "缺少 Paddle 客户端配置，暂时无法打开结账。"
-            : "Missing Paddle client configuration. Checkout is temporarily unavailable.",
+          t("app.settings.missingClientConfig"),
         );
       }
       if (!paddleReady && !initializePaddleForBilling()) {
         throw new Error(
-          zh ? "Paddle 结账尚未就绪，请稍后重试。" : "Paddle checkout is not ready yet. Please try again in a moment.",
+          t("app.settings.checkoutNotReady"),
         );
       }
       const response = await fetch("/api/paddle/checkout", {
@@ -148,7 +145,7 @@ export default function SettingsView() {
       const open = window.Paddle?.Checkout?.open;
       if (typeof open !== "function") {
         throw new Error(
-          zh ? "Paddle 结账未成功加载，请刷新后重试。" : "Paddle checkout did not load correctly. Refresh and try again.",
+          t("app.settings.checkoutDidNotLoad"),
         );
       }
       open({
@@ -189,51 +186,53 @@ export default function SettingsView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight"><span className="gradient-text">{zh ? "设置" : "Settings"}</span></h1>
-        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{zh ? "管理你的账户和偏好设置。" : "Manage your account and preferences."}</p>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="gradient-text">{t("app.settings.title")}</span></h1>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{t("app.settings.subtitle")}</p>
       </div>
       <div className="card-surface p-5">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "账户" : "Account"}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{t("app.settings.account")}</h2>
         <p className="mt-3 text-sm">
-          <span className="font-semibold">{zh ? "姓名：" : "Name:"}</span> {session?.user?.name ?? (zh ? "Google 用户" : "Google User")}
+          <span className="font-semibold">{t("app.settings.name")}</span> {session?.user?.name ?? t("app.settings.googleUser")}
         </p>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-          <span className="font-semibold text-[var(--color-text)]">{zh ? "邮箱：" : "Email:"}</span> {session?.user?.email ?? (zh ? "不可用" : "Not available")}
+          <span className="font-semibold text-[var(--color-text)]">{t("app.settings.email")}</span> {session?.user?.email ?? t("app.settings.notAvailable")}
         </p>
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/" })}
           className="btn-secondary mt-4"
         >
-          {zh ? "退出登录" : "Sign out"}
+          {t("app.signOut")}
         </button>
       </div>
       <div className="card-surface p-5">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "计费" : "Billing"}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{t("app.settings.billing")}</h2>
         <p className="mt-3 text-sm">
-          <span className="font-semibold">{zh ? "套餐：" : "Plan:"}</span>{" "}
+          <span className="font-semibold">{t("app.settings.plan")}</span>{" "}
           {billing?.isActive
             ? billing?.plan === "pro_plus"
-              ? (zh ? "专业增强版" : "Pro+")
-              : (zh ? "专业版" : "Pro")
-            : (zh ? "免费版" : "Free")}
+              ? "Pro+"
+              : "Pro"
+            : t("app.settings.free")}
         </p>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-          <span className="font-semibold text-[var(--color-text)]">{zh ? "订阅状态：" : "Subscription status:"}</span>{" "}
-          {billing?.subscriptionStatus ?? (zh ? "无" : "none")}
+          <span className="font-semibold text-[var(--color-text)]">{t("app.settings.subscriptionStatus")}</span>{" "}
+          {billing?.subscriptionStatus ?? t("app.settings.none")}
         </p>
         {billing?.trialActive && (
           <p className="mt-1 text-sm text-[var(--color-accent)]">
-            {zh
-              ? `免费 Pro+ 试用进行中（剩余约 ${trialDaysLeft} 天）。`
-              : `Free Pro+ trial is active (${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left).`}
+            {t(trialDaysLeft === 1 ? "app.settings.trialActiveSingular" : "app.settings.trialActive", {
+              count: trialDaysLeft,
+            })}
           </p>
         )}
         {billing?.isActive && billing?.plan === "pro" && typeof billing.proPreviewQuotaChars === "number" && (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {zh
-              ? `本月 Pro+ 语音体验额度：剩余 ${billing.proPreviewRemainingChars ?? 0} / ${billing.proPreviewQuotaChars} 字符（已用 ${billing.proPreviewUsedChars ?? 0}）。`
-              : `Monthly Pro+ voice preview: ${billing.proPreviewRemainingChars ?? 0} / ${billing.proPreviewQuotaChars} characters left (${billing.proPreviewUsedChars ?? 0} used).`}
+            {t("app.settings.proVoicePreview", {
+              remaining: billing.proPreviewRemainingChars ?? 0,
+              quota: billing.proPreviewQuotaChars,
+              used: billing.proPreviewUsedChars ?? 0,
+            })}
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -244,10 +243,10 @@ export default function SettingsView() {
             disabled={busyAction !== null}
           >
             {busyAction && busyAction !== "portal"
-              ? (zh ? "打开中..." : "Opening...")
+              ? t("app.settings.opening")
               : billing?.isActive
-                ? (zh ? "更改套餐" : "Change plan")
-                : (zh ? "升级" : "Upgrade")}
+                ? t("app.settings.changePlan")
+                : t("app.upgradeCta")}
           </button>
           <button
             type="button"
@@ -255,14 +254,12 @@ export default function SettingsView() {
             className="btn-secondary"
             disabled={busyAction !== null || !billing?.paddleCustomerId}
           >
-            {busyAction === "portal" ? (zh ? "打开中..." : "Opening...") : (zh ? "管理账单" : "Manage billing")}
+            {busyAction === "portal" ? t("app.settings.opening") : t("app.settings.manageBilling")}
           </button>
         </div>
         {billingSuccess && (
           <p className="mt-3 text-sm text-[var(--color-accent)]">
-            {zh
-              ? "结账已完成。订阅状态通常会在几秒内更新。"
-              : "Checkout completed. Your subscription status should update within a few seconds."}
+            {t("app.settings.checkoutSuccess")}
           </p>
         )}
         {billingError && (
@@ -285,9 +282,9 @@ export default function SettingsView() {
           <div className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-base font-bold">{zh ? "选择套餐" : "Choose your plan"}</h3>
+                <h3 className="text-base font-bold">{t("app.settings.choosePlan")}</h3>
                 <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                  {zh ? "确认后将跳转到 Paddle 结账页面。" : "Continue to Paddle checkout."}
+                  {t("app.settings.continueToCheckout")}
                 </p>
               </div>
               <button
@@ -295,14 +292,14 @@ export default function SettingsView() {
                 onClick={() => setShowUpgradeModal(false)}
                 className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
               >
-                {zh ? "关闭" : "Close"}
+                {t("app.settings.close")}
               </button>
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-[var(--color-border)] p-3">
-                <p className="text-sm font-semibold">{zh ? "Pro" : "Pro"}</p>
-                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$8 / 月" : "$8 / month"}</p>
+                <p className="text-sm font-semibold">Pro</p>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{t("app.settings.proMonthlyPrice")}</p>
                 <div className="mt-3">
                   <button
                     type="button"
@@ -310,19 +307,19 @@ export default function SettingsView() {
                     className="btn-primary !px-3 !py-1.5 !text-xs"
                     disabled={busyAction !== null || !planAvailability.pro_monthly}
                   >
-                    {busyAction === "pro_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "开始 Pro" : "Start Pro")}
+                    {busyAction === "pro_monthly" ? t("app.settings.opening") : t("app.settings.startPro")}
                   </button>
                 </div>
                 {!planAvailability.pro_monthly && (
                   <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
-                    {zh ? "当前不可结账" : "Checkout is currently unavailable"}
+                    {t("app.settings.checkoutUnavailable")}
                   </p>
                 )}
               </div>
 
               <div className="rounded-xl border border-[var(--color-border)] p-3">
-                <p className="text-sm font-semibold">{zh ? "Pro+" : "Pro+"}</p>
-                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$20 / 月" : "$20 / month"}</p>
+                <p className="text-sm font-semibold">Pro+</p>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{t("app.settings.proPlusMonthlyPrice")}</p>
                 <div className="mt-3">
                   <button
                     type="button"
@@ -330,46 +327,46 @@ export default function SettingsView() {
                     className="btn-primary !px-3 !py-1.5 !text-xs"
                     disabled={busyAction !== null || !planAvailability.pro_plus_monthly}
                   >
-                    {busyAction === "pro_plus_monthly" ? (zh ? "打开中..." : "Opening...") : (zh ? "开始 Pro+" : "Start Pro+")}
+                    {busyAction === "pro_plus_monthly" ? t("app.settings.opening") : t("app.settings.startProPlus")}
                   </button>
                 </div>
                 {!planAvailability.pro_plus_monthly && (
                   <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
-                    {zh ? "当前不可结账" : "Checkout is currently unavailable"}
+                    {t("app.settings.checkoutUnavailable")}
                   </p>
                 )}
               </div>
             </div>
 
             <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
-              {zh ? "继续即表示你同意" : "By continuing, you agree to the "}
+              {t("app.settings.legalNoticePrefix")}
               <Link href="/terms" target="_blank" className="font-semibold text-[var(--color-accent)]">
-                {zh ? "服务条款" : "Terms of Service"}
+                {t("common.terms")}
               </Link>
-              {zh ? "、" : ", "}
+              {t("app.settings.legalNoticeMiddle")}
               <Link href="/privacy" target="_blank" className="font-semibold text-[var(--color-accent)]">
-                {zh ? "隐私政策" : "Privacy Notice"}
+                {t("common.privacy")}
               </Link>
-              {zh ? "和" : ", and "}
+              {t("app.settings.legalNoticeAnd")}
               <Link href="/refund-policy" target="_blank" className="font-semibold text-[var(--color-accent)]">
-                {zh ? "退款政策" : "Refund Policy"}
+                {t("common.refundPolicy")}
               </Link>
-              {zh ? "。" : "."}
+              {t("app.settings.legalNoticeSuffix")}
             </p>
           </div>
         </div>
       )}
       <div className="card-surface p-5">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{zh ? "法律" : "Legal"}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-tertiary)]">{t("app.settings.legal")}</h2>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <Link href="/terms" className="text-[var(--color-accent)] hover:underline">
-            {zh ? "服务条款" : "Terms of Service"}
+            {t("common.terms")}
           </Link>
           <Link href="/privacy" className="text-[var(--color-accent)] hover:underline">
-            {zh ? "隐私政策" : "Privacy Notice"}
+            {t("common.privacy")}
           </Link>
           <Link href="/refund-policy" className="text-[var(--color-accent)] hover:underline">
-            {zh ? "退款政策" : "Refund Policy"}
+            {t("common.refundPolicy")}
           </Link>
         </div>
       </div>

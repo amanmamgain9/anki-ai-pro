@@ -17,8 +17,7 @@ function parseTags(raw: string) {
 }
 
 export default function NewCardView() {
-  const { locale } = useI18n();
-  const zh = locale === "zh";
+  const { t } = useI18n();
   const { searchParams, navigate, back } = useAppRouter();
   const editId = searchParams.get("edit");
 
@@ -95,22 +94,20 @@ export default function NewCardView() {
       };
 
       if (!response.ok || !payload.card) {
-        throw new Error(payload.error ?? (zh ? "AI 编辑失败" : "AI edit failed"));
+        throw new Error(payload.error ?? t("app.newCard.aiEditFailed"));
       }
 
       setFront(payload.card.front.trim());
       setBackText(payload.card.back.trim());
       setTags((payload.card.tags ?? []).join(", "));
       setAiSummary(
-        payload.summary?.trim() || (zh ? "AI 已更新这张卡片。请检查后再保存。" : "AI updated this card. Review it, then save."),
+        payload.summary?.trim() || t("app.newCard.aiEditSummary"),
       );
     } catch (error) {
       setAiError(
         error instanceof Error
           ? error.message
-          : zh
-            ? "AI 编辑失败"
-            : "AI edit failed",
+          : t("app.newCard.aiEditFailed"),
       );
     } finally {
       setAiBusy(false);
@@ -124,61 +121,55 @@ export default function NewCardView() {
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] transition hover:border-[var(--color-border-strong)]">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
         </button>
-        <h1 className="text-xl font-bold tracking-tight"><span className="gradient-text">{isEdit ? (zh ? "编辑卡片" : "Edit card") : (zh ? "新建卡片" : "New card")}</span></h1>
+        <h1 className="text-xl font-bold tracking-tight"><span className="gradient-text">{isEdit ? t("app.newCard.editTitle") : t("app.newCard.createTitle")}</span></h1>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <form onSubmit={handleSubmit} className="card-surface space-y-4 p-5">
           <label>
-            {zh ? "牌组" : "Deck"}
+            {t("app.newCard.deck")}
             <select value={deckId} onChange={(e) => setDeckId(e.target.value)}>
-              <option value="">{zh ? "无牌组" : "No deck"}</option>
+              <option value="">{t("app.newCard.noDeck")}</option>
               {deckList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
             </select>
           </label>
           <label>
-            {zh ? "正面（Markdown）" : "Front (Markdown)"}
+            {t("app.newCard.front")}
             <textarea
               value={front}
               onChange={(e) => setFront(e.target.value)}
-              placeholder={zh ? "# 问题或概念" : "# Question or concept"}
+              placeholder={t("app.newCard.frontPlaceholder")}
               rows={5}
             />
           </label>
           <label>
-            {zh ? "背面（Markdown + Mermaid）" : "Back (Markdown + Mermaid)"}
+            {t("app.newCard.back")}
             <textarea
               value={backText}
               onChange={(e) => setBackText(e.target.value)}
-              placeholder={zh ? "答案、解释或图示。" : "The answer, explanation, or diagram."}
+              placeholder={t("app.newCard.backPlaceholder")}
               rows={6}
             />
           </label>
           <label>
-            {zh ? "标签" : "Tags"}
+            {t("app.newCard.tags")}
             <input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder={zh ? "算法, 系统" : "algorithms, systems"}
+              placeholder={t("app.newCard.tagsPlaceholder")}
             />
           </label>
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-4">
             <p className="text-sm font-semibold text-[var(--color-text)]">
-              {zh ? "单卡 AI 编辑" : "Single-card AI edit"}
+              {t("app.newCard.aiEditTitle")}
             </p>
             <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-              {zh
-                ? "描述你想怎么改这张卡。AI 只会返回这一张卡，结果不会自动保存。"
-                : "Describe how you want this card improved. AI will return one revised card only and will not save it automatically."}
+              {t("app.newCard.aiEditDesc")}
             </p>
             <textarea
               value={aiInstruction}
               onChange={(e) => setAiInstruction(e.target.value)}
-              placeholder={
-                zh
-                  ? "例如：让正面更适合回忆，背面更简洁，并补一个例子"
-                  : "For example: make the front better for recall, shorten the back, and add one example"
-              }
+              placeholder={t("app.newCard.aiEditPlaceholder")}
               rows={3}
               className="mt-3"
             />
@@ -189,20 +180,18 @@ export default function NewCardView() {
                 disabled={aiBusy || !front.trim() || !backText.trim() || !aiInstruction.trim()}
                 className="btn-secondary"
               >
-                {aiBusy ? (zh ? "AI 编辑中..." : "Editing with AI...") : (zh ? "用 AI 改这张卡" : "Edit this card with AI")}
+                {aiBusy ? t("app.newCard.aiEditBusy") : t("app.newCard.aiEditAction")}
               </button>
               <button
                 type="button"
                 onClick={() =>
                   setAiInstruction(
-                    zh
-                      ? "让这张卡更清晰、更适合主动回忆，并保留核心信息。"
-                      : "Make this card clearer, more recall-friendly, and keep the core information.",
+                    t("app.newCard.aiEditDefaultPrompt"),
                   )
                 }
                 className="btn-secondary !bg-transparent"
               >
-                {zh ? "使用默认提示" : "Use default prompt"}
+                {t("app.newCard.aiEditDefault")}
               </button>
             </div>
             {aiError && (
@@ -219,31 +208,31 @@ export default function NewCardView() {
               className="btn-primary"
             >
               {saving
-                ? (zh ? "保存中..." : "Saving...")
+                ? t("app.newCard.saving")
                 : isEdit
-                  ? (zh ? "保存修改" : "Save changes")
-                  : (zh ? "创建卡片" : "Create card")}
+                  ? t("app.newCard.saveChanges")
+                  : t("app.newCard.create")}
             </button>
             <button type="button" onClick={() => navigate("/cards")} className="btn-secondary">
-              {zh ? "取消" : "Cancel"}
+              {t("app.newCard.cancel")}
             </button>
           </div>
         </form>
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{zh ? "预览" : "Preview"}</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-[var(--color-text-tertiary)]">{t("app.newCard.preview")}</span>
             <div className="flex rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] p-0.5">
               {(["front", "back"] as const).map((side) => (
                 <button key={side} type="button" onClick={() => setPreviewSide(side)}
-                  className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition ${previewSide === side ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm" : "text-[var(--color-text-secondary)]"}`}>{zh ? (side === "front" ? "正面" : "背面") : side}</button>
+                  className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition ${previewSide === side ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm" : "text-[var(--color-text-secondary)]"}`}>{side === "front" ? t("app.study.front") : t("app.study.back")}</button>
               ))}
             </div>
           </div>
           <div className="card-surface scanline min-h-56 p-5">
             {(previewSide === "front" ? front : backText).trim()
               ? <MarkdownRenderer content={previewSide === "front" ? front : backText} />
-              : <p className="py-10 text-center text-sm text-[var(--color-text-tertiary)]">{zh ? "开始输入即可查看实时预览。" : "Start typing to see a live preview."}</p>}
+              : <p className="py-10 text-center text-sm text-[var(--color-text-tertiary)]">{t("app.newCard.livePreviewEmpty")}</p>}
           </div>
         </div>
       </div>

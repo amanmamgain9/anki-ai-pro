@@ -6,7 +6,7 @@ export default function MarketingFooter({ locale }: { locale: Locale }) {
   const dict = dictionaries[locale];
   const footerLinks = [
     { href: "/about", label: dict.common.about },
-    { href: "/blog", label: locale === "zh" ? "博客" : "Blog" },
+    { href: "/blog", label: dict.common.blog },
     { href: "/pricing", label: dict.common.pricing },
     { href: "/contact", label: dict.common.contact },
     { href: "/terms", label: dict.common.terms },

@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 export default async function RefundPolicyPage() {
   const { dict, locale } = await getServerDictionary();
-  const zh = locale === "zh";
+  const sections = dict.marketing.refundPage.sections;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -46,7 +46,7 @@ export default async function RefundPolicyPage() {
 
       <section className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          {zh ? "退款政策" : "Refund Policy"}
+          {dict.marketing.refundPage.title}
         </h1>
         <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
           {dict.marketing.legal.lastUpdated}
@@ -54,28 +54,14 @@ export default async function RefundPolicyPage() {
 
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "1. Paddle 作为 Merchant of Record" : "1. Paddle as Merchant of Record"}
-            </h2>
-            <p className="mt-2">
-              {zh
-                ? "aiankipro.com 上的付款由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 是 Merchant of Record。"
-                : "Payments on aiankipro.com are processed by Paddle. For purchases completed through Paddle, Paddle acts as the Merchant of Record."}
-            </p>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[0].title}</h2>
+            <p className="mt-2">{sections[0].body}</p>
           </section>
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "2. 退款请求" : "2. Refund Requests"}
-            </h2>
-            <p className="mt-2">
-              {zh
-                ? "通过 Paddle 完成的购买，其退款请求将依据 Paddle 的退款政策以及适用的消费者法律处理。"
-                : "Refund requests for purchases completed through Paddle will be handled in accordance with Paddle's refund policy and applicable consumer law."}
-            </p>
-            <p className="mt-2">
-              {zh ? "你也可以查看 Paddle 官方帮助页面与买家条款：" : "You can also review Paddle's official buyer help pages and buyer terms:"}
-            </p>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[1].title}</h2>
+            <p className="mt-2">{sections[1].body}</p>
+            <p className="mt-2">{sections[1].linksIntro}</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
                 <a
@@ -100,49 +86,26 @@ export default async function RefundPolicyPage() {
             </ul>
           </section>
 
-          <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "3. 消费者法定权利" : "3. Consumer Rights"}
-            </h2>
-            <p className="mt-2">
-              {zh
-                ? "本政策不会影响你作为消费者就“与描述不符、存在缺陷或不适合其用途”的产品所享有的法定权利。"
-                : "This policy does not affect your statutory rights as a consumer in relation to products or services that are not as described, faulty, or not fit for purpose."}
-            </p>
-          </section>
+          {sections.slice(2, 4).map((section) => (
+            <section key={section.title}>
+              <h2 className="text-base font-bold text-[var(--color-text)]">{section.title}</h2>
+              <p className="mt-2">{section.body}</p>
+            </section>
+          ))}
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "4. 取消订阅" : "4. Subscription Cancellations"}
-            </h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[4].title}</h2>
+            <p className="mt-2">{sections[4].body}</p>
             <p className="mt-2">
-              {zh
-                ? "你可随时取消订阅以停止未来续费。取消后，当前已付费订阅期内的访问权限将持续至该计费周期结束。"
-                : "You may cancel your subscription at any time to stop future renewals. After cancellation, access continues until the end of the current paid billing period."}
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">
-              {zh ? "5. 联系方式与账单支持" : "5. Contact and Billing Support"}
-            </h2>
-            <p className="mt-2">
-              {zh
-                ? "如需账单协助或希望就退款请求获得帮助，请先查看 Paddle 的买家帮助页面，或附上 Paddle 收据号与账户邮箱联系我们。"
-                : "If you need billing assistance or help with a refund request, first check Paddle's buyer help pages, or contact us with your Paddle receipt number and account email."}
-            </p>
-            <p className="mt-2">
-              {zh ? "请发送邮件至 " : "Email "}{" "}
+              {sections[4].emailPrefix}{" "}
               <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
                 {SUPPORT_EMAIL}
               </a>{" "}
-              {zh
-                ? "并附上 Paddle 收据号与账户邮箱。我们通常会在 1 个工作日内回复。"
-                : "with your Paddle receipt number and account email for billing support. We typically respond within 1 business day."}
+              {sections[4].emailSuffix}
             </p>
             <p className="mt-2">
               <Link href="/contact" className="text-[var(--color-accent)] hover:underline">
-                {zh ? "前往联系页面" : "Go to the contact page"}
+                {sections[4].contactLink}
               </Link>
             </p>
           </section>

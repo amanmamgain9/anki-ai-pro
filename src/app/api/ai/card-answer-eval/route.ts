@@ -4,6 +4,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { aiFallbackFeedback } from "@/i18n/non-ui-text";
 import { ensureProAccess } from "@/lib/server-entitlements";
 
 export const runtime = "nodejs";
@@ -133,9 +134,7 @@ export async function POST(req: Request) {
       {
         quality: 2,
         confidence: 0.55,
-        feedback: isZh
-          ? "我建议这次给“良好”。你可以说“重来/困难/良好/简单”来覆盖。"
-          : "I suggest 'Good' for this attempt. Say again/hard/good/easy to override.",
+        feedback: isZh ? aiFallbackFeedback.zh : aiFallbackFeedback.en,
       },
       { status: 200 },
     );
