@@ -36,6 +36,12 @@ function resolveFreeProPlusTrialDays() {
   return Math.max(0, Math.floor(parsed));
 }
 
+function resolveTrialEndsAt(user: { createdAt: number; trialEndsAt?: number }) {
+  const trialDays = resolveFreeProPlusTrialDays();
+  const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
+  return user.trialEndsAt ?? fallbackTrialEndsAt;
+}
+
 async function requireIdentity(ctx: AuthCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -73,9 +79,8 @@ export const consumePremiumTtsPreview = mutationGeneric({
       subscription?.currentPeriodEndsAt,
       now,
     );
-    const trialDays = resolveFreeProPlusTrialDays();
-    const trialEndsAt = user.createdAt + trialDays * DAY_MS;
-    const trialActive = trialDays > 0 && !isActive && now < trialEndsAt;
+    const trialEndsAt = resolveTrialEndsAt(user);
+    const trialActive = !isActive && trialEndsAt !== null && now < trialEndsAt;
     if (!isActive && !trialActive) {
       return {
         allowed: false,

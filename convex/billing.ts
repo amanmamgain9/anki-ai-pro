@@ -339,12 +339,15 @@ export const setMyCreatedAtForTesting = mutationGeneric({
     }
 
     const now = Date.now();
+    const trialDays = resolveFreeProPlusTrialDays();
+    const trialEndsAt = trialDays > 0 ? createdAt + trialDays * DAY_MS : undefined;
     await ctx.db.patch(user._id, {
       createdAt,
+      ...(trialEndsAt !== undefined ? { trialEndsAt } : {}),
       updatedAt: now,
       lastSeenAt: now,
     });
-    return { userId: user._id, createdAt };
+    return { userId: user._id, createdAt, trialEndsAt: trialEndsAt ?? null };
   },
 });
 
