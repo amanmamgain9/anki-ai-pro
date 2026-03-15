@@ -4,16 +4,11 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
-import {
-  getPaddleClient,
-  getPaddleForwardSecret,
-} from "@/lib/paddle";
 
 const api = anyApi;
 
 type SyncUserResult = {
   externalId: string;
-  paddleCustomerId: string | null;
 };
 
 type BillingState = {
@@ -102,47 +97,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const priceId = planConfig.priceId;
-    const paddle = getPaddleClient();
-    let customerId = user.paddleCustomerId;
-    if (!customerId) {
-      const customer = await paddle.customers.create({
-        email: session.user.email,
-        name: session.user.name ?? undefined,
-        customData: {
-          externalId: user.externalId,
-        },
-      });
-      customerId = customer.id;
-      await convex.mutation(api.billing.setMyPaddleCustomerId, {
-        forwardSecret: getPaddleForwardSecret(),
-        customerId,
-      });
-    }
-
-    const returnBaseUrl =
-      process.env.NEXTAUTH_URL?.replace(/\/+$/, "") ?? "http://localhost:3000";
-
-    const transaction = await paddle.transactions.create({
-      items: [{ priceId, quantity: 1 }],
-      customerId,
-      customData: {
-        externalId: user.externalId,
-      },
-      checkout: {
-        url: `${returnBaseUrl}/checkout`,
-      },
+    return NextResponse.json({
+      priceId: planConfig.priceId,
+      customerEmail: session.user.email,
+      externalId: user.externalId,
     });
-
-    const checkoutUrl = transaction.checkout?.url;
-    if (!checkoutUrl) {
-      return NextResponse.json(
-        { error: "Paddle transaction did not return a checkout URL" },
-        { status: 502 },
-      );
-    }
-
-    return NextResponse.json({ checkoutUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

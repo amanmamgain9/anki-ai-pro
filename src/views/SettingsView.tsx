@@ -3,6 +3,7 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import Link from "next/link";
+import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -24,11 +25,47 @@ type BillingState = {
   proPreviewRemainingChars?: number | null;
 };
 type PlanAvailability = Record<CheckoutPlan, boolean>;
+type CheckoutPayload = {
+  priceId?: string;
+  customerEmail?: string;
+  externalId?: string;
+  error?: string;
+};
 
 const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
   pro_monthly: true,
   pro_plus_monthly: true,
 };
+const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
+const PADDLE_CLIENT_TOKEN = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "";
+const PADDLE_ENV = process.env.NEXT_PUBLIC_PADDLE_ENV ?? "production";
+
+function initializePaddleForBilling() {
+  if (!PADDLE_CLIENT_TOKEN) return false;
+  const paddle = window.Paddle;
+  if (!paddle || typeof paddle.Initialize !== "function") return false;
+  if (window.__aiankiPaddleInitialized) return true;
+  if (PADDLE_ENV === "sandbox" && paddle.Environment?.set) {
+    paddle.Environment.set("sandbox");
+  }
+  const successUrl = `${window.location.origin}/settings?billing=success`;
+  paddle.Initialize({
+    token: PADDLE_CLIENT_TOKEN,
+    eventCallback(event) {
+      if (event?.name === "checkout.completed") {
+        window.location.replace(successUrl);
+      }
+    },
+    checkout: {
+      settings: {
+        displayMode: "overlay",
+        successUrl,
+      },
+    },
+  });
+  window.__aiankiPaddleInitialized = true;
+  return true;
+}
 
 export default function SettingsView() {
   const { locale } = useI18n();
@@ -43,6 +80,7 @@ export default function SettingsView() {
   const [planAvailability, setPlanAvailability] = useState<PlanAvailability>(
     DEFAULT_PLAN_AVAILABILITY,
   );
+  const [paddleReady, setPaddleReady] = useState(false);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
@@ -75,6 +113,13 @@ export default function SettingsView() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!PADDLE_CLIENT_TOKEN) return;
+    if (initializePaddleForBilling()) {
+      setPaddleReady(true);
+    }
+  }, []);
+
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
     setBillingError(null);
@@ -87,16 +132,42 @@ export default function SettingsView() {
             : "Before checkout, confirm that you agree to the Terms of Service, Privacy Notice, and Refund Policy.",
         );
       }
+      if (!PADDLE_CLIENT_TOKEN) {
+        throw new Error(
+          zh
+            ? "缺少 Paddle 客户端配置，暂时无法打开结账。"
+            : "Missing Paddle client configuration. Checkout is temporarily unavailable.",
+        );
+      }
+      if (!paddleReady && !initializePaddleForBilling()) {
+        throw new Error(
+          zh ? "Paddle 结账尚未就绪，请稍后重试。" : "Paddle checkout is not ready yet. Please try again in a moment.",
+        );
+      }
       const response = await fetch("/api/paddle/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, acceptedPolicies: true }),
       });
-      const payload = (await response.json()) as { checkoutUrl?: string; error?: string };
-      if (!response.ok || !payload.checkoutUrl) {
+      const payload = (await response.json()) as CheckoutPayload;
+      if (!response.ok || !payload.priceId || !payload.customerEmail || !payload.externalId) {
         throw new Error(payload.error ?? "Failed to create Paddle checkout");
       }
-      window.location.href = payload.checkoutUrl;
+      const open = window.Paddle?.Checkout?.open;
+      if (typeof open !== "function") {
+        throw new Error(
+          zh ? "Paddle 结账未成功加载，请刷新后重试。" : "Paddle checkout did not load correctly. Refresh and try again.",
+        );
+      }
+      open({
+        items: [{ priceId: payload.priceId, quantity: 1 }],
+        customer: {
+          email: payload.customerEmail,
+        },
+        customData: {
+          externalId: payload.externalId,
+        },
+      });
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : "Checkout failed");
     } finally {
@@ -205,6 +276,17 @@ export default function SettingsView() {
         {billingError && (
           <p className="mt-3 text-sm text-[var(--color-danger)]">{billingError}</p>
         )}
+        {PADDLE_CLIENT_TOKEN ? (
+          <Script
+            src={PADDLE_SCRIPT_SRC}
+            strategy="afterInteractive"
+            onLoad={() => {
+              if (initializePaddleForBilling()) {
+                setPaddleReady(true);
+              }
+            }}
+          />
+        ) : null}
       </div>
       {showUpgradeModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">

@@ -2,6 +2,7 @@ export {};
 
 declare global {
   interface Window {
+    __aiankiPaddleInitialized?: boolean;
     Paddle?: {
       Initialize?: (options: {
         token: string;
@@ -13,6 +14,18 @@ declare global {
           };
         };
       }) => void;
+      Checkout?: {
+        open?: (options: {
+          items: Array<{
+            priceId: string;
+            quantity: number;
+          }>;
+          customer?: {
+            email?: string;
+          };
+          customData?: Record<string, string>;
+        }) => void;
+      };
       Environment?: {
         set?: (value: "sandbox") => void;
       };
