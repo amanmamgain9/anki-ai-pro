@@ -22,6 +22,7 @@ export default defineSchema({
     paddleSubscriptionId: v.string(),
     paddleCustomerId: v.optional(v.string()),
     status: v.string(),
+    tier: v.optional(v.string()),
     priceId: v.optional(v.string()),
     productId: v.optional(v.string()),
     currentPeriodStartsAt: v.optional(v.number()),

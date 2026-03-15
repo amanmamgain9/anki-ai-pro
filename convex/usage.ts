@@ -1,6 +1,7 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { mutationGeneric } from "convex/server";
+import { mutationGeneric, type GenericDatabaseReader } from "convex/server";
+import type { DataModel } from "./_generated/dataModel";
 import { resolveBillingTierByPriceId } from "./billingPlans";
 import { isSubscriptionEntitled, pickEffectiveSubscription } from "./subscriptionAccess";
 
@@ -11,6 +12,7 @@ type AuthCtx = {
 };
 
 type BillingTier = "free" | "pro" | "pro_plus";
+type UsageReadDb = GenericDatabaseReader<DataModel>;
 
 const PREMIUM_TTS_FEATURE = "premium_tts";
 const DAY_MS = 86_400_000;
@@ -40,6 +42,21 @@ function resolveTrialEndsAt(user: { createdAt: number; trialEndsAt?: number }) {
   const trialDays = resolveFreeProPlusTrialDays();
   const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
   return user.trialEndsAt ?? fallbackTrialEndsAt;
+}
+
+function isStoredBillingTier(value: string | undefined): value is Exclude<BillingTier, "free"> {
+  return value === "pro" || value === "pro_plus";
+}
+
+async function resolveSubscriptionTier(
+  db: UsageReadDb,
+  subscription: { tier?: string; priceId?: string } | null | undefined,
+): Promise<BillingTier> {
+  if (!subscription) return "free";
+  if (isStoredBillingTier(subscription.tier)) {
+    return subscription.tier;
+  }
+  return await resolveBillingTierByPriceId(db, subscription.priceId);
 }
 
 async function requireIdentity(ctx: AuthCtx) {
@@ -91,7 +108,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
     const tier: BillingTier = trialActive
       ? "pro_plus"
       : isActive
-        ? await resolveBillingTierByPriceId(ctx.db, subscription?.priceId)
+        ? await resolveSubscriptionTier(ctx.db, subscription)
         : "free";
 
     const monthKey = getCurrentMonthKey(now);

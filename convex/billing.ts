@@ -1,7 +1,12 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { mutationGeneric, queryGeneric } from "convex/server";
-import type { Id } from "./_generated/dataModel";
+import {
+  mutationGeneric,
+  queryGeneric,
+  type GenericDatabaseReader,
+  type GenericDatabaseWriter,
+} from "convex/server";
+import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import {
   listBillingPlanConfigs,
   resolveBillingTierByPriceId,
@@ -15,6 +20,10 @@ type AuthCtx = {
     getUserIdentity: () => Promise<UserIdentity | null>;
   };
 };
+
+type StoredBillingTier = "pro" | "pro_plus";
+type BillingReadDb = GenericDatabaseReader<DataModel>;
+type BillingWriteDb = GenericDatabaseWriter<DataModel>;
 
 function getIdentityImageUrl(identity: UserIdentity): string | undefined {
   if (typeof identity.pictureUrl === "string" && identity.pictureUrl.length > 0) {
@@ -97,6 +106,68 @@ function getCurrentMonthKey(now: number) {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   return `${yyyy}-${mm}`;
+}
+
+function isStoredBillingTier(value: string | undefined): value is StoredBillingTier {
+  return value === "pro" || value === "pro_plus";
+}
+
+async function listUsersByPaddleCustomerId(db: BillingReadDb, customerId: string) {
+  return await db
+    .query("users")
+    .withIndex("by_paddleCustomerId", (q) => q.eq("paddleCustomerId", customerId))
+    .collect();
+}
+
+async function findUniqueUserByPaddleCustomerId(db: BillingReadDb, customerId: string | undefined) {
+  if (!customerId) return null;
+  const matches = await listUsersByPaddleCustomerId(db, customerId);
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
+async function setUserPaddleCustomerId(
+  db: BillingWriteDb,
+  user: Pick<Doc<"users">, "_id" | "paddleCustomerId" | "updatedAt" | "lastSeenAt">,
+  customerId: string,
+  now: number,
+  options?: { touchLastSeen?: boolean },
+) {
+  const matches = await listUsersByPaddleCustomerId(db, customerId);
+  for (const match of matches) {
+    if (match._id === user._id) continue;
+    await db.patch(match._id, {
+      paddleCustomerId: undefined,
+      updatedAt: now,
+    });
+  }
+
+  const patch: {
+    paddleCustomerId?: string;
+    updatedAt: number;
+    lastSeenAt?: number;
+  } = {
+    updatedAt: now,
+  };
+
+  if (user.paddleCustomerId !== customerId) {
+    patch.paddleCustomerId = customerId;
+  }
+  if (options?.touchLastSeen) {
+    patch.lastSeenAt = now;
+  }
+  await db.patch(user._id, patch);
+}
+
+async function resolveSubscriptionTier(
+  db: BillingReadDb,
+  subscription: { tier?: string; priceId?: string } | null | undefined,
+): Promise<StoredBillingTier | "free"> {
+  if (!subscription) return "free";
+  if (isStoredBillingTier(subscription.tier)) {
+    return subscription.tier;
+  }
+  return await resolveBillingTierByPriceId(db, subscription.priceId);
 }
 
 export const syncCurrentUser = mutationGeneric({
@@ -228,10 +299,9 @@ export const setMyPaddleCustomerId = mutationGeneric({
     if (!existing) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
-    await ctx.db.patch(existing._id, {
-      paddleCustomerId: customerId,
-      updatedAt: Date.now(),
-      lastSeenAt: Date.now(),
+    const now = Date.now();
+    await setUserPaddleCustomerId(ctx.db, existing, customerId, now, {
+      touchLastSeen: true,
     });
     return { userId: existing._id, customerId };
   },
@@ -488,9 +558,7 @@ export const getMyBilling = queryGeneric({
       subscription?.currentPeriodEndsAt,
       now,
     );
-    const tier = isActive
-      ? await resolveBillingTierByPriceId(ctx.db, subscription?.priceId)
-      : "free";
+    const tier = isActive ? await resolveSubscriptionTier(ctx.db, subscription) : "free";
     const trialDays = resolveFreeProPlusTrialDays();
     const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
     const trialEndsAt = user.trialEndsAt ?? fallbackTrialEndsAt;
@@ -544,6 +612,7 @@ export const getMyBilling = queryGeneric({
       paddleCustomerId: user.paddleCustomerId ?? null,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddlePriceId: subscription?.priceId ?? null,
+      paddleTier: isStoredBillingTier(subscription?.tier) ? subscription.tier : null,
     };
   },
 });
@@ -641,14 +710,11 @@ export const processPaddleWebhook = mutationGeneric({
           .first()
       : null;
 
-    let user = args.customerId
-      ? await ctx.db
-          .query("users")
-          .withIndex("by_paddleCustomerId", (q) =>
-            q.eq("paddleCustomerId", args.customerId),
-          )
-          .first()
+    const existingSubscriptionOwner = existingSubscription
+      ? await ctx.db.get(existingSubscription.userId)
       : null;
+
+    let user = existingSubscriptionOwner;
 
     if (!user && args.externalId) {
       user = await ctx.db
@@ -657,14 +723,8 @@ export const processPaddleWebhook = mutationGeneric({
         .first();
     }
 
-    if (!user && existingSubscription) {
-      user = await ctx.db.get(existingSubscription.userId);
-    }
-    if (user && existingSubscription && existingSubscription.userId !== user._id) {
-      const subscriptionOwner = await ctx.db.get(existingSubscription.userId);
-      if (subscriptionOwner) {
-        user = subscriptionOwner;
-      }
+    if (!user && args.customerId) {
+      user = await findUniqueUserByPaddleCustomerId(ctx.db, args.customerId);
     }
 
     let processingStatus: "processed" | "ignored_missing_user" | "ignored_stale_event" = user
@@ -689,16 +749,13 @@ export const processPaddleWebhook = mutationGeneric({
 
     if (processingStatus === "processed" && user) {
       userId = user._id;
-      const userPatch: {
-        updatedAt: number;
-        paddleCustomerId?: string;
-      } = {
-        updatedAt: now,
-      };
-      if (args.customerId && user.paddleCustomerId !== args.customerId) {
-        userPatch.paddleCustomerId = args.customerId;
+      if (args.customerId) {
+        await setUserPaddleCustomerId(ctx.db, user, args.customerId, now);
+      } else {
+        await ctx.db.patch(user._id, {
+          updatedAt: now,
+        });
       }
-      await ctx.db.patch(user._id, userPatch);
     }
 
     if (processingStatus === "processed" && user && args.subscriptionId) {
@@ -710,6 +767,7 @@ export const processPaddleWebhook = mutationGeneric({
 
       const patch: {
         status: string;
+        tier?: StoredBillingTier;
         updatedAt: number;
         lastEventType: string;
         paddleCustomerId?: string;
@@ -727,6 +785,14 @@ export const processPaddleWebhook = mutationGeneric({
         lastEventType: args.eventType,
         lastEventOccurredAt: incomingEventTime,
       };
+      const resolvedTier = args.priceId
+        ? await resolveBillingTierByPriceId(ctx.db, args.priceId)
+        : isStoredBillingTier(existingSubscription?.tier)
+          ? existingSubscription.tier
+          : undefined;
+      if (resolvedTier) {
+        patch.tier = resolvedTier;
+      }
       if (subscriptionUpdatedAt !== undefined) {
         patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
       }
@@ -799,6 +865,7 @@ export const processPaddleWebhook = mutationGeneric({
           paddleSubscriptionId: args.subscriptionId,
           paddleCustomerId: args.customerId,
           status: normalizedStatus,
+          ...(resolvedTier ? { tier: resolvedTier } : {}),
           priceId: args.priceId,
           productId: args.productId,
           currentPeriodStartsAt,

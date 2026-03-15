@@ -2,6 +2,7 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric, queryGeneric } from "convex/server";
+import type { Doc } from "./_generated/dataModel";
 
 export type BillingPlan = "pro_monthly" | "pro_plus_monthly";
 type BillingTier = "pro" | "pro_plus";
@@ -80,11 +81,26 @@ async function requireSupportOperator(ctx: AuthCtx) {
   return identity;
 }
 
-async function getRowByPlan(db: any, plan: BillingPlan) {
-  return await db
+async function getRowsByPlan(db: any, plan: BillingPlan) {
+  return (await db
     .query("billingPlanPrices")
     .withIndex("by_plan", (q: any) => q.eq("plan", plan))
-    .first();
+    .collect()) as Doc<"billingPlanPrices">[];
+}
+
+function pickNewestRow<T extends { updatedAt: number; createdAt: number }>(rows: T[]): T | null {
+  return [...rows].sort((a, b) => {
+    if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+    return b.createdAt - a.createdAt;
+  })[0] ?? null;
+}
+
+async function getActiveRowByPlan(db: any, plan: BillingPlan) {
+  const rows = (await db
+    .query("billingPlanPrices")
+    .withIndex("by_active_plan", (q: any) => q.eq("active", true).eq("plan", plan))
+    .collect()) as Doc<"billingPlanPrices">[];
+  return pickNewestRow(rows);
 }
 
 export function listBillingPlanConfigs() {
@@ -92,7 +108,7 @@ export function listBillingPlanConfigs() {
 }
 
 export async function resolveCheckoutPlanPriceId(db: any, plan: BillingPlan) {
-  const row = await getRowByPlan(db, plan);
+  const row = await getActiveRowByPlan(db, plan);
   if (row?.active && row.paddlePriceId) {
     return row.paddlePriceId;
   }
@@ -109,7 +125,7 @@ export async function resolveBillingTierByPriceId(
     .query("billingPlanPrices")
     .withIndex("by_priceId", (q: any) => q.eq("paddlePriceId", priceId))
     .first();
-  if (row?.active && (row.tier === "pro" || row.tier === "pro_plus")) {
+  if (row && (row.tier === "pro" || row.tier === "pro_plus")) {
     return row.tier;
   }
 
@@ -129,7 +145,7 @@ export const listPublic = queryGeneric({
     const plans = await Promise.all(
       (Object.keys(BILLING_PLAN_CONFIGS) as BillingPlan[]).map(async (plan) => {
         const config = BILLING_PLAN_CONFIGS[plan];
-        const row = await getRowByPlan(ctx.db, plan);
+        const row = await getActiveRowByPlan(ctx.db, plan);
         const priceId =
           row?.active && row.paddlePriceId ? row.paddlePriceId : resolvePriceIdFromEnv(plan);
         return {
@@ -191,19 +207,34 @@ export const adminUpsertPrice = mutationGeneric({
     }
     const now = Date.now();
     const config = BILLING_PLAN_CONFIGS[plan];
-    const existing = await getRowByPlan(ctx.db, plan);
+    const normalizedPriceId = paddlePriceId.trim();
+    const existingRows = await getRowsByPlan(ctx.db, plan);
+    const matchingRow =
+      existingRows.find((row: any) => row.paddlePriceId === normalizedPriceId) ?? null;
     const nextActive = active ?? true;
 
-    if (existing) {
-      await ctx.db.patch(existing._id, {
+    if (nextActive) {
+      for (const row of existingRows) {
+        if (matchingRow && row._id === matchingRow._id) continue;
+        if (!matchingRow && row.paddlePriceId === normalizedPriceId) continue;
+        if (!row.active) continue;
+        await ctx.db.patch(row._id, {
+          active: false,
+          updatedAt: now,
+        });
+      }
+    }
+
+    if (matchingRow) {
+      await ctx.db.patch(matchingRow._id, {
         tier: config.tier,
         interval: config.interval,
         trialEligible: config.trialEligible,
-        paddlePriceId: paddlePriceId.trim(),
+        paddlePriceId: normalizedPriceId,
         active: nextActive,
         updatedAt: now,
       });
-      return existing._id;
+      return matchingRow._id;
     }
 
     return await ctx.db.insert("billingPlanPrices", {
@@ -211,7 +242,7 @@ export const adminUpsertPrice = mutationGeneric({
       tier: config.tier,
       interval: config.interval,
       trialEligible: config.trialEligible,
-      paddlePriceId: paddlePriceId.trim(),
+      paddlePriceId: normalizedPriceId,
       active: nextActive,
       createdAt: now,
       updatedAt: now,
