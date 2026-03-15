@@ -1,4 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConvexError } from "convex/values";
+import { isSubscriptionEntitled } from "./subscriptionAccess";
 
 const DAY_MS = 86_400_000;
 
@@ -9,12 +11,13 @@ function resolveFreeProPlusTrialDays() {
   return Math.max(0, Math.floor(parsed));
 }
 
-function isSubscriptionActive(status: string | null | undefined) {
-  return status === "active" || status === "trialing";
-}
-
-function hasAnyActiveSubscription(rows: Array<{ status?: string | null }>) {
-  return rows.some((row) => isSubscriptionActive(row.status));
+function hasAnyEntitledSubscription(
+  rows: Array<{ status?: string | null; currentPeriodEndsAt?: number | null }>,
+) {
+  const now = Date.now();
+  return rows.some((row) =>
+    isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, now),
+  );
 }
 
 type EntitlementCtx = {
@@ -41,7 +44,7 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
     .order("desc")
     .collect();
 
-  if (hasAnyActiveSubscription(subscriptions)) {
+  if (hasAnyEntitledSubscription(subscriptions)) {
     return externalId;
   }
 

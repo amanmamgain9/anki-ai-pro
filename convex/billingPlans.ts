@@ -3,9 +3,9 @@ import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric, queryGeneric } from "convex/server";
 
-type BillingPlan = "pro_monthly" | "pro_yearly" | "pro_plus_monthly" | "pro_plus_yearly";
+export type BillingPlan = "pro_monthly" | "pro_plus_monthly";
 type BillingTier = "pro" | "pro_plus";
-type BillingInterval = "monthly" | "yearly";
+type BillingInterval = "monthly";
 
 type AuthCtx = {
   auth: {
@@ -32,14 +32,6 @@ const BILLING_PLAN_CONFIGS: Record<
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
   },
-  pro_yearly: {
-    plan: "pro_yearly",
-    tier: "pro",
-    interval: "yearly",
-    trialEligible: false,
-    envVars: ["PADDLE_PRICE_ID_PRO_YEARLY"],
-    legacyEnvVars: ["PADDLE_PRICE_ID_YEARLY"],
-  },
   pro_plus_monthly: {
     plan: "pro_plus_monthly",
     tier: "pro_plus",
@@ -47,14 +39,8 @@ const BILLING_PLAN_CONFIGS: Record<
     trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_PLUS_MONTHLY"],
   },
-  pro_plus_yearly: {
-    plan: "pro_plus_yearly",
-    tier: "pro_plus",
-    interval: "yearly",
-    trialEligible: true,
-    envVars: ["PADDLE_PRICE_ID_PRO_PLUS_YEARLY"],
-  },
 };
+const BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly", "pro_plus_monthly"];
 
 const SUPPORT_OPERATOR_EMAILS = new Set([
   "amanmamgain9@gmail.com",
@@ -99,6 +85,10 @@ async function getRowByPlan(db: any, plan: BillingPlan) {
     .query("billingPlanPrices")
     .withIndex("by_plan", (q: any) => q.eq("plan", plan))
     .first();
+}
+
+export function listBillingPlanConfigs() {
+  return BILLING_PLAN_ORDER.map((plan) => BILLING_PLAN_CONFIGS[plan]);
 }
 
 export async function resolveCheckoutPlanPriceId(db: any, plan: BillingPlan) {
@@ -169,9 +159,7 @@ export const getPriceForPlan = queryGeneric({
   args: {
     plan: v.union(
       v.literal("pro_monthly"),
-      v.literal("pro_yearly"),
       v.literal("pro_plus_monthly"),
-      v.literal("pro_plus_yearly"),
     ),
   },
   handler: async (ctx, { plan }) => {
@@ -189,9 +177,7 @@ export const adminUpsertPrice = mutationGeneric({
     forwardSecret: v.optional(v.string()),
     plan: v.union(
       v.literal("pro_monthly"),
-      v.literal("pro_yearly"),
       v.literal("pro_plus_monthly"),
-      v.literal("pro_plus_yearly"),
     ),
     paddlePriceId: v.string(),
     active: v.optional(v.boolean()),

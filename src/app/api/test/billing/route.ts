@@ -20,9 +20,7 @@ const statusSchema = z.enum([
 ]);
 const planSchema = z.enum([
   "pro_monthly",
-  "pro_yearly",
   "pro_plus_monthly",
-  "pro_plus_yearly",
 ]);
 
 const actionSchema = z.discriminatedUnion("action", [

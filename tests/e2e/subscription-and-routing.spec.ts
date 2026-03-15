@@ -3,9 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 const E2E_SECRET = "playwright-local-secret";
 const expectedPlans = [
   "pro_monthly",
-  "pro_yearly",
   "pro_plus_monthly",
-  "pro_plus_yearly",
 ];
 
 async function createMagicLink(
@@ -65,7 +63,7 @@ async function billingAction(
   };
 }
 
-test("billing plans endpoint exposes monthly/yearly and trial conditions", async ({ request }) => {
+test("billing plans endpoint exposes monthly plans and trial conditions", async ({ request }) => {
   const response = await request.get("/api/paddle/plans");
   expect(response.status()).toBe(200);
 
@@ -88,20 +86,14 @@ test("billing plans endpoint exposes monthly/yearly and trial conditions", async
   expect(planNames).toEqual(expectedPlans);
 
   const proMonthly = plans.find((p) => p.plan === "pro_monthly");
-  const proYearly = plans.find((p) => p.plan === "pro_yearly");
   const proPlusMonthly = plans.find((p) => p.plan === "pro_plus_monthly");
-  const proPlusYearly = plans.find((p) => p.plan === "pro_plus_yearly");
 
   expect(proMonthly?.interval).toBe("monthly");
-  expect(proYearly?.interval).toBe("yearly");
   expect(proPlusMonthly?.tier).toBe("pro_plus");
-  expect(proPlusYearly?.tier).toBe("pro_plus");
 
   if ((payload.trialDays ?? 0) > 0) {
     expect(proMonthly?.trialEligible).toBe(false);
-    expect(proYearly?.trialEligible).toBe(false);
     expect(proPlusMonthly?.trialEligible).toBe(true);
-    expect(proPlusYearly?.trialEligible).toBe(true);
   } else {
     for (const row of plans) {
       expect(row.trialEligible).toBe(false);
@@ -137,8 +129,8 @@ test("magic-link full sign-in flow grants trial access and shows upgrade control
   await expect(page.getByText(/Free Pro\+ trial is active|免费 Pro\+ 试用进行中/)).toBeVisible();
 
   await page.getByRole("button", { name: /Upgrade|升级|Change plan|更改套餐/ }).click();
-  await expect(page.getByRole("button", { name: /Monthly|月付/ }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Yearly|年付/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Start Pro$|^开始 Pro$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start Pro\+|开始 Pro\+/ })).toBeVisible();
 
   await page.goto("/cards");
   await page.waitForURL(/\/cards/);
@@ -205,7 +197,7 @@ test("active paid subscription unlocks paid routes and pro API gate", async ({ p
   const activated = await billingAction(page.request, {
     action: "simulateWebhook",
     status: "active",
-    plan: "pro_yearly",
+    plan: "pro_monthly",
   });
   expect(activated.billing?.isActive).toBe(true);
   expect(activated.billing?.plan).toBe("pro");
@@ -227,7 +219,7 @@ test("checkout blocks creating a second subscription when one is already active"
   await billingAction(page.request, {
     action: "simulateWebhook",
     status: "active",
-    plan: "pro_yearly",
+    plan: "pro_monthly",
   });
 
   const checkout = await page.request.post("/api/paddle/checkout", {
@@ -256,7 +248,7 @@ test("billing remains active when a newer inactive row exists for a different su
     action: "simulateWebhook",
     subscriptionId: activeSubscriptionId,
     status: "active",
-    plan: "pro_yearly",
+    plan: "pro_monthly",
   });
   expect(active.billing?.isActive).toBe(true);
   expect(active.billing?.subscriptionStatus).toBe("active");
@@ -292,7 +284,7 @@ test("older webhook for the same subscription is ignored to prevent stale overwr
     action: "simulateWebhook",
     subscriptionId,
     status: "active",
-    plan: "pro_yearly",
+    plan: "pro_monthly",
     occurredAtOffsetDays: 0,
   });
   expect(fresh.billing?.isActive).toBe(true);
@@ -302,7 +294,7 @@ test("older webhook for the same subscription is ignored to prevent stale overwr
     action: "simulateWebhook",
     subscriptionId,
     status: "canceled",
-    plan: "pro_yearly",
+    plan: "pro_monthly",
     occurredAtOffsetDays: -2,
     subscriptionUpdatedAtOffsetDays: -2,
   });
@@ -323,12 +315,13 @@ test("subscription status transitions enforce access correctly", async ({ page, 
     status: "trialing" | "active" | "past_due" | "canceled" | "expired";
     expectedActive: boolean;
     expectedProApiStatus: number;
+    currentPeriodEndsInDays?: number;
   }> = [
     { status: "trialing", expectedActive: true, expectedProApiStatus: 400 },
     { status: "active", expectedActive: true, expectedProApiStatus: 400 },
     { status: "past_due", expectedActive: false, expectedProApiStatus: 402 },
-    { status: "canceled", expectedActive: false, expectedProApiStatus: 402 },
-    { status: "expired", expectedActive: false, expectedProApiStatus: 402 },
+    { status: "canceled", expectedActive: true, expectedProApiStatus: 400, currentPeriodEndsInDays: 29 },
+    { status: "expired", expectedActive: false, expectedProApiStatus: 402, currentPeriodEndsInDays: -1 },
   ];
 
   for (const row of cases) {
@@ -336,6 +329,9 @@ test("subscription status transitions enforce access correctly", async ({ page, 
       action: "simulateWebhook",
       status: row.status,
       plan: "pro_monthly",
+      ...(row.currentPeriodEndsInDays !== undefined
+        ? { currentPeriodEndsInDays: row.currentPeriodEndsInDays }
+        : {}),
     });
     expect(result.billing?.subscriptionStatus).toBe(row.status);
     expect(Boolean(result.billing?.isActive)).toBe(row.expectedActive);
@@ -343,6 +339,28 @@ test("subscription status transitions enforce access correctly", async ({ page, 
     const proApi = await page.request.post("/api/ai/edit-cards", { data: {} });
     expect(proApi.status()).toBe(row.expectedProApiStatus);
   }
+});
+
+test("checkout stays blocked after cancellation until the paid period ends", async ({ page, request }) => {
+  await signInWithMagicLink(page, request, "/settings");
+  await page.waitForURL(/\/settings/);
+  await billingAction(page.request, { action: "reset" });
+  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
+
+  const canceled = await billingAction(page.request, {
+    action: "simulateWebhook",
+    status: "canceled",
+    plan: "pro_monthly",
+    currentPeriodEndsInDays: 14,
+    nextBilledInDays: 14,
+  });
+  expect(canceled.billing?.isActive).toBe(true);
+  expect(canceled.billing?.subscriptionStatus).toBe("canceled");
+
+  const checkout = await page.request.post("/api/paddle/checkout", {
+    data: { plan: "pro_plus_monthly" },
+  });
+  expect(checkout.status()).toBe(409);
 });
 
 test("renewal and expiration updates are reflected after webhook sequence", async ({ page, request }) => {
@@ -408,14 +426,22 @@ test("optional real Paddle checkout contract in CI", async ({ page, request }) =
     const detail = await response.text();
     throw new Error(`Real Paddle checkout contract failed (${response.status()}): ${detail}`);
   }
-  const payload = (await response.json()) as { checkoutUrl?: string };
-  expect(typeof payload.checkoutUrl).toBe("string");
-  expect(payload.checkoutUrl ?? "").toMatch(/^https?:\/\//);
+  const payload = (await response.json()) as {
+    priceId?: string;
+    customerEmail?: string;
+    externalId?: string;
+  };
+  expect(typeof payload.priceId).toBe("string");
+  expect(payload.priceId ?? "").not.toHaveLength(0);
+  expect(typeof payload.customerEmail).toBe("string");
+  expect(payload.customerEmail ?? "").toContain("@");
+  expect(typeof payload.externalId).toBe("string");
+  expect(payload.externalId ?? "").not.toHaveLength(0);
 });
 
 test("billing APIs reject unauthenticated requests", async ({ request }) => {
   const checkoutResponse = await request.post("/api/paddle/checkout", {
-    data: { plan: "pro_yearly" },
+    data: { plan: "pro_monthly" },
   });
   expect(checkoutResponse.status()).toBe(401);
 
@@ -423,11 +449,10 @@ test("billing APIs reject unauthenticated requests", async ({ request }) => {
   expect(portalResponse.status()).toBe(401);
 });
 
-test("pricing page mentions monthly, yearly, and the 3-day trial", async ({ request }) => {
+test("pricing page mentions monthly pricing and the 3-day trial", async ({ request }) => {
   const response = await request.get("/pricing");
   expect(response.status()).toBe(200);
   const html = await response.text();
   expect(html).toMatch(/monthly/i);
-  expect(html).toMatch(/yearly/i);
   expect(html).toMatch(/3-day/i);
 });

@@ -18,6 +18,7 @@ import type * as flashcards from "../flashcards.js";
 import type * as http from "../http.js";
 import type * as magicLinks from "../magicLinks.js";
 import type * as study from "../study.js";
+import type * as subscriptionAccess from "../subscriptionAccess.js";
 import type * as usage from "../usage.js";
 import type * as voice from "../voice.js";
 
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   magicLinks: typeof magicLinks;
   study: typeof study;
+  subscriptionAccess: typeof subscriptionAccess;
   usage: typeof usage;
   voice: typeof voice;
 }>;

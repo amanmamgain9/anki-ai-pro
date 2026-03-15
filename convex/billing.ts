@@ -2,7 +2,13 @@ import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric, queryGeneric } from "convex/server";
 import type { Id } from "./_generated/dataModel";
-import { resolveBillingTierByPriceId } from "./billingPlans";
+import {
+  listBillingPlanConfigs,
+  resolveBillingTierByPriceId,
+  resolveCheckoutPlanPriceId,
+  type BillingPlan,
+} from "./billingPlans";
+import { isSubscriptionEntitled, pickEffectiveSubscription } from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -62,17 +68,6 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
     default:
       return "unknown";
   }
-}
-
-function isSubscriptionActive(status: string | null | undefined) {
-  return status === "active" || status === "trialing";
-}
-
-function pickEffectiveSubscription<T extends { status?: string | null }>(rows: T[]): T | null {
-  for (const row of rows) {
-    if (isSubscriptionActive(row.status)) return row;
-  }
-  return rows[0] ?? null;
 }
 
 const DAY_MS = 86_400_000;
@@ -481,11 +476,15 @@ export const getMyBilling = queryGeneric({
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
-    const subscription = pickEffectiveSubscription(subscriptions);
-
     const now = Date.now();
+    const subscription = pickEffectiveSubscription(subscriptions, now);
+
     const status = subscription?.status ?? null;
-    const isActive = isSubscriptionActive(status);
+    const isActive = isSubscriptionEntitled(
+      status,
+      subscription?.currentPeriodEndsAt,
+      now,
+    );
     const tier = isActive
       ? await resolveBillingTierByPriceId(ctx.db, subscription?.priceId)
       : "free";
@@ -542,6 +541,43 @@ export const getMyBilling = queryGeneric({
       paddleCustomerId: user.paddleCustomerId ?? null,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddlePriceId: subscription?.priceId ?? null,
+    };
+  },
+});
+
+export const getBillingPlansPublic = queryGeneric({
+  handler: async (ctx) => {
+    const trialDays = resolveFreeProPlusTrialDays();
+    const plans = await Promise.all(
+      listBillingPlanConfigs().map(async (config) => {
+        const priceId = await resolveCheckoutPlanPriceId(ctx.db, config.plan);
+        return {
+          plan: config.plan,
+          tier: config.tier,
+          interval: config.interval,
+          trialEligible: config.trialEligible && trialDays > 0,
+          checkoutEnabled: Boolean(priceId),
+        };
+      }),
+    );
+
+    return {
+      trialDays,
+      plans,
+    };
+  },
+});
+
+export const getCheckoutPlanConfig = queryGeneric({
+  args: {
+    plan: v.union(v.literal("pro_monthly"), v.literal("pro_plus_monthly")),
+  },
+  handler: async (ctx, { plan }: { plan: BillingPlan }) => {
+    const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
+    return {
+      plan,
+      priceId,
+      checkoutEnabled: Boolean(priceId),
     };
   },
 });

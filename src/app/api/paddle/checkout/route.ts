@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const planConfig = (await convex.query(api.billingPlans.getPriceForPlan, {
+    const planConfig = (await convex.query(api.billing.getCheckoutPlanConfig, {
       plan,
     })) as { priceId: string | null; checkoutEnabled: boolean };
     if (!planConfig.checkoutEnabled || !planConfig.priceId) {

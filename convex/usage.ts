@@ -2,6 +2,7 @@ import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric } from "convex/server";
 import { resolveBillingTierByPriceId } from "./billingPlans";
+import { isSubscriptionEntitled, pickEffectiveSubscription } from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -35,17 +36,6 @@ function resolveFreeProPlusTrialDays() {
   return Math.max(0, Math.floor(parsed));
 }
 
-function isSubscriptionActive(status: string | null | undefined) {
-  return status === "active" || status === "trialing";
-}
-
-function pickEffectiveSubscription<T extends { status?: string | null }>(rows: T[]): T | null {
-  for (const row of rows) {
-    if (isSubscriptionActive(row.status)) return row;
-  }
-  return rows[0] ?? null;
-}
-
 async function requireIdentity(ctx: AuthCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -76,9 +66,13 @@ export const consumePremiumTtsPreview = mutationGeneric({
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
-    const subscription = pickEffectiveSubscription(subscriptions);
+    const subscription = pickEffectiveSubscription(subscriptions, now);
     const status = subscription?.status ?? null;
-    const isActive = isSubscriptionActive(status);
+    const isActive = isSubscriptionEntitled(
+      status,
+      subscription?.currentPeriodEndsAt,
+      now,
+    );
     const trialDays = resolveFreeProPlusTrialDays();
     const trialEndsAt = user.createdAt + trialDays * DAY_MS;
     const trialActive = trialDays > 0 && !isActive && now < trialEndsAt;
