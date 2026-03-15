@@ -16,6 +16,10 @@ export const metadata: Metadata = {
 export default async function ContactPage() {
   const { dict, locale } = await getServerDictionary();
   const sections = dict.marketing.contactPage.sections;
+  const emailSection = sections[0] as { title: string; bodyPrefix: string };
+  const responseSection = sections[1] as { title: string; body: string };
+  const helpSection = sections[2] as { title: string; bullets: readonly string[] };
+  const policySection = sections[3] as { title: string; bodyPrefix: string };
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -54,9 +58,9 @@ export default async function ContactPage() {
 
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[0].title}</h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{emailSection.title}</h2>
             <p className="mt-2">
-              {sections[0].bodyPrefix}{" "}
+              {emailSection.bodyPrefix}{" "}
               <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
                 {SUPPORT_EMAIL}
               </a>
@@ -64,21 +68,21 @@ export default async function ContactPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[1].title}</h2>
-            <p className="mt-2">{sections[1].body}</p>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{responseSection.title}</h2>
+            <p className="mt-2">{responseSection.body}</p>
           </section>
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[2].title}</h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{helpSection.title}</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5">
-              {sections[2].bullets?.map((bullet) => <li key={bullet}>{bullet}</li>)}
+              {helpSection.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
             </ul>
           </section>
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[3].title}</h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{policySection.title}</h2>
             <p className="mt-2">
-              {sections[3].bodyPrefix}{" "}
+              {policySection.bodyPrefix}{" "}
               <Link href="/terms" className="text-[var(--color-accent)] hover:underline">
                 {dict.common.terms}
               </Link>

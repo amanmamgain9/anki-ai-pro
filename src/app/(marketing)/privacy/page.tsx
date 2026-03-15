@@ -15,6 +15,8 @@ export const metadata: Metadata = {
 export default async function PrivacyPage() {
   const { dict, locale } = await getServerDictionary();
   const sections = dict.marketing.privacyPage.sections;
+  const infoSections = sections.slice(0, 5) as ReadonlyArray<{ title: string; body: string }>;
+  const contactSection = sections[5] as { title: string; bodyPrefix: string };
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -52,7 +54,7 @@ export default async function PrivacyPage() {
         </p>
 
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-          {sections.slice(0, 5).map((section) => (
+          {infoSections.map((section) => (
             <section key={section.title}>
               <h2 className="text-base font-bold text-[var(--color-text)]">{section.title}</h2>
               <p className="mt-2">{section.body}</p>
@@ -60,9 +62,9 @@ export default async function PrivacyPage() {
           ))}
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[5].title}</h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{contactSection.title}</h2>
             <p className="mt-2">
-              {sections[5].bodyPrefix}{" "}
+              {contactSection.bodyPrefix}{" "}
               <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
                 {SUPPORT_EMAIL}
               </a>

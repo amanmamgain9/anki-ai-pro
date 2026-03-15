@@ -16,6 +16,10 @@ export const metadata: Metadata = {
 export default async function TermsPage() {
   const { dict, locale } = await getServerDictionary();
   const sections = dict.marketing.termsPage.sections;
+  const introSections = sections.slice(0, 3) as ReadonlyArray<{ title: string; body: readonly string[] }>;
+  const refundSection = sections[3] as { title: string; bodyPrefix: string };
+  const policySections = sections.slice(4, 6) as ReadonlyArray<{ title: string; body: readonly string[] }>;
+  const contactSection = sections[6] as { title: string; bodyPrefix: string };
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -53,7 +57,7 @@ export default async function TermsPage() {
         </p>
 
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
-          {sections.slice(0, 3).map((section) => (
+          {introSections.map((section) => (
             <section key={section.title}>
               <h2 className="text-base font-bold text-[var(--color-text)]">{section.title}</h2>
               {section.body?.map((paragraph) => <p key={paragraph} className="mt-2">{paragraph}</p>)}
@@ -61,9 +65,9 @@ export default async function TermsPage() {
           ))}
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[3].title}</h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{refundSection.title}</h2>
             <p className="mt-2">
-              {sections[3].bodyPrefix}{" "}
+              {refundSection.bodyPrefix}{" "}
               <Link href="/refund-policy" className="text-[var(--color-accent)] hover:underline">
                 {dict.common.refundPolicy}
               </Link>
@@ -71,7 +75,7 @@ export default async function TermsPage() {
             </p>
           </section>
 
-          {sections.slice(4, 6).map((section) => (
+          {policySections.map((section) => (
             <section key={section.title}>
               <h2 className="text-base font-bold text-[var(--color-text)]">{section.title}</h2>
               {section.body?.map((paragraph) => <p key={paragraph} className="mt-2">{paragraph}</p>)}
@@ -79,9 +83,9 @@ export default async function TermsPage() {
           ))}
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[6].title}</h2>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{contactSection.title}</h2>
             <p className="mt-2">
-              {sections[6].bodyPrefix}{" "}
+              {contactSection.bodyPrefix}{" "}
               <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
                 {SUPPORT_EMAIL}
               </a>

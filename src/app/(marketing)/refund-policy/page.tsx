@@ -16,6 +16,16 @@ export const metadata: Metadata = {
 export default async function RefundPolicyPage() {
   const { dict, locale } = await getServerDictionary();
   const sections = dict.marketing.refundPage.sections;
+  const merchantSection = sections[0] as { title: string; body: string };
+  const requestSection = sections[1] as { title: string; body: string; linksIntro: string };
+  const rightsSections = sections.slice(2, 4) as ReadonlyArray<{ title: string; body: string }>;
+  const supportSection = sections[4] as {
+    title: string;
+    body: string;
+    emailPrefix: string;
+    emailSuffix: string;
+    contactLink: string;
+  };
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -54,14 +64,14 @@ export default async function RefundPolicyPage() {
 
         <div className="mt-8 space-y-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[0].title}</h2>
-            <p className="mt-2">{sections[0].body}</p>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{merchantSection.title}</h2>
+            <p className="mt-2">{merchantSection.body}</p>
           </section>
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[1].title}</h2>
-            <p className="mt-2">{sections[1].body}</p>
-            <p className="mt-2">{sections[1].linksIntro}</p>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{requestSection.title}</h2>
+            <p className="mt-2">{requestSection.body}</p>
+            <p className="mt-2">{requestSection.linksIntro}</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
                 <a
@@ -86,7 +96,7 @@ export default async function RefundPolicyPage() {
             </ul>
           </section>
 
-          {sections.slice(2, 4).map((section) => (
+          {rightsSections.map((section) => (
             <section key={section.title}>
               <h2 className="text-base font-bold text-[var(--color-text)]">{section.title}</h2>
               <p className="mt-2">{section.body}</p>
@@ -94,18 +104,18 @@ export default async function RefundPolicyPage() {
           ))}
 
           <section>
-            <h2 className="text-base font-bold text-[var(--color-text)]">{sections[4].title}</h2>
-            <p className="mt-2">{sections[4].body}</p>
+            <h2 className="text-base font-bold text-[var(--color-text)]">{supportSection.title}</h2>
+            <p className="mt-2">{supportSection.body}</p>
             <p className="mt-2">
-              {sections[4].emailPrefix}{" "}
+              {supportSection.emailPrefix}{" "}
               <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[var(--color-accent)] hover:underline">
                 {SUPPORT_EMAIL}
               </a>{" "}
-              {sections[4].emailSuffix}
+              {supportSection.emailSuffix}
             </p>
             <p className="mt-2">
               <Link href="/contact" className="text-[var(--color-accent)] hover:underline">
-                {sections[4].contactLink}
+                {supportSection.contactLink}
               </Link>
             </p>
           </section>
