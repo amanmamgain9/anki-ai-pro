@@ -323,9 +323,6 @@ export default function SettingsView() {
               <div className="rounded-xl border border-[var(--color-border)] p-3">
                 <p className="text-sm font-semibold">{zh ? "Pro+" : "Pro+"}</p>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{zh ? "$20 / 月" : "$20 / month"}</p>
-                <p className="mt-1 text-[11px] text-[var(--color-accent)]">
-                  {zh ? "含 3 天免费试用" : "Includes 3-day free trial"}
-                </p>
                 <div className="mt-3">
                   <button
                     type="button"
