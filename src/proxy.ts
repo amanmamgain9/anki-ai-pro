@@ -7,6 +7,7 @@ const publicRoutes = new Set([
   "/about",
   "/contact",
   "/pricing",
+  "/checkout",
   "/terms",
   "/privacy",
   "/refund-policy",

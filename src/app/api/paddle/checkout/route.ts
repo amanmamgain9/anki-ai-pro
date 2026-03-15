@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid plan. Expected one of: 'pro_monthly', 'pro_yearly', 'pro_plus_monthly', 'pro_plus_yearly'.",
+            "Invalid plan. Expected one of: 'pro_monthly' or 'pro_plus_monthly'.",
         },
         { status: 400 },
       );
@@ -130,7 +130,7 @@ export async function POST(request: Request) {
         externalId: user.externalId,
       },
       checkout: {
-        url: `${returnBaseUrl}/settings?billing=success`,
+        url: `${returnBaseUrl}/checkout`,
       },
     });
 

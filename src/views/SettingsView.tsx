@@ -3,6 +3,7 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
@@ -33,6 +34,7 @@ export default function SettingsView() {
   const { locale } = useI18n();
   const zh = locale === "zh";
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export default function SettingsView() {
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
+  const billingSuccess = searchParams.get("billing") === "success";
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +195,13 @@ export default function SettingsView() {
             {busyAction === "portal" ? (zh ? "打开中..." : "Opening...") : (zh ? "管理账单" : "Manage billing")}
           </button>
         </div>
+        {billingSuccess && (
+          <p className="mt-3 text-sm text-[var(--color-accent)]">
+            {zh
+              ? "结账已完成。订阅状态通常会在几秒内更新。"
+              : "Checkout completed. Your subscription status should update within a few seconds."}
+          </p>
+        )}
         {billingError && (
           <p className="mt-3 text-sm text-[var(--color-danger)]">{billingError}</p>
         )}
