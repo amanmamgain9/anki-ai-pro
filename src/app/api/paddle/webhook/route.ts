@@ -47,7 +47,7 @@ function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot {
   const product = asRecord(firstItem?.product);
 
   return {
-    subscriptionId: getStringValue(root, "id") ?? getStringValue(root, "subscriptionId"),
+    subscriptionId: getStringValue(root, "subscriptionId") ?? getStringValue(root, "id"),
     customerId: getStringValue(root, "customerId"),
     externalId: getStringValue(customData, "externalId"),
     subscriptionUpdatedAt: getStringValue(root, "updatedAt"),
@@ -83,6 +83,10 @@ export async function POST(request: Request) {
     const paddle = getPaddleClient();
     const webhookSecret = getPaddleWebhookSecret();
     const event = await paddle.webhooks.unmarshal(rawBody, webhookSecret, signature);
+
+    if (!event.eventType.startsWith("subscription.")) {
+      return NextResponse.json({ ok: true, ignored: true });
+    }
 
     const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
     if (!convexUrl) {

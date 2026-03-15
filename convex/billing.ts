@@ -167,7 +167,7 @@ async function resolveSubscriptionTier(
   if (isStoredBillingTier(subscription.tier)) {
     return subscription.tier;
   }
-  return await resolveBillingTierByPriceId(db, subscription.priceId);
+  return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "free";
 }
 
 export const syncCurrentUser = mutationGeneric({

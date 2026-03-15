@@ -118,8 +118,8 @@ export async function resolveCheckoutPlanPriceId(db: any, plan: BillingPlan) {
 export async function resolveBillingTierByPriceId(
   db: any,
   priceId: string | undefined,
-): Promise<BillingTier> {
-  if (!priceId) return "pro";
+): Promise<BillingTier | null> {
+  if (!priceId) return null;
 
   const row = await db
     .query("billingPlanPrices")
@@ -136,7 +136,7 @@ export async function resolveBillingTierByPriceId(
       return config.tier;
     }
   }
-  return "pro";
+  return null;
 }
 
 export const listPublic = queryGeneric({
