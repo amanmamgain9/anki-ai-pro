@@ -163,10 +163,9 @@ export default function SettingsView() {
       }
       open({
         items: [{ priceId: payload.priceId, quantity: 1 }],
-        customer: {
-          ...(payload.paddleCustomerId ? { id: payload.paddleCustomerId } : {}),
-          email: payload.customerEmail,
-        },
+        customer: payload.paddleCustomerId
+          ? { id: payload.paddleCustomerId }
+          : { email: payload.customerEmail },
         customData: {
           externalId: payload.externalId,
         },

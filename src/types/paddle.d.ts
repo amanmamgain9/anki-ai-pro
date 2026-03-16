@@ -21,6 +21,7 @@ declare global {
             quantity: number;
           }>;
           customer?: {
+            id?: string;
             email?: string;
           };
           customData?: Record<string, string>;
