@@ -50,10 +50,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
-  const isSettingsRoute =
-    initialPath === "/settings" || initialPath?.startsWith("/settings?");
+  const isBillingStartRoute =
+    initialPath === "/start-trial" || initialPath?.startsWith("/start-trial?");
   const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
-  const showUpgradeCta = billing?.plan !== "pro_plus";
+  const showUpgradeCta = !hasProAccess;
 
   useEffect(() => {
     if (status !== "unauthenticated") return;
@@ -125,10 +125,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (!initialPath) return;
     if (bootstrapStatus !== "ready") return;
     if (!billing) return;
-    if (isSettingsRoute) return;
+    if (isBillingStartRoute) return;
     if (hasProAccess) return;
-    router.replace(`/settings?upgrade=required&from=${encodeURIComponent(initialPath)}`);
-  }, [billing, bootstrapStatus, hasProAccess, initialPath, isSettingsRoute, router, status]);
+    router.replace(`/start-trial?from=${encodeURIComponent(initialPath)}`);
+  }, [billing, bootstrapStatus, hasProAccess, initialPath, isBillingStartRoute, router, status]);
 
   if (status === "loading" || (status === "authenticated" && (bootstrapStatus === "idle" || bootstrapStatus === "loading"))) {
     return (
@@ -171,7 +171,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isSettingsRoute && !hasProAccess) {
+  if (!isBillingStartRoute && !hasProAccess) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">
@@ -199,12 +199,15 @@ function AppShell({
   const { t } = useI18n();
   const isGenerateFocusRoute =
     pathname === "/cards/generate" || pathname.startsWith("/cards/generate?");
+  const isBillingStartRoute =
+    pathname === "/start-trial" || pathname.startsWith("/start-trial?");
   const isStudyRoute = pathname === "/study" || pathname.startsWith("/study?");
+  const isFocusRoute = isGenerateFocusRoute || isBillingStartRoute;
 
   return (
     <div className="flex h-dvh overflow-hidden flex-col lg:flex-row">
       {/* Desktop sidebar */}
-      {!isGenerateFocusRoute && (
+      {!isFocusRoute && (
         <aside
           className="relative hidden h-full min-h-0 overflow-hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-6 lg:border-r lg:border-[var(--color-border)] lg:p-5"
           style={{
@@ -277,7 +280,8 @@ function AppShell({
       {isGenerateFocusRoute && <GenerateChatsSidebar />}
 
       {/* Mobile top bar */}
-      <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 lg:hidden">
+      {!isBillingStartRoute && (
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 lg:hidden">
         <div className="flex min-w-[72px] items-center">
           {(isStudyRoute || isGenerateFocusRoute) && (
             <button
@@ -307,21 +311,22 @@ function AppShell({
             <span className="gradient-text text-sm font-bold tracking-tight">aiankipro</span>
           </AppLink>
         </div>
-      </header>
+        </header>
+      )}
 
       {/* Main content */}
       <main
         className={`ios-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [padding-bottom:env(safe-area-inset-bottom)] ${
-          isGenerateFocusRoute ? "pb-0" : "pb-20 lg:pb-0"
+          isFocusRoute ? "pb-0" : "pb-20 lg:pb-0"
         }`}
       >
-        <div className={`${isGenerateFocusRoute ? "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10" : "mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10"}`}>
+        <div className={`${isGenerateFocusRoute ? "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10" : isBillingStartRoute ? "mx-auto max-w-5xl px-4 py-0 sm:px-6 lg:px-8 lg:py-0" : "mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10"}`}>
           {children}
         </div>
       </main>
 
       {/* Mobile bottom nav */}
-      {!isGenerateFocusRoute && (
+      {!isFocusRoute && (
         <nav className="fixed inset-x-0 bottom-0 z-50 flex items-center border-t border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl lg:hidden">
           {navItems.map(({ href, labelKey, icon: Icon }) => {
             const active = isActiveRoute(pathname, href);
@@ -424,7 +429,7 @@ function UserMenu({
           </AppLink>
           {showUpgradeCta && (
             <AppLink
-              href="/settings?upgrade=1"
+              href="/start-trial"
               onClick={() => setOpen(false)}
               className="block rounded-md px-2 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
             >

@@ -9,6 +9,7 @@ import StudyView from "@/views/StudyView";
 import BulkUploadView from "@/views/BulkUploadView";
 import SettingsView from "@/views/SettingsView";
 import GenerateCardsView from "@/views/GenerateCardsView";
+import BillingStartView from "@/views/BillingStartView";
 
 export default function AppCatchAll() {
   const { pathname } = useAppRouter();
@@ -22,6 +23,7 @@ export default function AppCatchAll() {
     return <StudyView key={deckKey} />;
   }
   if (pathname === "/decks" || pathname.startsWith("/decks?")) return <DecksView />;
+  if (pathname === "/start-trial" || pathname.startsWith("/start-trial?")) return <BillingStartView />;
   if (pathname === "/settings") return <SettingsView />;
 
   return <CardsView />;

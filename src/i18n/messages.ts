@@ -894,6 +894,19 @@ export const dictionaries = {
         legalNoticeSuffix: ".",
         legal: "Legal",
       },
+      billingStart: {
+        titleStart: "Start your Pro trial",
+        titleManage: "Fix billing to continue",
+        subtitleStart:
+          "Add your payment details now to begin the 3-day Pro trial. Paddle will only charge after the trial ends if you do not cancel first.",
+        subtitleManage:
+          "Your subscription needs attention before you can continue. Open billing to update payment details, recover renewal, or manage cancellation.",
+        accountEmail: "Signed in as",
+        trialNote:
+          "This trial starts through Paddle checkout. Your payment method is saved now, and billing begins only after the trial unless you cancel in time.",
+        portalNote:
+          "Use Manage billing to update payment details or recover your subscription. New checkout is blocked while an existing subscription still needs billing management.",
+      },
       appShell: {
         loadFailed: "Could not load your account. Please retry.",
         retry: "Retry",
@@ -1769,6 +1782,19 @@ export const dictionaries = {
         legalNoticeAnd: "和",
         legalNoticeSuffix: "。",
         legal: "法律",
+      },
+      billingStart: {
+        titleStart: "开始你的 Pro 试用",
+        titleManage: "先处理账单问题再继续",
+        subtitleStart:
+          "现在添加付款方式即可开始 3 天 Pro 试用。若你在试用结束前取消，Paddle 不会提前扣费。",
+        subtitleManage:
+          "你的订阅需要先处理账单问题才能继续。打开账单页面可更新付款方式、恢复续费或管理取消。",
+        accountEmail: "当前登录账号",
+        trialNote:
+          "试用通过 Paddle 结账开始。现在会先保存付款方式，若你没有在试用结束前取消，才会在试用结束后开始扣费。",
+        portalNote:
+          "请使用“管理账单”来更新付款方式或恢复订阅。在仍有待处理订阅时，系统会阻止重新创建新的结账。",
       },
       appShell: {
         loadFailed: "无法加载你的账户。请重试。",

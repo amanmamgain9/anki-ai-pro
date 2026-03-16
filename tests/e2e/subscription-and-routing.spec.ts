@@ -117,23 +117,22 @@ test("magic-link full sign-in flow shows upgrade controls before checkout", asyn
   await page.waitForURL(/\/cards/);
   await expect(page).not.toHaveURL(/\/sign-in/);
 
-  await page.goto("/settings");
-  await page.waitForURL(/\/settings/);
-  await expect(page.getByRole("heading", { name: /Settings|设置/ })).toBeVisible();
-  await expect(page.getByText(/Plan:|套餐：/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Upgrade|升级/ })).toBeVisible();
+  await page.goto("/start-trial");
+  await page.waitForURL(/\/start-trial/);
+  await expect(page.getByRole("heading", { name: /Start your Pro trial|开始你的 Pro 试用/ })).toBeVisible();
+  await expect(page.getByText(/Signed in as|当前登录账号/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start Pro trial|开始 Pro 试用/ })).toBeVisible();
   await expect(page.getByText(/Pro\+ trial is active|Pro\+ 试用进行中/)).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Upgrade|升级/ }).click();
-  await expect(page.getByRole("button", { name: /Start Pro trial|开始 Pro 试用/ })).toBeVisible();
+  await expect(page.getByText(/Add your payment details now|现在添加付款方式即可开始/)).toBeVisible();
 
   await page.goto("/cards");
   await page.waitForURL(/\/cards/);
 });
 
 test("authenticated checkout validates plan input", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   const response = await page.request.post("/api/paddle/checkout", {
     data: { plan: "invalid_plan" },
@@ -164,8 +163,8 @@ test("magic-link token cannot be reused", async ({ browser, request }) => {
 });
 
 test("trial expiration behavior blocks paid routes and pro APIs", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
   const backdated = await billingAction(page.request, {
@@ -179,13 +178,13 @@ test("trial expiration behavior blocks paid routes and pro APIs", async ({ page,
   expect(proApi.status()).toBe(402);
 
   await page.goto("/cards");
-  await page.waitForURL(/\/settings\?/);
-  await expect(page).toHaveURL(/upgrade=required/);
+  await page.waitForURL(/\/start-trial\?/);
+  await expect(page).toHaveURL(/from=%2Fcards/);
 });
 
 test("active paid subscription unlocks paid routes and pro API gate", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
@@ -206,8 +205,8 @@ test("active paid subscription unlocks paid routes and pro API gate", async ({ p
 });
 
 test("checkout blocks creating a second subscription when one is already active", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
@@ -230,8 +229,8 @@ test("billing remains active when a newer inactive row exists for a different su
   page,
   request,
 }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
@@ -267,8 +266,8 @@ test("older webhook for the same subscription is ignored to prevent stale overwr
   page,
   request,
 }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
@@ -301,8 +300,8 @@ test("older webhook for the same subscription is ignored to prevent stale overwr
 });
 
 test("subscription status transitions enforce access correctly", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
 
@@ -337,8 +336,8 @@ test("subscription status transitions enforce access correctly", async ({ page, 
 });
 
 test("checkout stays blocked after cancellation until the paid period ends", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
 
@@ -359,8 +358,8 @@ test("checkout stays blocked after cancellation until the paid period ends", asy
 });
 
 test("renewal and expiration updates are reflected after webhook sequence", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
   await billingAction(page.request, { action: "reset" });
   await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
 
@@ -411,8 +410,8 @@ test("optional real Paddle checkout contract in CI", async ({ page, request }) =
       !process.env.PADDLE_PRICE_ID_PRO_MONTHLY,
     "Set PADDLE_REAL_CI=1, PADDLE_API_KEY, and PADDLE_PRICE_ID_PRO_MONTHLY to run this contract test.",
   );
-  await signInWithMagicLink(page, request, "/settings");
-  await page.waitForURL(/\/settings/);
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
 
   const response = await page.request.post("/api/paddle/checkout", {
     data: { plan: "pro_monthly" },
