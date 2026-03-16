@@ -15,6 +15,7 @@ export default defineSchema({
     lastSeenAt: v.number(),
   })
     .index("by_externalId", ["externalId"])
+    .index("by_email", ["email"])
     .index("by_paddleCustomerId", ["paddleCustomerId"]),
 
   subscriptions: defineTable({
@@ -46,10 +47,22 @@ export default defineSchema({
     processedAt: v.number(),
     status: v.string(),
     userId: v.optional(v.id("users")),
+    externalId: v.optional(v.string()),
     paddleSubscriptionId: v.optional(v.string()),
     paddleCustomerId: v.optional(v.string()),
+    subscriptionUpdatedAt: v.optional(v.string()),
+    subscriptionStatus: v.optional(v.string()),
+    priceId: v.optional(v.string()),
+    productId: v.optional(v.string()),
+    currentPeriodStartsAt: v.optional(v.union(v.string(), v.null())),
+    currentPeriodEndsAt: v.optional(v.union(v.string(), v.null())),
+    nextBilledAt: v.optional(v.union(v.string(), v.null())),
+    canceledAt: v.optional(v.union(v.string(), v.null())),
     rawBody: v.optional(v.string()),
-  }).index("by_eventId", ["eventId"]),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_status_externalId", ["status", "externalId"])
+    .index("by_status_customerId", ["status", "paddleCustomerId"]),
 
   billingPlanPrices: defineTable({
     plan: v.string(),
