@@ -241,6 +241,36 @@ async function resolveSubscriptionTier(
   return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "free";
 }
 
+function pickCanonicalPaddleCustomerId(
+  userCustomerId: string | undefined,
+  primarySubscription:
+    | { paddleCustomerId?: string | null }
+    | null
+    | undefined,
+  subscriptions: Array<{ paddleCustomerId?: string | null }>,
+) {
+  if (typeof userCustomerId === "string" && userCustomerId.length > 0) {
+    return userCustomerId;
+  }
+  if (
+    typeof primarySubscription?.paddleCustomerId === "string" &&
+    primarySubscription.paddleCustomerId.length > 0
+  ) {
+    return primarySubscription.paddleCustomerId;
+  }
+  const distinctCustomerIds = Array.from(
+    new Set(
+      subscriptions
+        .map((row) => row.paddleCustomerId)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+  if (distinctCustomerIds.length === 1) {
+    return distinctCustomerIds[0];
+  }
+  return null;
+}
+
 export const syncCurrentUser = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
@@ -639,18 +669,17 @@ export const getMyBilling = queryGeneric({
       .collect();
     const now = Date.now();
     const subscription = pickEffectiveSubscription(subscriptions, now);
-    const effectivePaddleCustomerId =
-      subscription?.paddleCustomerId ??
-      subscriptions.find((row) => typeof row.paddleCustomerId === "string" && row.paddleCustomerId.length > 0)
-        ?.paddleCustomerId ??
-      user.paddleCustomerId ??
-      null;
+    const effectivePaddleCustomerId = pickCanonicalPaddleCustomerId(
+      user.paddleCustomerId,
+      subscription,
+      subscriptions,
+    );
     const paddleSubscriptionIds = Array.from(
       new Set(
         subscriptions
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
-            if (!effectivePaddleCustomerId) return true;
+            if (!effectivePaddleCustomerId) return false;
             return row.paddleCustomerId === effectivePaddleCustomerId;
           })
           .map((row) => row.paddleSubscriptionId),
@@ -670,7 +699,8 @@ export const getMyBilling = queryGeneric({
             ) {
               return false;
             }
-            return true;
+            if (!effectivePaddleCustomerId) return false;
+            return row.paddleCustomerId === effectivePaddleCustomerId;
           })
           .map((row) => row.paddleSubscriptionId),
       ),

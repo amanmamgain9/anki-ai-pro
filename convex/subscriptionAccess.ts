@@ -34,5 +34,10 @@ export function pickEffectiveSubscription<
   for (const row of rows) {
     if (isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, now)) return row;
   }
+  for (const row of rows) {
+    if (subscriptionRequiresBillingManagement(row.status, row.currentPeriodEndsAt, now)) {
+      return row;
+    }
+  }
   return rows[0] ?? null;
 }
