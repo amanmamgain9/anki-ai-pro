@@ -563,10 +563,10 @@ export const getMyBilling = queryGeneric({
     const now = Date.now();
     const subscription = pickEffectiveSubscription(subscriptions, now);
     const effectivePaddleCustomerId =
-      user.paddleCustomerId ??
       subscription?.paddleCustomerId ??
       subscriptions.find((row) => typeof row.paddleCustomerId === "string" && row.paddleCustomerId.length > 0)
         ?.paddleCustomerId ??
+      user.paddleCustomerId ??
       null;
     const paddleSubscriptionIds = Array.from(
       new Set(
@@ -593,8 +593,7 @@ export const getMyBilling = queryGeneric({
             ) {
               return false;
             }
-            if (!effectivePaddleCustomerId) return true;
-            return row.paddleCustomerId === effectivePaddleCustomerId;
+            return true;
           })
           .map((row) => row.paddleSubscriptionId),
       ),
@@ -739,7 +738,8 @@ export const processPaddleWebhook = mutationGeneric({
       .query("billingEvents")
       .withIndex("by_eventId", (q) => q.eq("eventId", args.eventId))
       .first();
-    if (existingEvent) {
+    const retryIgnoredMissingUser = existingEvent?.status === "ignored_missing_user";
+    if (existingEvent && !retryIgnoredMissingUser) {
       return { duplicate: true, eventId: args.eventId };
     }
 
@@ -945,8 +945,7 @@ export const processPaddleWebhook = mutationGeneric({
       }
     }
 
-    await ctx.db.insert("billingEvents", {
-      eventId: args.eventId,
+    const billingEventPatch = {
       eventType: args.eventType,
       occurredAt,
       processedAt: now,
@@ -955,7 +954,16 @@ export const processPaddleWebhook = mutationGeneric({
       paddleSubscriptionId: subscriptionId,
       paddleCustomerId: args.customerId,
       rawBody: args.rawBody,
-    });
+    };
+
+    if (existingEvent) {
+      await ctx.db.patch(existingEvent._id, billingEventPatch);
+    } else {
+      await ctx.db.insert("billingEvents", {
+        eventId: args.eventId,
+        ...billingEventPatch,
+      });
+    }
 
     return {
       duplicate: false,
