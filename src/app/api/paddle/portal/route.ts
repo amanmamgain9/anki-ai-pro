@@ -10,6 +10,7 @@ const api = anyApi;
 type BillingState = {
   paddleCustomerId: string | null;
   paddleSubscriptionId: string | null;
+  paddleSubscriptionIds?: string[] | null;
 };
 
 export const runtime = "nodejs";
@@ -47,9 +48,12 @@ export async function POST() {
     }
 
     const paddle = getPaddleClient();
-    const subscriptionIds = billing.paddleSubscriptionId
-      ? [billing.paddleSubscriptionId]
-      : [];
+    const subscriptionIds =
+      Array.isArray(billing.paddleSubscriptionIds) && billing.paddleSubscriptionIds.length > 0
+        ? billing.paddleSubscriptionIds
+        : billing.paddleSubscriptionId
+          ? [billing.paddleSubscriptionId]
+          : [];
 
     const portalSession = await paddle.customerPortalSessions.create(
       billing.paddleCustomerId,

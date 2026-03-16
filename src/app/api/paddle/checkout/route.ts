@@ -14,6 +14,7 @@ type SyncUserResult = {
 type BillingState = {
   isActive?: boolean;
   subscriptionStatus?: string | null;
+  paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
 };
 
@@ -120,6 +121,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       priceId: planConfig.priceId,
       customerEmail: session.user.email,
+      paddleCustomerId: billing?.paddleCustomerId ?? null,
       externalId: user.externalId,
     });
   } catch (error) {

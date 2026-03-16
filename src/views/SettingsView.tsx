@@ -28,6 +28,7 @@ type PlanAvailability = Record<CheckoutPlan, boolean>;
 type CheckoutPayload = {
   priceId?: string;
   customerEmail?: string;
+  paddleCustomerId?: string | null;
   externalId?: string;
   error?: string;
 };
@@ -151,6 +152,7 @@ export default function SettingsView() {
       open({
         items: [{ priceId: payload.priceId, quantity: 1 }],
         customer: {
+          ...(payload.paddleCustomerId ? { id: payload.paddleCustomerId } : {}),
           email: payload.customerEmail,
         },
         customData: {

@@ -161,10 +161,13 @@ async function setUserPaddleCustomerId(
 
 async function resolveSubscriptionTier(
   db: BillingReadDb,
-  subscription: { tier?: string; priceId?: string } | null | undefined,
+  subscription: { tier?: string; tierSourcePriceId?: string; priceId?: string } | null | undefined,
 ): Promise<StoredBillingTier | "free"> {
   if (!subscription) return "free";
-  if (isStoredBillingTier(subscription.tier)) {
+  if (
+    isStoredBillingTier(subscription.tier) &&
+    (!subscription.tierSourcePriceId || subscription.tierSourcePriceId === subscription.priceId)
+  ) {
     return subscription.tier;
   }
   return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "free";
@@ -516,6 +519,7 @@ export const getMyBilling = queryGeneric({
         subscriptionStatus: null as string | null,
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
+        paddleSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
     }
@@ -540,6 +544,7 @@ export const getMyBilling = queryGeneric({
         subscriptionStatus: null as string | null,
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
+        paddleSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
     }
@@ -551,6 +556,23 @@ export const getMyBilling = queryGeneric({
       .collect();
     const now = Date.now();
     const subscription = pickEffectiveSubscription(subscriptions, now);
+    const effectivePaddleCustomerId =
+      user.paddleCustomerId ??
+      subscription?.paddleCustomerId ??
+      subscriptions.find((row) => typeof row.paddleCustomerId === "string" && row.paddleCustomerId.length > 0)
+        ?.paddleCustomerId ??
+      null;
+    const paddleSubscriptionIds = Array.from(
+      new Set(
+        subscriptions
+          .filter((row) => {
+            if (!row.paddleSubscriptionId) return false;
+            if (!effectivePaddleCustomerId) return true;
+            return row.paddleCustomerId === effectivePaddleCustomerId;
+          })
+          .map((row) => row.paddleSubscriptionId),
+      ),
+    );
 
     const status = subscription?.status ?? null;
     const isActive = isSubscriptionEntitled(
@@ -609,8 +631,9 @@ export const getMyBilling = queryGeneric({
       proPreviewUsedChars,
       proPreviewRemainingChars,
       subscriptionStatus: status,
-      paddleCustomerId: user.paddleCustomerId ?? null,
+      paddleCustomerId: effectivePaddleCustomerId,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
+      paddleSubscriptionIds,
       paddlePriceId: subscription?.priceId ?? null,
       paddleTier: isStoredBillingTier(subscription?.tier) ? subscription.tier : null,
     };
@@ -768,6 +791,7 @@ export const processPaddleWebhook = mutationGeneric({
       const patch: {
         status: string;
         tier?: StoredBillingTier;
+        tierSourcePriceId?: string;
         updatedAt: number;
         lastEventType: string;
         paddleCustomerId?: string;
@@ -792,6 +816,14 @@ export const processPaddleWebhook = mutationGeneric({
           : undefined;
       if (resolvedTier) {
         patch.tier = resolvedTier;
+        patch.tierSourcePriceId = args.priceId;
+      } else if (
+        args.priceId &&
+        existingSubscription?.priceId &&
+        existingSubscription.priceId !== args.priceId
+      ) {
+        patch.tier = undefined;
+        patch.tierSourcePriceId = undefined;
       }
       if (subscriptionUpdatedAt !== undefined) {
         patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
@@ -865,7 +897,12 @@ export const processPaddleWebhook = mutationGeneric({
           paddleSubscriptionId: args.subscriptionId,
           paddleCustomerId: args.customerId,
           status: normalizedStatus,
-          ...(resolvedTier ? { tier: resolvedTier } : {}),
+          ...(resolvedTier
+            ? {
+                tier: resolvedTier,
+                tierSourcePriceId: args.priceId,
+              }
+            : {}),
           priceId: args.priceId,
           productId: args.productId,
           currentPeriodStartsAt,
