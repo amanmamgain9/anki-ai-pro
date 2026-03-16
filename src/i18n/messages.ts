@@ -208,7 +208,8 @@ export const dictionaries = {
       pricing: {
         title: "Simple",
         titleHighlight: "pricing",
-        subtitleWithTrial: "Digital subscription plans with a {count}-day Pro+ trial.",
+        subtitleWithTrial:
+          "Digital subscription plans with a {count}-day Pro+ trial after adding payment details at checkout.",
         subtitleNoTrial: "Digital subscription plans for monthly Pro and Pro+.",
         deliverablesTitle: "Included with purchase",
         deliverables: [
@@ -355,7 +356,7 @@ export const dictionaries = {
           {
             title: "3. Billing and Subscriptions",
             body: [
-              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. New users receive a {count}-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal.",
+              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. Pro+ checkout can start a {count}-day trial, collects payment details up front, and begins billing only if the trial is not canceled before it ends. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal.",
             ],
             bodyNoTrial: [
               "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal.",
@@ -868,16 +869,18 @@ export const dictionaries = {
         free: "Free",
         subscriptionStatus: "Subscription status:",
         none: "none",
-        trialActive: "Free Pro+ trial is active ({count} days left).",
-        trialActiveSingular: "Free Pro+ trial is active ({count} day left).",
+        trialActive: "Pro+ trial is active ({count} days left).",
+        trialActiveSingular: "Pro+ trial is active ({count} day left).",
         proVoicePreview:
           "Monthly Pro+ voice preview: {remaining} / {quota} characters left ({used} used).",
         opening: "Opening...",
         changePlan: "Change plan",
         manageBilling: "Manage billing",
-        checkoutSuccess: "Checkout completed. Your subscription status should update within a few seconds.",
+        checkoutSuccess:
+          "Checkout completed. Your trial or subscription status should update within a few seconds.",
         choosePlan: "Choose your plan",
-        continueToCheckout: "Continue to Paddle checkout.",
+        continueToCheckout:
+          "Continue to Paddle checkout. Pro+ trial checkout saves your payment method now and charges after the trial unless canceled.",
         close: "Close",
         proMonthlyPrice: "$8 / month",
         proPlusMonthlyPrice: "$20 / month",
@@ -1093,7 +1096,7 @@ export const dictionaries = {
       pricing: {
         title: "简单",
         titleHighlight: "定价",
-        subtitleWithTrial: "数字订阅方案，含 {count} 天 Pro+ 试用。",
+        subtitleWithTrial: "数字订阅方案，结账时添加付款方式后可开始 {count} 天 Pro+ 试用。",
         subtitleNoTrial: "面向月付 Pro 与 Pro+ 的数字订阅方案。",
         deliverablesTitle: "购买后包含",
         deliverables: [
@@ -1239,7 +1242,7 @@ export const dictionaries = {
           {
             title: "3. 计费与订阅",
             body: [
-              "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供月付 Pro 与 Pro+ 方案。新用户可获得 {count} 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。",
+              "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供月付 Pro 与 Pro+ 方案。Pro+ 可在结账时开始 {count} 天试用，先保存付款方式，若你在试用结束前未取消，才会开始扣费。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。",
             ],
             bodyNoTrial: [
               "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供月付 Pro 与 Pro+ 方案。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。",
@@ -1745,15 +1748,15 @@ export const dictionaries = {
         free: "免费版",
         subscriptionStatus: "订阅状态：",
         none: "无",
-        trialActive: "免费 Pro+ 试用进行中（剩余约 {count} 天）。",
-        trialActiveSingular: "免费 Pro+ 试用进行中（剩余约 {count} 天）。",
+        trialActive: "Pro+ 试用进行中（剩余约 {count} 天）。",
+        trialActiveSingular: "Pro+ 试用进行中（剩余约 {count} 天）。",
         proVoicePreview: "本月 Pro+ 语音体验额度：剩余 {remaining} / {quota} 字符（已用 {used}）。",
         opening: "打开中...",
         changePlan: "更改套餐",
         manageBilling: "管理账单",
-        checkoutSuccess: "结账已完成。订阅状态通常会在几秒内更新。",
+        checkoutSuccess: "结账已完成。试用或订阅状态通常会在几秒内更新。",
         choosePlan: "选择套餐",
-        continueToCheckout: "确认后将跳转到 Paddle 结账页面。",
+        continueToCheckout: "确认后将跳转到 Paddle 结账页面。Pro+ 试用会先保存付款方式，若未在试用期结束前取消，将在试用结束后扣费。",
         close: "关闭",
         proMonthlyPrice: "$8 / 月",
         proPlusMonthlyPrice: "$20 / 月",

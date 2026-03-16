@@ -32,7 +32,7 @@ export async function ensureProAccess(session: Session | null) {
   const convex = new ConvexHttpClient(convexUrl);
   convex.setAuth(session.convexToken);
 
-  // Ensure a user row exists so trial eligibility can be computed.
+  // Ensure a user row exists before reading subscription-backed billing state.
   await convex.mutation(api.billing.syncCurrentUser, {});
   const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
   if (billing?.isActive || billing?.trialActive) {
@@ -40,8 +40,7 @@ export async function ensureProAccess(session: Session | null) {
   }
 
   return NextResponse.json(
-    { error: "Pro plan required. Start trial or upgrade in Settings." },
+    { error: "Pro plan required. Start a Pro+ trial or upgrade in Settings." },
     { status: 402 },
   );
 }
-

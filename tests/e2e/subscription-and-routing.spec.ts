@@ -115,7 +115,7 @@ test("protected app route redirects unauthenticated users to sign-in", async ({ 
   expect(location).toContain("callbackUrl=%2Fcards");
 });
 
-test("magic-link full sign-in flow grants trial access and shows upgrade controls", async ({ page, request }) => {
+test("magic-link full sign-in flow shows upgrade controls before checkout", async ({ page, request }) => {
   await signInWithMagicLink(page, request, "/cards");
 
   await page.waitForURL(/\/cards/);
@@ -125,10 +125,10 @@ test("magic-link full sign-in flow grants trial access and shows upgrade control
   await page.waitForURL(/\/settings/);
   await expect(page.getByRole("heading", { name: /Settings|设置/ })).toBeVisible();
   await expect(page.getByText(/Plan:|套餐：/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Upgrade|升级|Change plan|更改套餐/ })).toBeVisible();
-  await expect(page.getByText(/Free Pro\+ trial is active|免费 Pro\+ 试用进行中/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Upgrade|升级/ })).toBeVisible();
+  await expect(page.getByText(/Pro\+ trial is active|Pro\+ 试用进行中/)).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Upgrade|升级|Change plan|更改套餐/ }).click();
+  await page.getByRole("button", { name: /Upgrade|升级/ }).click();
   await expect(page.getByRole("button", { name: /^Start Pro$|^开始 Pro$/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Start Pro\+|开始 Pro\+/ })).toBeVisible();
 

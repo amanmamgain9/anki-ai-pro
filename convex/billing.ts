@@ -275,8 +275,6 @@ export const syncCurrentUser = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
-    const trialDays = resolveFreeProPlusTrialDays();
-    const defaultTrialEndsAt = trialDays > 0 ? now + trialDays * DAY_MS : undefined;
 
     const email = sanitizeEmail(typeof identity.email === "string" ? identity.email : undefined);
     const name = typeof identity.name === "string" ? identity.name : undefined;
@@ -289,18 +287,11 @@ export const syncCurrentUser = mutationGeneric({
     const existing = existingByExternalId ?? (await findCanonicalUserByEmail(ctx.db, email));
 
     if (existing) {
-      const fallbackTrialEndsAt =
-        trialDays > 0 && existing.trialEndsAt === undefined
-          ? existing.createdAt + trialDays * DAY_MS
-          : undefined;
       await ctx.db.patch(existing._id, {
         externalId: identity.subject,
         email,
         name,
         imageUrl,
-        ...(fallbackTrialEndsAt !== undefined
-          ? { trialEndsAt: fallbackTrialEndsAt }
-          : {}),
         updatedAt: now,
         lastSeenAt: now,
       });
@@ -320,7 +311,6 @@ export const syncCurrentUser = mutationGeneric({
       email,
       name,
       imageUrl,
-      ...(defaultTrialEndsAt !== undefined ? { trialEndsAt: defaultTrialEndsAt } : {}),
       createdAt: now,
       updatedAt: now,
       lastSeenAt: now,
@@ -713,14 +703,14 @@ export const getMyBilling = queryGeneric({
       now,
     );
     const tier = isActive ? await resolveSubscriptionTier(ctx.db, subscription) : "free";
-    const trialDays = resolveFreeProPlusTrialDays();
-    const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
-    const trialEndsAt = user.trialEndsAt ?? fallbackTrialEndsAt;
-    const trialActive =
-      !isActive && trialEndsAt !== null && now < trialEndsAt;
+    const trialActive = status === "trialing" && isActive;
+    const trialEndsAt =
+      trialActive && subscription
+        ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
+        : null;
     const hasPremiumVoice = isActive
       ? tier === "pro_plus"
-      : trialActive;
+      : false;
     const premiumVoiceSource = trialActive
       ? "trial"
       : isActive
@@ -757,7 +747,7 @@ export const getMyBilling = queryGeneric({
       isActive,
       hasPremiumVoice,
       trialActive,
-      trialEndsAt: trialActive ? trialEndsAt : null,
+      trialEndsAt,
       premiumVoiceSource,
       proPreviewQuotaChars,
       proPreviewUsedChars,

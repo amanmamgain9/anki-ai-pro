@@ -15,7 +15,6 @@ type BillingTier = "free" | "pro" | "pro_plus";
 type UsageReadDb = GenericDatabaseReader<DataModel>;
 
 const PREMIUM_TTS_FEATURE = "premium_tts";
-const DAY_MS = 86_400_000;
 
 function getCurrentMonthKey(now: number) {
   const d = new Date(now);
@@ -29,19 +28,6 @@ function resolveProPreviewQuotaChars() {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return 60000;
   return Math.max(0, Math.floor(parsed));
-}
-
-function resolveFreeProPlusTrialDays() {
-  const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return 3;
-  return Math.max(0, Math.floor(parsed));
-}
-
-function resolveTrialEndsAt(user: { createdAt: number; trialEndsAt?: number }) {
-  const trialDays = resolveFreeProPlusTrialDays();
-  const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
-  return user.trialEndsAt ?? fallbackTrialEndsAt;
 }
 
 function isStoredBillingTier(value: string | undefined): value is Exclude<BillingTier, "free"> {
@@ -96,20 +82,19 @@ export const consumePremiumTtsPreview = mutationGeneric({
       subscription?.currentPeriodEndsAt,
       now,
     );
-    const trialEndsAt = resolveTrialEndsAt(user);
-    const trialActive = !isActive && trialEndsAt !== null && now < trialEndsAt;
-    if (!isActive && !trialActive) {
+    const trialActive = status === "trialing" && isActive;
+    if (!isActive) {
       return {
         allowed: false,
         reason: "inactive_plan",
       } as const;
     }
 
-    const tier: BillingTier = trialActive
-      ? "pro_plus"
-      : isActive
-        ? await resolveSubscriptionTier(ctx.db, subscription)
-        : "free";
+    const tier = (await resolveSubscriptionTier(ctx.db, subscription)) as BillingTier;
+    const trialEndsAt =
+      trialActive && subscription
+        ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
+        : null;
 
     const monthKey = getCurrentMonthKey(now);
     const rowsForUser = await ctx.db
@@ -142,7 +127,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
         tier,
         unlimited: true,
         source: trialActive ? "trial" : "subscription",
-        trialEndsAt: trialActive ? trialEndsAt : undefined,
+        trialEndsAt: trialActive ? trialEndsAt ?? undefined : undefined,
       } as const;
     }
 

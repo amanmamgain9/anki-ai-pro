@@ -18,6 +18,7 @@ type BillingState = {
   plan?: "free" | "pro" | "pro_plus";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
+  blockingSubscriptionIds?: string[] | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
   proPreviewQuotaChars?: number | null;
@@ -80,6 +81,12 @@ export default function SettingsView() {
     DEFAULT_PLAN_AVAILABILITY,
   );
   const [paddleReady, setPaddleReady] = useState(false);
+  const requiresBillingManagement = Boolean(
+    billing?.isActive || ((billing?.blockingSubscriptionIds?.length ?? 0) > 0),
+  );
+  const primaryActionUsesPortal = Boolean(
+    billing?.paddleCustomerId && requiresBillingManagement,
+  );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
@@ -240,24 +247,34 @@ export default function SettingsView() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setShowUpgradeModal(true)}
+            onClick={() => {
+              if (primaryActionUsesPortal) {
+                void openPortal();
+                return;
+              }
+              setShowUpgradeModal(true);
+            }}
             className="btn-primary"
             disabled={busyAction !== null}
           >
-            {busyAction && busyAction !== "portal"
+            {busyAction
               ? t("app.settings.opening")
-              : billing?.isActive
-                ? t("app.settings.changePlan")
-                : t("app.upgradeCta")}
+              : primaryActionUsesPortal
+                ? t("app.settings.manageBilling")
+                : billing?.isActive
+                  ? t("app.settings.changePlan")
+                  : t("app.upgradeCta")}
           </button>
-          <button
-            type="button"
-            onClick={openPortal}
-            className="btn-secondary"
-            disabled={busyAction !== null || !billing?.paddleCustomerId}
-          >
-            {busyAction === "portal" ? t("app.settings.opening") : t("app.settings.manageBilling")}
-          </button>
+          {billing?.paddleCustomerId && !primaryActionUsesPortal ? (
+            <button
+              type="button"
+              onClick={openPortal}
+              className="btn-secondary"
+              disabled={busyAction !== null}
+            >
+              {busyAction === "portal" ? t("app.settings.opening") : t("app.settings.manageBilling")}
+            </button>
+          ) : null}
         </div>
         {billingSuccess && (
           <p className="mt-3 text-sm text-[var(--color-accent)]">

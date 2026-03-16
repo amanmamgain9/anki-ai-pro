@@ -2,15 +2,6 @@
 import { ConvexError } from "convex/values";
 import { isSubscriptionEntitled } from "./subscriptionAccess";
 
-const DAY_MS = 86_400_000;
-
-function resolveFreeProPlusTrialDays() {
-  const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return 3;
-  return Math.max(0, Math.floor(parsed));
-}
-
 function hasAnyEntitledSubscription(
   rows: Array<{ status?: string | null; currentPeriodEndsAt?: number | null }>,
 ) {
@@ -47,11 +38,6 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
   if (hasAnyEntitledSubscription(subscriptions)) {
     return externalId;
   }
-
-  const trialDays = resolveFreeProPlusTrialDays();
-  const fallbackTrialEndsAt = trialDays > 0 ? user.createdAt + trialDays * DAY_MS : null;
-  const trialEndsAt = user.trialEndsAt ?? fallbackTrialEndsAt;
-  if (trialEndsAt !== null && Date.now() < trialEndsAt) return externalId;
 
   return null;
 }
