@@ -16,12 +16,8 @@ type BillingState = {
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
+  blockingSubscriptionIds?: string[] | null;
 };
-
-const TERMINAL_SUBSCRIPTION_STATUSES = new Set([
-  "canceled",
-  "expired",
-]);
 
 function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
   if (billing?.isActive) {
@@ -31,11 +27,7 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
     };
   }
 
-  if (
-    billing?.paddleSubscriptionId &&
-    billing.subscriptionStatus &&
-    !TERMINAL_SUBSCRIPTION_STATUSES.has(billing.subscriptionStatus)
-  ) {
+  if (Array.isArray(billing?.blockingSubscriptionIds) && billing.blockingSubscriptionIds.length > 0) {
     return {
       code: "subscription_requires_portal",
       error:
@@ -102,6 +94,7 @@ export async function POST(request: Request) {
           error: checkoutBlock.error,
           code: checkoutBlock.code,
           paddleSubscriptionId: billing.paddleSubscriptionId ?? null,
+          blockingSubscriptionIds: billing.blockingSubscriptionIds ?? [],
           subscriptionStatus: billing.subscriptionStatus ?? null,
         },
         { status: 409 },

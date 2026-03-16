@@ -13,7 +13,11 @@ import {
   resolveCheckoutPlanPriceId,
   type BillingPlan,
 } from "./billingPlans";
-import { isSubscriptionEntitled, pickEffectiveSubscription } from "./subscriptionAccess";
+import {
+  isSubscriptionEntitled,
+  pickEffectiveSubscription,
+  subscriptionRequiresBillingManagement,
+} from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -520,6 +524,7 @@ export const getMyBilling = queryGeneric({
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
         paddleSubscriptionIds: [] as string[],
+        blockingSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
     }
@@ -545,6 +550,7 @@ export const getMyBilling = queryGeneric({
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
         paddleSubscriptionIds: [] as string[],
+        blockingSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
     }
@@ -567,6 +573,26 @@ export const getMyBilling = queryGeneric({
         subscriptions
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
+            if (!effectivePaddleCustomerId) return true;
+            return row.paddleCustomerId === effectivePaddleCustomerId;
+          })
+          .map((row) => row.paddleSubscriptionId),
+      ),
+    );
+    const blockingSubscriptionIds = Array.from(
+      new Set(
+        subscriptions
+          .filter((row) => {
+            if (!row.paddleSubscriptionId) return false;
+            if (
+              !subscriptionRequiresBillingManagement(
+                row.status,
+                row.currentPeriodEndsAt,
+                now,
+              )
+            ) {
+              return false;
+            }
             if (!effectivePaddleCustomerId) return true;
             return row.paddleCustomerId === effectivePaddleCustomerId;
           })
@@ -634,6 +660,7 @@ export const getMyBilling = queryGeneric({
       paddleCustomerId: effectivePaddleCustomerId,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddleSubscriptionIds,
+      blockingSubscriptionIds,
       paddlePriceId: subscription?.priceId ?? null,
       paddleTier: isStoredBillingTier(subscription?.tier) ? subscription.tier : null,
     };

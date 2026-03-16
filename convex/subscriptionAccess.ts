@@ -10,6 +10,21 @@ export function isSubscriptionEntitled(
   return false;
 }
 
+export function subscriptionRequiresBillingManagement(
+  status: string | null | undefined,
+  currentPeriodEndsAt: number | null | undefined,
+  now = Date.now(),
+) {
+  if (!status) return false;
+  if (status === "expired") return false;
+  if (status === "canceled") {
+    return typeof currentPeriodEndsAt === "number" ? now < currentPeriodEndsAt : false;
+  }
+  if (status === "active" || status === "trialing") return true;
+  if (status === "past_due" || status === "paused" || status === "created") return true;
+  return true;
+}
+
 export function pickEffectiveSubscription<
   T extends { status?: string | null; currentPeriodEndsAt?: number | null },
 >(rows: T[], now = Date.now()): T | null {
