@@ -18,17 +18,16 @@ export default async function PricingPage() {
   const tiers = [
     {
       ...dict.marketing.pricing.tiers.pro,
-      href: "/sign-in",
-      accent: false,
-    },
-    {
-      ...dict.marketing.pricing.tiers.proPlus,
       cta:
         trialDays > 0
-          ? interpolateMessage(dict.marketing.pricing.tiers.proPlus.ctaWithTrial, {
-              count: trialDays,
-            })
-          : dict.marketing.pricing.tiers.proPlus.ctaNoTrial,
+          ? interpolateMessage(
+              (dict.marketing.pricing.tiers.pro as { ctaWithTrial?: string }).ctaWithTrial ??
+                dict.marketing.pricing.tiers.pro.cta,
+              {
+                count: trialDays,
+              },
+            )
+          : dict.marketing.pricing.tiers.pro.cta,
       href: "/sign-in",
       accent: true,
     },
@@ -70,7 +69,7 @@ export default async function PricingPage() {
           {subtitle}
         </p>
 
-        <div className="mt-12 grid w-full max-w-5xl gap-5 sm:grid-cols-2">
+        <div className="mt-12 grid w-full max-w-2xl gap-5">
           {tiers.map((t) => (
             <div
               key={t.name}

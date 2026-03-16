@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { NextResponse } from "next/server";
-import { listBillingPlanConfigs } from "@/lib/billing-plans";
+import { listPublicBillingPlanConfigs } from "@/lib/billing-plans";
 import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
@@ -23,7 +23,7 @@ export async function GET() {
     const payload = await convex.query(api.billing.getBillingPlansPublic, {});
     return NextResponse.json(payload);
   } catch {
-    const plans = listBillingPlanConfigs().map((config) => ({
+    const plans = listPublicBillingPlanConfigs().map((config) => ({
       plan: config.plan,
       tier: config.tier,
       interval: config.interval,

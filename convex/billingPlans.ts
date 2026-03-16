@@ -29,7 +29,7 @@ const BILLING_PLAN_CONFIGS: Record<
     plan: "pro_monthly",
     tier: "pro",
     interval: "monthly",
-    trialEligible: false,
+    trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
   },
@@ -37,11 +37,12 @@ const BILLING_PLAN_CONFIGS: Record<
     plan: "pro_plus_monthly",
     tier: "pro_plus",
     interval: "monthly",
-    trialEligible: true,
+    trialEligible: false,
     envVars: ["PADDLE_PRICE_ID_PRO_PLUS_MONTHLY"],
   },
 };
 const BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly", "pro_plus_monthly"];
+const PUBLIC_BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly"];
 
 const SUPPORT_OPERATOR_EMAILS = new Set([
   "amanmamgain9@gmail.com",
@@ -114,6 +115,10 @@ export function listBillingPlanConfigs() {
   return BILLING_PLAN_ORDER.map((plan) => BILLING_PLAN_CONFIGS[plan]);
 }
 
+export function listPublicBillingPlanConfigs() {
+  return PUBLIC_BILLING_PLAN_ORDER.map((plan) => BILLING_PLAN_CONFIGS[plan]);
+}
+
 export async function resolveCheckoutPlanPriceId(db: any, plan: BillingPlan) {
   const row = await getActiveRowByPlan(db, plan);
   if (row?.active && row.paddlePriceId) {
@@ -161,7 +166,7 @@ export const listPublic = queryGeneric({
   handler: async (ctx) => {
     const trialDays = resolveFreeProPlusTrialDays();
     const plans = await Promise.all(
-      (Object.keys(BILLING_PLAN_CONFIGS) as BillingPlan[]).map(async (plan) => {
+      PUBLIC_BILLING_PLAN_ORDER.map(async (plan) => {
         const config = BILLING_PLAN_CONFIGS[plan];
         const row = await getActiveRowByPlan(ctx.db, plan);
         const priceId =

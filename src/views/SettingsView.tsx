@@ -11,8 +11,7 @@ import { useI18n } from "@/i18n/client";
 
 const api = anyApi;
 type CheckoutPlan =
-  | "pro_monthly"
-  | "pro_plus_monthly";
+  | "pro_monthly";
 type BillingState = {
   isActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
@@ -36,7 +35,6 @@ type CheckoutPayload = {
 
 const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
   pro_monthly: true,
-  pro_plus_monthly: true,
 };
 const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "";
@@ -91,6 +89,7 @@ export default function SettingsView() {
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
   const billingSuccess = searchParams.get("billing") === "success";
+  const upgradeRequired = searchParams.get("upgrade") === "required";
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +124,12 @@ export default function SettingsView() {
       setPaddleReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!upgradeRequired) return;
+    if (primaryActionUsesPortal) return;
+    setShowUpgradeModal(true);
+  }, [primaryActionUsesPortal, upgradeRequired]);
 
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
@@ -306,16 +311,18 @@ export default function SettingsView() {
                   {t("app.settings.continueToCheckout")}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowUpgradeModal(false)}
-                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
-              >
-                {t("app.settings.close")}
-              </button>
+              {!upgradeRequired ? (
+                <button
+                  type="button"
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+                >
+                  {t("app.settings.close")}
+                </button>
+              ) : null}
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4">
               <div className="rounded-xl border border-[var(--color-border)] p-3">
                 <p className="text-sm font-semibold">Pro</p>
                 <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{t("app.settings.proMonthlyPrice")}</p>
@@ -330,26 +337,6 @@ export default function SettingsView() {
                   </button>
                 </div>
                 {!planAvailability.pro_monthly && (
-                  <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
-                    {t("app.settings.checkoutUnavailable")}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-[var(--color-border)] p-3">
-                <p className="text-sm font-semibold">Pro+</p>
-                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{t("app.settings.proPlusMonthlyPrice")}</p>
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => startCheckout("pro_plus_monthly")}
-                    className="btn-primary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null || !planAvailability.pro_plus_monthly}
-                  >
-                    {busyAction === "pro_plus_monthly" ? t("app.settings.opening") : t("app.settings.startProPlus")}
-                  </button>
-                </div>
-                {!planAvailability.pro_plus_monthly && (
                   <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
                     {t("app.settings.checkoutUnavailable")}
                   </p>

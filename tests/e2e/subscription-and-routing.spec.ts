@@ -3,7 +3,6 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 const E2E_SECRET = "playwright-local-secret";
 const expectedPlans = [
   "pro_monthly",
-  "pro_plus_monthly",
 ];
 
 async function createMagicLink(
@@ -86,14 +85,11 @@ test("billing plans endpoint exposes monthly plans and trial conditions", async 
   expect(planNames).toEqual(expectedPlans);
 
   const proMonthly = plans.find((p) => p.plan === "pro_monthly");
-  const proPlusMonthly = plans.find((p) => p.plan === "pro_plus_monthly");
-
   expect(proMonthly?.interval).toBe("monthly");
-  expect(proPlusMonthly?.tier).toBe("pro_plus");
+  expect(proMonthly?.tier).toBe("pro");
 
   if ((payload.trialDays ?? 0) > 0) {
-    expect(proMonthly?.trialEligible).toBe(false);
-    expect(proPlusMonthly?.trialEligible).toBe(true);
+    expect(proMonthly?.trialEligible).toBe(true);
   } else {
     for (const row of plans) {
       expect(row.trialEligible).toBe(false);
@@ -129,8 +125,7 @@ test("magic-link full sign-in flow shows upgrade controls before checkout", asyn
   await expect(page.getByText(/Pro\+ trial is active|Pro\+ 试用进行中/)).toHaveCount(0);
 
   await page.getByRole("button", { name: /Upgrade|升级/ }).click();
-  await expect(page.getByRole("button", { name: /^Start Pro$|^开始 Pro$/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Start Pro\+|开始 Pro\+/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start Pro trial|开始 Pro 试用/ })).toBeVisible();
 
   await page.goto("/cards");
   await page.waitForURL(/\/cards/);

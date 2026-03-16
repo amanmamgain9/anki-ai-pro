@@ -2,6 +2,7 @@ export const BILLING_PLAN_ORDER = [
   "pro_monthly",
   "pro_plus_monthly",
 ] as const;
+export const PUBLIC_BILLING_PLAN_ORDER = ["pro_monthly"] as const;
 
 export type BillingPlan = (typeof BILLING_PLAN_ORDER)[number];
 export type BillingTier = "pro" | "pro_plus";
@@ -21,7 +22,7 @@ const BILLING_PLAN_CONFIGS: Record<BillingPlan, BillingPlanConfig> = {
     plan: "pro_monthly",
     tier: "pro",
     interval: "monthly",
-    trialEligible: false,
+    trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
   },
@@ -29,7 +30,7 @@ const BILLING_PLAN_CONFIGS: Record<BillingPlan, BillingPlanConfig> = {
     plan: "pro_plus_monthly",
     tier: "pro_plus",
     interval: "monthly",
-    trialEligible: true,
+    trialEligible: false,
     envVars: ["PADDLE_PRICE_ID_PRO_PLUS_MONTHLY"],
   },
 };
@@ -49,4 +50,8 @@ export function getBillingPlanConfig(plan: BillingPlan): BillingPlanConfig {
 
 export function listBillingPlanConfigs(): BillingPlanConfig[] {
   return BILLING_PLAN_ORDER.map((plan) => BILLING_PLAN_CONFIGS[plan]);
+}
+
+export function listPublicBillingPlanConfigs(): BillingPlanConfig[] {
+  return PUBLIC_BILLING_PLAN_ORDER.map((plan) => BILLING_PLAN_CONFIGS[plan]);
 }

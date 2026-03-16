@@ -61,11 +61,11 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as { plan?: unknown };
     const plan = parseBillingPlan(body.plan);
-    if (!plan) {
+    if (!plan || plan !== "pro_monthly") {
       return NextResponse.json(
         {
           error:
-            "Invalid plan. Expected one of: 'pro_monthly' or 'pro_plus_monthly'.",
+            "Invalid plan. Expected: 'pro_monthly'.",
         },
         { status: 400 },
       );

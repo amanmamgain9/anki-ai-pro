@@ -8,7 +8,7 @@ import {
 } from "convex/server";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import {
-  listBillingPlanConfigs,
+  listPublicBillingPlanConfigs,
   resolveBillingTierByPriceId,
   resolveCheckoutPlanPriceId,
   type BillingPlan,
@@ -767,7 +767,7 @@ export const getBillingPlansPublic = queryGeneric({
   handler: async (ctx) => {
     const trialDays = resolveFreeProPlusTrialDays();
     const plans = await Promise.all(
-      listBillingPlanConfigs().map(async (config) => {
+      listPublicBillingPlanConfigs().map(async (config) => {
         const priceId = await resolveCheckoutPlanPriceId(ctx.db, config.plan);
         return {
           plan: config.plan,
