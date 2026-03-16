@@ -5,8 +5,10 @@ import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
+import { interpolateMessage } from "@/i18n/format";
 import { getServerDictionary } from "@/i18n/server";
 import { SUPPORT_EMAIL } from "@/lib/support";
+import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 export const metadata: Metadata = {
   title: "Terms of Service | Anki Cards",
@@ -15,11 +17,30 @@ export const metadata: Metadata = {
 
 export default async function TermsPage() {
   const { dict, locale } = await getServerDictionary();
+  const trialDays = resolveFreeProPlusTrialDays();
   const sections = dict.marketing.termsPage.sections;
-  const introSections = sections.slice(0, 3) as ReadonlyArray<{ title: string; body: readonly string[] }>;
-  const refundSection = sections[3] as { title: string; bodyPrefix: string };
-  const policySections = sections.slice(4, 6) as ReadonlyArray<{ title: string; body: readonly string[] }>;
-  const contactSection = sections[6] as { title: string; bodyPrefix: string };
+  const billingSection = sections[2] as {
+    title: string;
+    body: readonly string[];
+    bodyNoTrial?: readonly string[];
+  };
+  const billingBodySource =
+    trialDays > 0 ? billingSection.body : billingSection.bodyNoTrial ?? billingSection.body;
+  const normalizedSections = [
+    sections[0],
+    sections[1],
+    {
+      ...billingSection,
+      body: billingBodySource.map((paragraph) =>
+        interpolateMessage(paragraph, { count: trialDays }),
+      ),
+    },
+    ...sections.slice(3),
+  ];
+  const introSections = normalizedSections.slice(0, 3) as ReadonlyArray<{ title: string; body: readonly string[] }>;
+  const refundSection = normalizedSections[3] as { title: string; bodyPrefix: string };
+  const policySections = normalizedSections.slice(4, 6) as ReadonlyArray<{ title: string; body: readonly string[] }>;
+  const contactSection = normalizedSections[6] as { title: string; bodyPrefix: string };
 
   return (
     <div className="flex min-h-dvh flex-col">

@@ -88,6 +88,13 @@ async function getRowsByPlan(db: any, plan: BillingPlan) {
     .collect()) as Doc<"billingPlanPrices">[];
 }
 
+async function getRowsByPriceId(db: any, priceId: string) {
+  return (await db
+    .query("billingPlanPrices")
+    .withIndex("by_priceId", (q: any) => q.eq("paddlePriceId", priceId))
+    .collect()) as Doc<"billingPlanPrices">[];
+}
+
 function pickNewestRow<T extends { updatedAt: number; createdAt: number }>(rows: T[]): T | null {
   return [...rows].sort((a, b) => {
     if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
@@ -121,20 +128,31 @@ export async function resolveBillingTierByPriceId(
 ): Promise<BillingTier | null> {
   if (!priceId) return null;
 
-  const row = await db
-    .query("billingPlanPrices")
-    .withIndex("by_priceId", (q: any) => q.eq("paddlePriceId", priceId))
-    .first();
-  if (row && (row.tier === "pro" || row.tier === "pro_plus")) {
-    return row.tier;
+  const rows = await getRowsByPriceId(db, priceId);
+  const mappedTiers = Array.from(
+    new Set(
+      rows
+        .map((row) => row.tier)
+        .filter((tier): tier is BillingTier => tier === "pro" || tier === "pro_plus"),
+    ),
+  );
+  if (mappedTiers.length === 1) {
+    return mappedTiers[0];
+  }
+  if (mappedTiers.length > 1) {
+    return null;
   }
 
+  const envMatchedTiers = new Set<BillingTier>();
   for (const [plan, config] of Object.entries(BILLING_PLAN_CONFIGS) as Array<
     [BillingPlan, (typeof BILLING_PLAN_CONFIGS)[BillingPlan]]
   >) {
     if (resolvePriceIdFromEnv(plan) === priceId) {
-      return config.tier;
+      envMatchedTiers.add(config.tier);
     }
+  }
+  if (envMatchedTiers.size === 1) {
+    return Array.from(envMatchedTiers)[0];
   }
   return null;
 }
@@ -208,9 +226,18 @@ export const adminUpsertPrice = mutationGeneric({
     const now = Date.now();
     const config = BILLING_PLAN_CONFIGS[plan];
     const normalizedPriceId = paddlePriceId.trim();
+    if (normalizedPriceId.length === 0) {
+      throw new ConvexError("Paddle price ID is required");
+    }
     const existingRows = await getRowsByPlan(ctx.db, plan);
-    const matchingRow =
-      existingRows.find((row: any) => row.paddlePriceId === normalizedPriceId) ?? null;
+    const priceRows = await getRowsByPriceId(ctx.db, normalizedPriceId);
+    const conflictingRow = priceRows.find((row) => row.plan !== plan);
+    if (conflictingRow) {
+      throw new ConvexError("Paddle price ID is already assigned to another plan");
+    }
+    const matchingRow = pickNewestRow(
+      existingRows.filter((row) => row.paddlePriceId === normalizedPriceId),
+    );
     const nextActive = active ?? true;
 
     if (nextActive) {

@@ -4,10 +4,17 @@ import BrandLogo from "@/components/BrandLogo";
 import MarketingFooter from "@/components/MarketingFooter";
 import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
+import { interpolateMessage } from "@/i18n/format";
 import { getServerDictionary } from "@/i18n/server";
+import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 export default async function PricingPage() {
   const { dict, locale } = await getServerDictionary();
+  const trialDays = resolveFreeProPlusTrialDays();
+  const subtitle =
+    trialDays > 0
+      ? interpolateMessage(dict.marketing.pricing.subtitleWithTrial, { count: trialDays })
+      : dict.marketing.pricing.subtitleNoTrial;
   const tiers = [
     {
       ...dict.marketing.pricing.tiers.pro,
@@ -16,6 +23,12 @@ export default async function PricingPage() {
     },
     {
       ...dict.marketing.pricing.tiers.proPlus,
+      cta:
+        trialDays > 0
+          ? interpolateMessage(dict.marketing.pricing.tiers.proPlus.ctaWithTrial, {
+              count: trialDays,
+            })
+          : dict.marketing.pricing.tiers.proPlus.ctaNoTrial,
       href: "/sign-in",
       accent: true,
     },
@@ -54,7 +67,7 @@ export default async function PricingPage() {
           <span className="gradient-text">{dict.marketing.pricing.titleHighlight}</span>
         </h1>
         <p className="mt-3 max-w-md text-center text-base text-[var(--color-text-secondary)]">
-          {dict.marketing.pricing.subtitle}
+          {subtitle}
         </p>
 
         <div className="mt-12 grid w-full max-w-5xl gap-5 sm:grid-cols-2">

@@ -2,17 +2,11 @@ import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { NextResponse } from "next/server";
 import { listBillingPlanConfigs } from "@/lib/billing-plans";
+import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
 
 export const runtime = "nodejs";
-
-function resolveFreeProPlusTrialDays() {
-  const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return 3;
-  return Math.max(0, Math.floor(parsed));
-}
 
 export async function GET() {
   const trialDays = resolveFreeProPlusTrialDays();

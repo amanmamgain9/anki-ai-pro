@@ -208,7 +208,8 @@ export const dictionaries = {
       pricing: {
         title: "Simple",
         titleHighlight: "pricing",
-        subtitle: "Digital subscription plans with a 3-day Pro+ trial.",
+        subtitleWithTrial: "Digital subscription plans with a {count}-day Pro+ trial.",
+        subtitleNoTrial: "Digital subscription plans for monthly Pro and Pro+.",
         deliverablesTitle: "Included with purchase",
         deliverables: [
           "Immediate access to the web app and your account features for the selected plan period.",
@@ -241,7 +242,8 @@ export const dictionaries = {
               "Full voice study mode for hands-free recall practice",
               "Higher-priority AI voice capacity",
             ],
-            cta: "Start 3-day trial",
+            ctaWithTrial: "Start {count}-day trial",
+            ctaNoTrial: "Start Pro+",
           },
         },
       },
@@ -353,7 +355,10 @@ export const dictionaries = {
           {
             title: "3. Billing and Subscriptions",
             body: [
-              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. New users receive a 3-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal.",
+              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. New users receive a {count}-day Pro+ trial. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal.",
+            ],
+            bodyNoTrial: [
+              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer monthly Pro and Pro+ plans. Plans renew automatically until canceled. You can manage or cancel your subscription from the in-app billing portal.",
             ],
           },
           {
@@ -1088,7 +1093,8 @@ export const dictionaries = {
       pricing: {
         title: "简单",
         titleHighlight: "定价",
-        subtitle: "数字订阅方案，含 3 天 Pro+ 试用。",
+        subtitleWithTrial: "数字订阅方案，含 {count} 天 Pro+ 试用。",
+        subtitleNoTrial: "面向月付 Pro 与 Pro+ 的数字订阅方案。",
         deliverablesTitle: "购买后包含",
         deliverables: [
           "按所选套餐周期，立即获得 Web 应用与账号功能访问权限。",
@@ -1121,7 +1127,8 @@ export const dictionaries = {
               "完整语音学习模式（可免手操作做回忆练习）",
               "更高优先级 AI 语音容量",
             ],
-            cta: "开始 3 天试用",
+            ctaWithTrial: "开始 {count} 天试用",
+            ctaNoTrial: "开始使用专业增强版",
           },
         },
       },
@@ -1232,7 +1239,10 @@ export const dictionaries = {
           {
             title: "3. 计费与订阅",
             body: [
-              "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供月付 Pro 与 Pro+ 方案。新用户可获得 3 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。",
+              "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供月付 Pro 与 Pro+ 方案。新用户可获得 {count} 天 Pro+ 试用。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。",
+            ],
+            bodyNoTrial: [
+              "付费订阅由 Paddle 处理。对于通过 Paddle 完成的交易，Paddle 作为 Merchant of Record 负责结账、支付处理，以及适用范围内的账单与退款处理。我们目前提供月付 Pro 与 Pro+ 方案。套餐会自动续费，直到你取消。你可以在应用内账单入口管理或取消订阅。",
             ],
           },
           {
