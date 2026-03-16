@@ -70,20 +70,33 @@ function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  try {
-    const signature = request.headers.get("paddle-signature");
-    if (!signature) {
-      return NextResponse.json(
-        { error: "Missing paddle-signature header" },
-        { status: 400 },
-      );
-    }
+  const signature = request.headers.get("paddle-signature");
+  if (!signature) {
+    return NextResponse.json(
+      { error: "Missing paddle-signature header" },
+      { status: 400 },
+    );
+  }
 
-    const rawBody = await request.text();
+  const rawBody = await request.text();
+
+  let event: {
+    eventId: string;
+    eventType: string;
+    occurredAt?: string;
+    data: unknown;
+  };
+
+  try {
     const paddle = getPaddleClient();
     const webhookSecret = getPaddleWebhookSecret();
-    const event = await paddle.webhooks.unmarshal(rawBody, webhookSecret, signature);
+    event = await paddle.webhooks.unmarshal(rawBody, webhookSecret, signature);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid webhook";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
+  try {
     if (!event.eventType.startsWith("subscription.")) {
       return NextResponse.json({ ok: true, ignored: true });
     }
@@ -120,7 +133,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const message = error instanceof Error ? error.message : "Internal webhook error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

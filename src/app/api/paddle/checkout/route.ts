@@ -13,8 +13,37 @@ type SyncUserResult = {
 
 type BillingState = {
   isActive?: boolean;
+  subscriptionStatus?: string | null;
   paddleSubscriptionId?: string | null;
 };
+
+const TERMINAL_SUBSCRIPTION_STATUSES = new Set([
+  "canceled",
+  "expired",
+]);
+
+function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
+  if (billing?.isActive) {
+    return {
+      code: "active_subscription_exists",
+      error: "An active subscription already exists for this account. Use Manage billing to change plan.",
+    };
+  }
+
+  if (
+    billing?.paddleSubscriptionId &&
+    billing.subscriptionStatus &&
+    !TERMINAL_SUBSCRIPTION_STATUSES.has(billing.subscriptionStatus)
+  ) {
+    return {
+      code: "subscription_requires_portal",
+      error:
+        "An existing subscription already exists for this account. Use Manage billing to update or recover it.",
+    };
+  }
+
+  return null;
+}
 
 export const runtime = "nodejs";
 
@@ -65,13 +94,14 @@ export async function POST(request: Request) {
     )) as SyncUserResult;
 
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
-    if (billing?.isActive) {
+    const checkoutBlock = shouldBlockNewCheckout(billing);
+    if (checkoutBlock) {
       return NextResponse.json(
         {
-          error:
-            "An active subscription already exists for this account. Use Manage billing to change plan.",
-          code: "active_subscription_exists",
+          error: checkoutBlock.error,
+          code: checkoutBlock.code,
           paddleSubscriptionId: billing.paddleSubscriptionId ?? null,
+          subscriptionStatus: billing.subscriptionStatus ?? null,
         },
         { status: 409 },
       );
