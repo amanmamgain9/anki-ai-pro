@@ -241,9 +241,6 @@ function pickCanonicalPaddleCustomerId(
     | undefined,
   subscriptions: Array<{ paddleCustomerId?: string | null }>,
 ) {
-  if (typeof userCustomerId === "string" && userCustomerId.length > 0) {
-    return userCustomerId;
-  }
   if (
     typeof primarySubscription?.paddleCustomerId === "string" &&
     primarySubscription.paddleCustomerId.length > 0
@@ -257,6 +254,13 @@ function pickCanonicalPaddleCustomerId(
         .filter((value): value is string => typeof value === "string" && value.length > 0),
     ),
   );
+  if (
+    typeof userCustomerId === "string" &&
+    userCustomerId.length > 0 &&
+    (distinctCustomerIds.length === 0 || distinctCustomerIds.includes(userCustomerId))
+  ) {
+    return userCustomerId;
+  }
   if (distinctCustomerIds.length === 1) {
     return distinctCustomerIds[0];
   }
@@ -293,7 +297,7 @@ export const syncCurrentUser = mutationGeneric({
       });
       return {
         userId: existing._id,
-        externalId: existing.externalId,
+        externalId: identity.subject,
         paddleCustomerId: existing.paddleCustomerId ?? null,
       };
     }
