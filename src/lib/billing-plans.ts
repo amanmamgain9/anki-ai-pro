@@ -1,6 +1,5 @@
 export const BILLING_PLAN_ORDER = [
   "pro_monthly",
-  "pro_plus_monthly",
 ] as const;
 export const PUBLIC_BILLING_PLAN_ORDER = ["pro_monthly"] as const;
 
@@ -25,13 +24,6 @@ const BILLING_PLAN_CONFIGS: Record<BillingPlan, BillingPlanConfig> = {
     trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
-  },
-  pro_plus_monthly: {
-    plan: "pro_plus_monthly",
-    tier: "pro_plus",
-    interval: "monthly",
-    trialEligible: false,
-    envVars: ["PADDLE_PRICE_ID_PRO_PLUS_MONTHLY"],
   },
 };
 

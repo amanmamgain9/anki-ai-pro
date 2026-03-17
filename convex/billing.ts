@@ -11,7 +11,6 @@ import {
   listPublicBillingPlanConfigs,
   resolveBillingTierByPriceId,
   resolveCheckoutPlanPriceId,
-  type BillingPlan,
 } from "./billingPlans";
 import {
   isSubscriptionEntitled,
@@ -106,14 +105,7 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
   }
 }
 
-const DAY_MS = 86_400_000;
 const PREMIUM_TTS_FEATURE = "premium_tts";
-const SUPPORT_OPERATOR_EMAILS = new Set([
-  "amanmamgain9@gmail.com",
-  "support@example.com",
-  "planmyworkday@gmail.com",
-]);
-
 function resolveFreeProPlusTrialDays() {
   const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
   const parsed = Number(raw);
@@ -326,55 +318,6 @@ export const syncCurrentUser = mutationGeneric({
   },
 });
 
-export const supportSetTrialEndsAtAndClearSubscriptions = mutationGeneric({
-  args: {
-    externalId: v.string(),
-    trialEndsAt: v.number(),
-    clearSubscriptions: v.optional(v.boolean()),
-  },
-  handler: async (ctx, { externalId, trialEndsAt, clearSubscriptions }) => {
-    const identity = await requireIdentity(ctx);
-    const callerEmail = (identity.email ?? "").toLowerCase();
-    if (!SUPPORT_OPERATOR_EMAILS.has(callerEmail)) {
-      throw new ConvexError("Unauthorized");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", externalId))
-      .first();
-    if (!user) {
-      throw new ConvexError("User not found");
-    }
-
-    const now = Date.now();
-    await ctx.db.patch(user._id, {
-      trialEndsAt,
-      updatedAt: now,
-      lastSeenAt: now,
-    });
-
-    let deletedSubscriptions = 0;
-    if (clearSubscriptions) {
-      const subscriptions = await ctx.db
-        .query("subscriptions")
-        .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
-        .collect();
-      for (const row of subscriptions) {
-        await ctx.db.delete(row._id);
-        deletedSubscriptions += 1;
-      }
-    }
-
-    return {
-      userId: user._id,
-      externalId: user.externalId,
-      trialEndsAt,
-      deletedSubscriptions,
-    };
-  },
-});
-
 export const setMyPaddleCustomerId = mutationGeneric({
   args: {
     forwardSecret: v.optional(v.string()),
@@ -492,36 +435,6 @@ export const resetMyOnboardingForTesting = mutationGeneric({
       onboardingCompletedAt: 0,
       hasCompletedOnboarding: false,
     };
-  },
-});
-
-export const setMyCreatedAtForTesting = mutationGeneric({
-  args: {
-    testSecret: v.string(),
-    createdAt: v.number(),
-  },
-  handler: async (ctx, { testSecret, createdAt }) => {
-    ensureTestingAllowed(testSecret);
-    const identity = await requireIdentity(ctx);
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
-
-    if (!user) {
-      throw new ConvexError("User not found. Run syncCurrentUser first.");
-    }
-
-    const now = Date.now();
-    const trialDays = resolveFreeProPlusTrialDays();
-    const trialEndsAt = trialDays > 0 ? createdAt + trialDays * DAY_MS : undefined;
-    await ctx.db.patch(user._id, {
-      createdAt,
-      ...(trialEndsAt !== undefined ? { trialEndsAt } : {}),
-      updatedAt: now,
-      lastSeenAt: now,
-    });
-    return { userId: user._id, createdAt, trialEndsAt: trialEndsAt ?? null };
   },
 });
 
@@ -788,9 +701,9 @@ export const getBillingPlansPublic = queryGeneric({
 
 export const getCheckoutPlanConfig = queryGeneric({
   args: {
-    plan: v.union(v.literal("pro_monthly"), v.literal("pro_plus_monthly")),
+    plan: v.literal("pro_monthly"),
   },
-  handler: async (ctx, { plan }: { plan: BillingPlan }) => {
+  handler: async (ctx, { plan }: { plan: "pro_monthly" }) => {
     const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
     return {
       plan,

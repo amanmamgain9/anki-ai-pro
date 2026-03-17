@@ -167,10 +167,7 @@ test("trial expiration behavior blocks paid routes and pro APIs", async ({ page,
   await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
-  const backdated = await billingAction(page.request, {
-    action: "backdateTrial",
-    daysAgo: 10,
-  });
+  const backdated = await billingAction(page.request, { action: "state" });
   expect(backdated.billing?.trialActive).toBe(false);
   expect(backdated.billing?.isActive).toBe(false);
 
@@ -187,7 +184,6 @@ test("active paid subscription unlocks paid routes and pro API gate", async ({ p
   await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
   const activated = await billingAction(page.request, {
     action: "simulateWebhook",
     status: "active",
@@ -209,7 +205,6 @@ test("checkout blocks creating a second subscription when one is already active"
   await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
   await billingAction(page.request, {
     action: "simulateWebhook",
     status: "active",
@@ -217,7 +212,7 @@ test("checkout blocks creating a second subscription when one is already active"
   });
 
   const checkout = await page.request.post("/api/paddle/checkout", {
-    data: { plan: "pro_plus_monthly" },
+    data: { plan: "pro_monthly" },
   });
   expect(checkout.status()).toBe(409);
   const payload = (await checkout.json()) as { error?: string; code?: string };
@@ -233,7 +228,6 @@ test("billing remains active when a newer inactive row exists for a different su
   await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
   const idSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const activeSubscriptionId = `sub_test_active_main_${idSuffix}`;
   const canceledSubscriptionId = `sub_test_canceled_old_${idSuffix}`;
@@ -270,7 +264,6 @@ test("older webhook for the same subscription is ignored to prevent stale overwr
   await page.waitForURL(/\/start-trial/);
 
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
   const idSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const subscriptionId = `sub_test_stale_guard_${idSuffix}`;
 
@@ -303,7 +296,6 @@ test("subscription status transitions enforce access correctly", async ({ page, 
   await signInWithMagicLink(page, request, "/start-trial");
   await page.waitForURL(/\/start-trial/);
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
 
   const cases: Array<{
     status: "trialing" | "active" | "past_due" | "canceled" | "expired";
@@ -339,7 +331,6 @@ test("checkout stays blocked after cancellation until the paid period ends", asy
   await signInWithMagicLink(page, request, "/start-trial");
   await page.waitForURL(/\/start-trial/);
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
 
   const canceled = await billingAction(page.request, {
     action: "simulateWebhook",
@@ -352,7 +343,7 @@ test("checkout stays blocked after cancellation until the paid period ends", asy
   expect(canceled.billing?.subscriptionStatus).toBe("canceled");
 
   const checkout = await page.request.post("/api/paddle/checkout", {
-    data: { plan: "pro_plus_monthly" },
+    data: { plan: "pro_monthly" },
   });
   expect(checkout.status()).toBe(409);
 });
@@ -361,7 +352,6 @@ test("renewal and expiration updates are reflected after webhook sequence", asyn
   await signInWithMagicLink(page, request, "/start-trial");
   await page.waitForURL(/\/start-trial/);
   await billingAction(page.request, { action: "reset" });
-  await billingAction(page.request, { action: "backdateTrial", daysAgo: 10 });
 
   const first = await billingAction(page.request, {
     action: "simulateWebhook",

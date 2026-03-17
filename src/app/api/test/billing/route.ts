@@ -20,7 +20,6 @@ const statusSchema = z.enum([
 ]);
 const planSchema = z.enum([
   "pro_monthly",
-  "pro_plus_monthly",
 ]);
 
 const actionSchema = z.discriminatedUnion("action", [
@@ -29,10 +28,6 @@ const actionSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("reset"),
-  }),
-  z.object({
-    action: z.literal("backdateTrial"),
-    daysAgo: z.number().int().min(0).max(3650),
   }),
   z.object({
     action: z.literal("simulateWebhook"),
@@ -154,15 +149,6 @@ export async function POST(request: Request) {
 
     if (parsed.action === "reset") {
       await convex.mutation(api.billing.resetMyBillingForTesting, { testSecret });
-      return NextResponse.json(await getState(convex, testSecret));
-    }
-
-    if (parsed.action === "backdateTrial") {
-      const createdAt = Date.now() - parsed.daysAgo * DAY_MS;
-      await convex.mutation(api.billing.setMyCreatedAtForTesting, {
-        testSecret,
-        createdAt,
-      });
       return NextResponse.json(await getState(convex, testSecret));
     }
 
