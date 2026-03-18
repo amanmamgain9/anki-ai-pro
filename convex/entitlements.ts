@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConvexError } from "convex/values";
+import { findCanonicalUserByExternalId } from "./billingIdentity";
 import { isSubscriptionEntitled } from "./subscriptionAccess";
 
 function hasAnyEntitledSubscription(
@@ -23,10 +24,7 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
   const externalId = identity?.subject ?? null;
   if (!externalId) return null;
 
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_externalId", (q: any) => q.eq("externalId", externalId))
-    .first();
+  const user = await findCanonicalUserByExternalId(ctx.db, externalId);
   if (!user) return null;
 
   const subscriptions = await ctx.db

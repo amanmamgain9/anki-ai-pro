@@ -13,6 +13,13 @@ import {
   resolveCheckoutPlanPriceId,
 } from "./billingPlans";
 import {
+  findCanonicalSubscriptionByPaddleSubscriptionId,
+  findCanonicalUserByEmail,
+  findCanonicalUserByExternalId,
+  findCanonicalUserByPaddleCustomerId,
+  listUsersByPaddleCustomerId,
+} from "./billingIdentity";
+import {
   isSubscriptionEntitled,
   pickEffectiveSubscription,
   subscriptionRequiresBillingManagement,
@@ -131,61 +138,6 @@ function isStoredBillingTier(value: string | undefined): value is StoredBillingT
   return value === "pro" || value === "pro_plus";
 }
 
-async function listUsersByPaddleCustomerId(db: BillingReadDb, customerId: string) {
-  return await db
-    .query("users")
-    .withIndex("by_paddleCustomerId", (q) => q.eq("paddleCustomerId", customerId))
-    .collect();
-}
-
-async function findUniqueUserByPaddleCustomerId(db: BillingReadDb, customerId: string | undefined) {
-  if (!customerId) return null;
-  const matches = await listUsersByPaddleCustomerId(db, customerId);
-  if (matches.length !== 1) return null;
-  return matches[0];
-}
-
-async function findCanonicalUserByEmail(db: BillingReadDb, email: string | undefined) {
-  if (!email) return null;
-  const candidates = (await db
-    .query("users")
-    .withIndex("by_email", (q) => q.eq("email", email))
-    .collect()) as Doc<"users">[];
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-
-  const now = Date.now();
-  const scored = await Promise.all(
-    candidates.map(async (user) => {
-      const subscriptions = await db
-        .query("subscriptions")
-        .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
-        .collect();
-      const entitled = subscriptions.some((row) =>
-        isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, now),
-      );
-      return {
-        user,
-        entitled,
-        subscriptionCount: subscriptions.length,
-      };
-    }),
-  );
-
-  scored.sort((a, b) => {
-    if (a.entitled !== b.entitled) return a.entitled ? -1 : 1;
-    if (a.subscriptionCount !== b.subscriptionCount) {
-      return b.subscriptionCount - a.subscriptionCount;
-    }
-    if (Boolean(a.user.paddleCustomerId) !== Boolean(b.user.paddleCustomerId)) {
-      return a.user.paddleCustomerId ? -1 : 1;
-    }
-    return a.user.createdAt - b.user.createdAt;
-  });
-
-  return scored[0]?.user ?? null;
-}
-
 async function setUserPaddleCustomerId(
   db: BillingWriteDb,
   user: Pick<Doc<"users">, "_id" | "paddleCustomerId" | "updatedAt" | "lastSeenAt">,
@@ -276,10 +228,10 @@ export const syncCurrentUser = mutationGeneric({
     const name = typeof identity.name === "string" ? identity.name : undefined;
     const imageUrl = getIdentityImageUrl(identity);
 
-    const existingByExternalId = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const existingByExternalId = await findCanonicalUserByExternalId(
+      ctx.db,
+      identity.subject,
+    );
     const existing = existingByExternalId ?? (await findCanonicalUserByEmail(ctx.db, email));
 
     if (existing) {
@@ -339,10 +291,7 @@ export const setMyPaddleCustomerId = mutationGeneric({
       throw new ConvexError("Unauthorized");
     }
     const identity = await requireIdentity(ctx);
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const existing = await findCanonicalUserByExternalId(ctx.db, identity.subject);
     if (!existing) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
@@ -368,10 +317,7 @@ export const getMyOnboardingState = queryGeneric({
       };
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
 
     return {
       isAuthenticated: true,
@@ -385,10 +331,7 @@ export const markOnboardingComplete = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
 
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
@@ -418,10 +361,7 @@ export const resetMyOnboardingForTesting = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
 
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
@@ -449,10 +389,7 @@ export const resetMyBillingForTesting = mutationGeneric({
   handler: async (ctx, { testSecret }) => {
     ensureTestingAllowed(testSecret);
     const identity = await requireIdentity(ctx);
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
 
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
@@ -489,10 +426,7 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
     if (!identity) {
       throw new ConvexError("Unauthorized");
     }
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
     if (!user) {
       return {
         userExists: false as const,
@@ -543,10 +477,7 @@ export const getMyBilling = queryGeneric({
       };
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
     if (!user) {
       return {
         isAuthenticated: true,
@@ -755,14 +686,10 @@ async function applyPaddleWebhookEvent(
 
   let userId: Id<"users"> | undefined;
   const subscriptionId = args.subscriptionId;
-  const existingSubscription = args.subscriptionId
-    ? await ctx.db
-        .query("subscriptions")
-        .withIndex("by_paddleSubscriptionId", (q) =>
-          q.eq("paddleSubscriptionId", args.subscriptionId!),
-        )
-        .first()
-    : null;
+  const existingSubscription = await findCanonicalSubscriptionByPaddleSubscriptionId(
+    ctx.db,
+    args.subscriptionId,
+  );
 
   const existingSubscriptionOwner = existingSubscription
     ? await ctx.db.get(existingSubscription.userId)
@@ -771,14 +698,11 @@ async function applyPaddleWebhookEvent(
   let user = existingSubscriptionOwner;
 
   if (!user && args.externalId) {
-    user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId!))
-      .first();
+    user = await findCanonicalUserByExternalId(ctx.db, args.externalId);
   }
 
   if (!user && args.customerId) {
-    user = await findUniqueUserByPaddleCustomerId(ctx.db, args.customerId);
+    user = await findCanonicalUserByPaddleCustomerId(ctx.db, args.customerId);
   }
 
   let processingStatus: "processed" | "ignored_missing_user" | "ignored_stale_event" = user

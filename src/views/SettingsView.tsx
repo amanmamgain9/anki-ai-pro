@@ -40,7 +40,15 @@ const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "";
 const PADDLE_ENV = process.env.NEXT_PUBLIC_PADDLE_ENV ?? "production";
 
-function initializePaddleForBilling() {
+function getSettingsBillingSuccessUrl() {
+  if (typeof window === "undefined") {
+    return "/settings?billing=success";
+  }
+  return `${window.location.origin}/settings?billing=success`;
+}
+
+function initializePaddleForBilling(successUrl: string) {
+  window.__aiankiPaddleCheckoutSuccessUrl = successUrl;
   if (!PADDLE_CLIENT_TOKEN) return false;
   const paddle = window.Paddle;
   if (!paddle || typeof paddle.Initialize !== "function") return false;
@@ -48,18 +56,17 @@ function initializePaddleForBilling() {
   if (PADDLE_ENV === "sandbox" && paddle.Environment?.set) {
     paddle.Environment.set("sandbox");
   }
-  const successUrl = `${window.location.origin}/settings?billing=success`;
   paddle.Initialize({
     token: PADDLE_CLIENT_TOKEN,
     eventCallback(event) {
       if (event?.name === "checkout.completed") {
-        window.location.replace(successUrl);
+        const target = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
+        window.location.replace(target);
       }
     },
     checkout: {
       settings: {
         displayMode: "overlay",
-        successUrl,
       },
     },
   });
@@ -90,6 +97,7 @@ export default function SettingsView() {
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
   const billingSuccess = searchParams.get("billing") === "success";
   const upgradeRequired = searchParams.get("upgrade") === "required";
+  const successUrl = getSettingsBillingSuccessUrl();
 
   useEffect(() => {
     let cancelled = false;
@@ -120,10 +128,10 @@ export default function SettingsView() {
 
   useEffect(() => {
     if (!PADDLE_CLIENT_TOKEN) return;
-    if (initializePaddleForBilling()) {
+    if (initializePaddleForBilling(successUrl)) {
       setPaddleReady(true);
     }
-  }, []);
+  }, [successUrl]);
 
   useEffect(() => {
     if (!upgradeRequired) return;
@@ -141,7 +149,7 @@ export default function SettingsView() {
           t("app.settings.missingClientConfig"),
         );
       }
-      if (!paddleReady && !initializePaddleForBilling()) {
+      if (!paddleReady && !initializePaddleForBilling(successUrl)) {
         throw new Error(
           t("app.settings.checkoutNotReady"),
         );
@@ -293,7 +301,7 @@ export default function SettingsView() {
             src={PADDLE_SCRIPT_SRC}
             strategy="afterInteractive"
             onLoad={() => {
-              if (initializePaddleForBilling()) {
+              if (initializePaddleForBilling(successUrl)) {
                 setPaddleReady(true);
               }
             }}

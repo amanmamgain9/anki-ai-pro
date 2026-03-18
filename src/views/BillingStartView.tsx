@@ -37,6 +37,7 @@ const PADDLE_CLIENT_TOKEN = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "";
 const PADDLE_ENV = process.env.NEXT_PUBLIC_PADDLE_ENV ?? "production";
 
 function initializePaddleForBilling(successUrl: string) {
+  window.__aiankiPaddleCheckoutSuccessUrl = successUrl;
   if (!PADDLE_CLIENT_TOKEN) return false;
   const paddle = window.Paddle;
   if (!paddle || typeof paddle.Initialize !== "function") return false;
@@ -48,13 +49,13 @@ function initializePaddleForBilling(successUrl: string) {
     token: PADDLE_CLIENT_TOKEN,
     eventCallback(event) {
       if (event?.name === "checkout.completed") {
-        window.location.replace(successUrl);
+        const target = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
+        window.location.replace(target);
       }
     },
     checkout: {
       settings: {
         displayMode: "overlay",
-        successUrl,
       },
     },
   });

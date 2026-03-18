@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { mutationGeneric, type GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import { resolveBillingTierByPriceId } from "./billingPlans";
+import { findCanonicalUserByExternalId } from "./billingIdentity";
 import { isSubscriptionEntitled, pickEffectiveSubscription } from "./subscriptionAccess";
 
 type AuthCtx = {
@@ -62,10 +63,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
     const now = Date.now();
     const identity = await requireIdentity(ctx);
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_externalId", (q) => q.eq("externalId", identity.subject))
-      .first();
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }

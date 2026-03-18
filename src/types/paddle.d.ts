@@ -3,6 +3,7 @@ export {};
 declare global {
   interface Window {
     __aiankiPaddleInitialized?: boolean;
+    __aiankiPaddleCheckoutSuccessUrl?: string;
     Paddle?: {
       Initialize?: (options: {
         token: string;
