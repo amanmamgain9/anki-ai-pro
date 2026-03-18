@@ -29,7 +29,7 @@ type CheckoutPayload = {
   priceId?: string;
   customerEmail?: string;
   paddleCustomerId?: string | null;
-  externalId?: string;
+  checkoutToken?: string;
   error?: string;
 };
 
@@ -160,7 +160,7 @@ export default function SettingsView() {
         body: JSON.stringify({ plan }),
       });
       const payload = (await response.json()) as CheckoutPayload;
-      if (!response.ok || !payload.priceId || !payload.customerEmail || !payload.externalId) {
+      if (!response.ok || !payload.priceId || !payload.customerEmail || !payload.checkoutToken) {
         throw new Error(payload.error ?? "Failed to create Paddle checkout");
       }
       const open = window.Paddle?.Checkout?.open;
@@ -175,7 +175,7 @@ export default function SettingsView() {
           ? { id: payload.paddleCustomerId }
           : { email: payload.customerEmail },
         customData: {
-          externalId: payload.externalId,
+          checkoutToken: payload.checkoutToken,
         },
       });
     } catch (error) {

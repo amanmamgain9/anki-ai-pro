@@ -413,14 +413,14 @@ test("optional real Paddle checkout contract in CI", async ({ page, request }) =
   const payload = (await response.json()) as {
     priceId?: string;
     customerEmail?: string;
-    externalId?: string;
+    checkoutToken?: string;
   };
   expect(typeof payload.priceId).toBe("string");
   expect(payload.priceId ?? "").not.toHaveLength(0);
   expect(typeof payload.customerEmail).toBe("string");
   expect(payload.customerEmail ?? "").toContain("@");
-  expect(typeof payload.externalId).toBe("string");
-  expect(payload.externalId ?? "").not.toHaveLength(0);
+  expect(typeof payload.checkoutToken).toBe("string");
+  expect(payload.checkoutToken ?? "").not.toHaveLength(0);
 });
 
 test("billing APIs reject unauthenticated requests", async ({ request }) => {

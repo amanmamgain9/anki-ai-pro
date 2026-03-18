@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
+import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 
 const api = anyApi;
 
@@ -115,7 +116,7 @@ export async function POST(request: Request) {
       priceId: planConfig.priceId,
       customerEmail: session.user.email,
       paddleCustomerId: billing?.paddleCustomerId ?? null,
-      externalId: user.externalId,
+      checkoutToken: createPaddleCheckoutToken(user.externalId),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

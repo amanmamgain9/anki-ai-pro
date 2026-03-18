@@ -2,12 +2,14 @@ import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { NextResponse } from "next/server";
 import { getPaddleClient, getPaddleForwardSecret, getPaddleWebhookSecret } from "@/lib/paddle";
+import { verifyPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 
 const api = anyApi;
 
 type SubscriptionSnapshot = {
   subscriptionId?: string;
   customerId?: string;
+  checkoutToken?: string;
   externalId?: string;
   subscriptionUpdatedAt?: string;
   subscriptionStatus?: string;
@@ -49,6 +51,7 @@ function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot {
   return {
     subscriptionId: getStringValue(root, "subscriptionId") ?? getStringValue(root, "id"),
     customerId: getStringValue(root, "customerId"),
+    checkoutToken: getStringValue(customData, "checkoutToken"),
     externalId: getStringValue(customData, "externalId"),
     subscriptionUpdatedAt: getStringValue(root, "updatedAt"),
     subscriptionStatus: getStringValue(root, "status"),
@@ -110,6 +113,9 @@ export async function POST(request: Request) {
     }
 
     const snapshot = extractSubscriptionSnapshot(event.data);
+    const verifiedExternalId = snapshot.checkoutToken
+      ? verifyPaddleCheckoutToken(snapshot.checkoutToken)
+      : snapshot.externalId;
     const convex = new ConvexHttpClient(convexUrl);
 
     await convex.mutation(api.billing.processPaddleWebhook, {
@@ -120,7 +126,7 @@ export async function POST(request: Request) {
       rawBody,
       subscriptionId: snapshot.subscriptionId,
       customerId: snapshot.customerId,
-      externalId: snapshot.externalId,
+      externalId: verifiedExternalId ?? undefined,
       subscriptionUpdatedAt: snapshot.subscriptionUpdatedAt,
       subscriptionStatus: snapshot.subscriptionStatus,
       priceId: snapshot.priceId,

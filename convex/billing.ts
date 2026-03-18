@@ -537,8 +537,7 @@ export const getMyBilling = queryGeneric({
             ) {
               return false;
             }
-            if (!effectivePaddleCustomerId) return false;
-            return row.paddleCustomerId === effectivePaddleCustomerId;
+            return true;
           })
           .map((row) => row.paddleSubscriptionId),
       ),
