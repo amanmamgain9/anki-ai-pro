@@ -9,6 +9,7 @@
  */
 
 import type * as billing from "../billing.js";
+import type * as billingIdentity from "../billingIdentity.js";
 import type * as billingPlans from "../billingPlans.js";
 import type * as cardChats from "../cardChats.js";
 import type * as chats from "../chats.js";
@@ -30,6 +31,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   billing: typeof billing;
+  billingIdentity: typeof billingIdentity;
   billingPlans: typeof billingPlans;
   cardChats: typeof cardChats;
   chats: typeof chats;
