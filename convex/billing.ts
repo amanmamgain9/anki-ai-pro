@@ -96,7 +96,7 @@ function sanitizeEmail(email: string | undefined) {
 }
 
 function normalizeSubscriptionStatus(eventType: string, status?: string): string {
-  if (status && status.length > 0) return status;
+  if (status && status.length > 0) return status.trim().toLowerCase();
   switch (eventType) {
     case "subscription.activated":
       return "active";
@@ -488,31 +488,42 @@ export const getMyBilling = queryGeneric({
       subscription,
       subscriptions,
     );
+    const recoverableSubscriptions = subscriptions.filter((row) =>
+      subscriptionRequiresBillingManagement(
+        row.status,
+        row.currentPeriodEndsAt,
+        now,
+      ),
+    );
+    const recoverableCustomerIds = Array.from(
+      new Set(
+        recoverableSubscriptions
+          .map((row) => row.paddleCustomerId)
+          .filter((value): value is string => typeof value === "string" && value.length > 0),
+      ),
+    );
+    const billingManagementCustomerId =
+      recoverableSubscriptions.length === 0
+        ? effectivePaddleCustomerId
+        : recoverableCustomerIds.length === 1
+          ? recoverableCustomerIds[0]
+          : null;
     const paddleSubscriptionIds = Array.from(
       new Set(
         subscriptions
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
-            if (!effectivePaddleCustomerId) return false;
-            return row.paddleCustomerId === effectivePaddleCustomerId;
+            if (!billingManagementCustomerId) return false;
+            return row.paddleCustomerId === billingManagementCustomerId;
           })
           .map((row) => row.paddleSubscriptionId),
       ),
     );
     const blockingSubscriptionIds = Array.from(
       new Set(
-        subscriptions
+        recoverableSubscriptions
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
-            if (
-              !subscriptionRequiresBillingManagement(
-                row.status,
-                row.currentPeriodEndsAt,
-                now,
-              )
-            ) {
-              return false;
-            }
             return true;
           })
           .map((row) => row.paddleSubscriptionId),
@@ -576,7 +587,7 @@ export const getMyBilling = queryGeneric({
       proPreviewUsedChars,
       proPreviewRemainingChars,
       subscriptionStatus: status,
-      paddleCustomerId: effectivePaddleCustomerId,
+      paddleCustomerId: billingManagementCustomerId,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddleSubscriptionIds,
       blockingSubscriptionIds,
