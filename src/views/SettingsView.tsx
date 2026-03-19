@@ -27,7 +27,7 @@ type BillingState = {
 type PlanAvailability = Record<CheckoutPlan, boolean>;
 type CheckoutPayload = {
   priceId?: string;
-  customerEmail?: string;
+  customerEmail?: string | null;
   paddleCustomerId?: string | null;
   checkoutToken?: string;
   error?: string;
@@ -86,11 +86,13 @@ export default function SettingsView() {
     DEFAULT_PLAN_AVAILABILITY,
   );
   const [paddleReady, setPaddleReady] = useState(false);
-  const requiresBillingManagement = Boolean(
-    billing?.isActive || ((billing?.blockingSubscriptionIds?.length ?? 0) > 0),
-  );
+  const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
+  const requiresBillingManagement = Boolean(billing?.isActive || hasBlockingSubscriptions);
   const primaryActionUsesPortal = Boolean(
     billing?.paddleCustomerId && requiresBillingManagement,
+  );
+  const primaryActionNeedsSupport = Boolean(
+    hasBlockingSubscriptions && !billing?.paddleCustomerId,
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -135,9 +137,9 @@ export default function SettingsView() {
 
   useEffect(() => {
     if (!upgradeRequired) return;
-    if (primaryActionUsesPortal) return;
+    if (primaryActionUsesPortal || primaryActionNeedsSupport) return;
     setShowUpgradeModal(true);
-  }, [primaryActionUsesPortal, upgradeRequired]);
+  }, [primaryActionNeedsSupport, primaryActionUsesPortal, upgradeRequired]);
 
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
@@ -160,7 +162,12 @@ export default function SettingsView() {
         body: JSON.stringify({ plan }),
       });
       const payload = (await response.json()) as CheckoutPayload;
-      if (!response.ok || !payload.priceId || !payload.customerEmail || !payload.checkoutToken) {
+      if (
+        !response.ok ||
+        !payload.priceId ||
+        !payload.checkoutToken ||
+        (!payload.paddleCustomerId && !payload.customerEmail)
+      ) {
         throw new Error(payload.error ?? "Failed to create Paddle checkout");
       }
       const open = window.Paddle?.Checkout?.open;
@@ -169,11 +176,12 @@ export default function SettingsView() {
           t("app.settings.checkoutDidNotLoad"),
         );
       }
+      const customer = payload.paddleCustomerId
+        ? { id: payload.paddleCustomerId }
+        : { email: payload.customerEmail ?? undefined };
       open({
         items: [{ priceId: payload.priceId, quantity: 1 }],
-        customer: payload.paddleCustomerId
-          ? { id: payload.paddleCustomerId }
-          : { email: payload.customerEmail },
+        customer,
         customData: {
           checkoutToken: payload.checkoutToken,
         },
@@ -256,12 +264,21 @@ export default function SettingsView() {
             })}
           </p>
         )}
+        {primaryActionNeedsSupport ? (
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            {t("app.billingStart.supportNote")}
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => {
               if (primaryActionUsesPortal) {
                 void openPortal();
+                return;
+              }
+              if (primaryActionNeedsSupport) {
+                window.location.href = "/contact";
                 return;
               }
               setShowUpgradeModal(true);
@@ -273,6 +290,8 @@ export default function SettingsView() {
               ? t("app.settings.opening")
               : primaryActionUsesPortal
                 ? t("app.settings.manageBilling")
+                : primaryActionNeedsSupport
+                  ? t("app.settings.contactSupport")
                 : billing?.isActive
                   ? t("app.settings.changePlan")
                   : t("app.upgradeCta")}

@@ -877,6 +877,7 @@ export const dictionaries = {
         opening: "Opening...",
         changePlan: "Change plan",
         manageBilling: "Manage billing",
+        contactSupport: "Contact support",
         checkoutSuccess:
           "Checkout completed. Your trial or subscription status should update within a few seconds.",
         choosePlan: "Choose your plan",
@@ -901,11 +902,15 @@ export const dictionaries = {
           "Add your payment details now to begin the 3-day Pro trial. Paddle will only charge after the trial ends if you do not cancel first.",
         subtitleManage:
           "Your subscription needs attention before you can continue. Open billing to update payment details, recover renewal, or manage cancellation.",
+        subtitleSupport:
+          "Your subscription needs manual billing help before you can continue. Contact support and include your account email so we can reconnect the billing record.",
         accountEmail: "Signed in as",
         trialNote:
           "This trial starts through Paddle checkout. Your payment method is saved now, and billing begins only after the trial unless you cancel in time.",
         portalNote:
           "Use Manage billing to update payment details or recover your subscription. New checkout is blocked while an existing subscription still needs billing management.",
+        supportNote:
+          "If billing management is unavailable for this account, contact support so we can reconnect the subscription to the right Paddle customer.",
       },
       appShell: {
         loadFailed: "Could not load your account. Please retry.",
@@ -1768,6 +1773,7 @@ export const dictionaries = {
         opening: "打开中...",
         changePlan: "更改套餐",
         manageBilling: "管理账单",
+        contactSupport: "联系支持",
         checkoutSuccess: "结账已完成。试用或订阅状态通常会在几秒内更新。",
         choosePlan: "选择套餐",
         continueToCheckout: "确认后将跳转到 Paddle 结账页面。试用会先保存付款方式，若未在试用期结束前取消，将在试用结束后扣费。",
@@ -1790,11 +1796,15 @@ export const dictionaries = {
           "现在添加付款方式即可开始 3 天 Pro 试用。若你在试用结束前取消，Paddle 不会提前扣费。",
         subtitleManage:
           "你的订阅需要先处理账单问题才能继续。打开账单页面可更新付款方式、恢复续费或管理取消。",
+        subtitleSupport:
+          "你的订阅需要人工处理账单后才能继续。请联系支持，并附上你的账户邮箱，以便我们重新关联订阅记录。",
         accountEmail: "当前登录账号",
         trialNote:
           "试用通过 Paddle 结账开始。现在会先保存付款方式，若你没有在试用结束前取消，才会在试用结束后开始扣费。",
         portalNote:
           "请使用“管理账单”来更新付款方式或恢复订阅。在仍有待处理订阅时，系统会阻止重新创建新的结账。",
+        supportNote:
+          "如果当前账户无法打开账单管理，请联系支持，我们会协助把订阅重新关联到正确的 Paddle 客户。",
       },
       appShell: {
         loadFailed: "无法加载你的账户。请重试。",

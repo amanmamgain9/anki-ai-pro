@@ -5,6 +5,8 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
 import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
+import { priceHasExpectedTrial } from "@/lib/paddle";
+import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
 
@@ -53,13 +55,6 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
-    if (!session.user?.email) {
-      return NextResponse.json(
-        { error: "Missing user email in session" },
-        { status: 400 },
-      );
-    }
-
     const body = (await request.json()) as { plan?: unknown };
     const plan = parseBillingPlan(body.plan);
     if (!plan || plan !== "pro_monthly") {
@@ -112,9 +107,27 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!billing?.paddleCustomerId && !session.user?.email) {
+      return NextResponse.json(
+        { error: "Missing user email for first-time checkout" },
+        { status: 400 },
+      );
+    }
+
+    const expectedTrialDays = resolveFreeProPlusTrialDays();
+    if (!(await priceHasExpectedTrial(planConfig.priceId, expectedTrialDays))) {
+      return NextResponse.json(
+        {
+          error:
+            "The Pro trial is temporarily unavailable because billing is misconfigured. Please try again later.",
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json({
       priceId: planConfig.priceId,
-      customerEmail: session.user.email,
+      customerEmail: session.user?.email ?? null,
       paddleCustomerId: billing?.paddleCustomerId ?? null,
       checkoutToken: createPaddleCheckoutToken(user.externalId),
     });

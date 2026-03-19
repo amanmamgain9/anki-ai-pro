@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { NextResponse } from "next/server";
 import { listPublicBillingPlanConfigs } from "@/lib/billing-plans";
+import { priceHasExpectedTrial } from "@/lib/paddle";
 import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
@@ -20,8 +21,43 @@ export async function GET() {
     }
 
     const convex = new ConvexHttpClient(convexUrl);
-    const payload = await convex.query(api.billing.getBillingPlansPublic, {});
-    return NextResponse.json(payload);
+    const payload = (await convex.query(api.billing.getBillingPlansPublic, {})) as {
+      trialDays: number;
+      plans: Array<{
+        plan: string;
+        tier: string;
+        interval: string;
+        trialEligible: boolean;
+        checkoutEnabled: boolean;
+      }>;
+    };
+    const plans = await Promise.all(
+      payload.plans.map(async (plan) => {
+        if (!plan.checkoutEnabled || !plan.trialEligible) {
+          return plan;
+        }
+        const config = (await convex.query(api.billing.getCheckoutPlanConfig, {
+          plan: plan.plan as "pro_monthly",
+        })) as { priceId: string | null; checkoutEnabled: boolean };
+        if (!config.checkoutEnabled || !config.priceId) {
+          return {
+            ...plan,
+            checkoutEnabled: false,
+            trialEligible: false,
+          };
+        }
+        const trialVerified = await priceHasExpectedTrial(config.priceId, trialDays);
+        return {
+          ...plan,
+          checkoutEnabled: trialVerified,
+          trialEligible: trialVerified,
+        };
+      }),
+    );
+    return NextResponse.json({
+      trialDays: payload.trialDays,
+      plans,
+    });
   } catch {
     const plans = listPublicBillingPlanConfigs().map((config) => ({
       plan: config.plan,

@@ -66,3 +66,17 @@ export function getPaddleForwardSecret() {
   }
   return secret;
 }
+
+export async function priceHasExpectedTrial(
+  priceId: string,
+  expectedDays: number,
+) {
+  if (expectedDays <= 0) return true;
+  const price = await getPaddleClient().prices.get(priceId);
+  return Boolean(
+    price.trialPeriod &&
+      price.trialPeriod.interval === "day" &&
+      price.trialPeriod.frequency === expectedDays &&
+      price.trialPeriod.requiresPaymentMethod,
+  );
+}

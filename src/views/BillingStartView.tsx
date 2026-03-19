@@ -23,7 +23,7 @@ type BillingState = {
 type PlanAvailability = Record<CheckoutPlan, boolean>;
 type CheckoutPayload = {
   priceId?: string;
-  customerEmail?: string;
+  customerEmail?: string | null;
   paddleCustomerId?: string | null;
   checkoutToken?: string;
   error?: string;
@@ -77,9 +77,9 @@ export default function BillingStartView() {
   const [paddleReady, setPaddleReady] = useState(false);
   const from = searchParams.get("from") || "/cards";
   const billingSuccess = searchParams.get("billing") === "success";
-  const requiresBillingManagement = Boolean(
-    (billing?.blockingSubscriptionIds?.length ?? 0) > 0 && billing?.paddleCustomerId,
-  );
+  const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
+  const requiresBillingManagement = hasBlockingSubscriptions && Boolean(billing?.paddleCustomerId);
+  const requiresSupport = hasBlockingSubscriptions && !billing?.paddleCustomerId;
   const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -142,18 +142,24 @@ export default function BillingStartView() {
         body: JSON.stringify({ plan }),
       });
       const payload = (await response.json()) as CheckoutPayload;
-      if (!response.ok || !payload.priceId || !payload.customerEmail || !payload.checkoutToken) {
+      if (
+        !response.ok ||
+        !payload.priceId ||
+        !payload.checkoutToken ||
+        (!payload.paddleCustomerId && !payload.customerEmail)
+      ) {
         throw new Error(payload.error ?? "Failed to create Paddle checkout");
       }
       const open = window.Paddle?.Checkout?.open;
       if (typeof open !== "function") {
         throw new Error(t("app.settings.checkoutDidNotLoad"));
       }
+      const customer = payload.paddleCustomerId
+        ? { id: payload.paddleCustomerId }
+        : { email: payload.customerEmail ?? undefined };
       open({
         items: [{ priceId: payload.priceId, quantity: 1 }],
-        customer: payload.paddleCustomerId
-          ? { id: payload.paddleCustomerId }
-          : { email: payload.customerEmail },
+        customer,
         customData: {
           checkoutToken: payload.checkoutToken,
         },
@@ -191,12 +197,16 @@ export default function BillingStartView() {
           aiankipro
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight">
-          {requiresBillingManagement
+          {requiresSupport
+            ? t("app.billingStart.titleManage")
+            : requiresBillingManagement
             ? t("app.billingStart.titleManage")
             : t("app.billingStart.titleStart")}
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          {requiresBillingManagement
+          {requiresSupport
+            ? t("app.billingStart.subtitleSupport")
+            : requiresBillingManagement
             ? t("app.billingStart.subtitleManage")
             : t("app.billingStart.subtitleStart")}
         </p>
@@ -239,6 +249,10 @@ export default function BillingStartView() {
             >
               {busyAction === "portal" ? t("app.settings.opening") : t("app.settings.manageBilling")}
             </button>
+          ) : requiresSupport ? (
+            <Link href="/contact" className="btn-primary text-center">
+              {t("app.settings.contactSupport")}
+            </Link>
           ) : (
             <button
               type="button"
@@ -259,9 +273,13 @@ export default function BillingStartView() {
           </button>
         </div>
 
-        {!requiresBillingManagement ? (
+        {!hasBlockingSubscriptions ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
             {t("app.billingStart.trialNote")}
+          </p>
+        ) : requiresSupport ? (
+          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {t("app.billingStart.supportNote")}
           </p>
         ) : (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
