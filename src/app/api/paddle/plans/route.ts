@@ -33,7 +33,7 @@ export async function GET() {
     };
     const plans = await Promise.all(
       payload.plans.map(async (plan) => {
-        if (!plan.checkoutEnabled || !plan.trialEligible) {
+        if (!plan.checkoutEnabled) {
           return plan;
         }
         const config = (await convex.query(api.billing.getCheckoutPlanConfig, {
@@ -50,7 +50,7 @@ export async function GET() {
         return {
           ...plan,
           checkoutEnabled: trialVerified,
-          trialEligible: trialVerified,
+          trialEligible: plan.trialEligible && trialVerified,
         };
       }),
     );

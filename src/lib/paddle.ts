@@ -71,8 +71,10 @@ export async function priceHasExpectedTrial(
   priceId: string,
   expectedDays: number,
 ) {
-  if (expectedDays <= 0) return true;
   const price = await getPaddleClient().prices.get(priceId);
+  if (expectedDays <= 0) {
+    return !price.trialPeriod;
+  }
   return Boolean(
     price.trialPeriod &&
       price.trialPeriod.interval === "day" &&

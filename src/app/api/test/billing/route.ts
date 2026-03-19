@@ -7,6 +7,8 @@ import { z } from "zod";
 import { type BillingPlan } from "@/lib/billing-plans";
 import { authOptions } from "@/lib/auth";
 import { getPaddlePriceId } from "@/lib/paddle";
+import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
+import { buildPaddleWebhookMutationArgs } from "@/lib/paddle-webhook";
 
 const api = anyApi;
 const DAY_MS = 86_400_000;
@@ -173,26 +175,53 @@ export async function POST(request: Request) {
         ? occurredAt
         : offsetIso(parsed.subscriptionUpdatedAtOffsetDays);
 
-    await convex.mutation(api.billing.processPaddleWebhook, {
-      testSecret,
-      eventId: `evt_test_${randomUUID()}`,
-      eventType: parsed.eventType ?? resolveDefaultEventType(parsed.status),
-      occurredAt,
-      subscriptionUpdatedAt,
-      subscriptionId,
-      customerId,
-      subscriptionStatus: parsed.status,
-      priceId,
-      productId: "prod_test_plan",
-      currentPeriodStartsAt: offsetIso(-1),
-      currentPeriodEndsAt: offsetIso(parsed.currentPeriodEndsInDays ?? 29),
-      nextBilledAt: offsetIso(parsed.nextBilledInDays ?? 29),
-      canceledAt: parsed.status === "canceled" ? occurredAt : undefined,
-      rawBody: JSON.stringify({
+    const webhookArgs = buildPaddleWebhookMutationArgs(
+      {
+        eventId: `evt_test_${randomUUID()}`,
+        eventType: parsed.eventType ?? resolveDefaultEventType(parsed.status),
+        occurredAt,
+        data: {
+          id: subscriptionId,
+          subscriptionId,
+          customerId,
+          updatedAt: subscriptionUpdatedAt,
+          status: parsed.status,
+          currentBillingPeriod: {
+            startsAt: offsetIso(-1),
+            endsAt: offsetIso(parsed.currentPeriodEndsInDays ?? 29),
+          },
+          nextBilledAt: offsetIso(parsed.nextBilledInDays ?? 29),
+          canceledAt: parsed.status === "canceled" ? occurredAt : null,
+          customData: {
+            checkoutToken: createPaddleCheckoutToken(user.externalId),
+          },
+          items: [
+            {
+              price: {
+                id: priceId,
+                productId: "prod_test_plan",
+              },
+              product: {
+                id: "prod_test_plan",
+              },
+            },
+          ],
+        },
+      },
+      JSON.stringify({
         source: "api-test-billing",
         status: parsed.status,
         plan: parsed.plan,
       }),
+    );
+
+    if (!webhookArgs) {
+      throw new Error("Failed to build test webhook args");
+    }
+
+    await convex.mutation(api.billing.processPaddleWebhook, {
+      testSecret,
+      ...webhookArgs,
     });
 
     return NextResponse.json(await getState(convex, testSecret));

@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
+import { getPublicPaddleClientToken, getPublicPaddleEnvironment } from "@/lib/paddle-client";
 
 const api = anyApi;
 type CheckoutPlan = "pro_monthly";
@@ -33,8 +34,8 @@ const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
   pro_monthly: true,
 };
 const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
-const PADDLE_CLIENT_TOKEN = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "";
-const PADDLE_ENV = process.env.NEXT_PUBLIC_PADDLE_ENV ?? "production";
+const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
+const PADDLE_ENV = getPublicPaddleEnvironment();
 
 function initializePaddleForBilling(successUrl: string) {
   window.__aiankiPaddleCheckoutSuccessUrl = successUrl;
