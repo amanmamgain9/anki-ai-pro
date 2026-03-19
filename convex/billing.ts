@@ -14,11 +14,11 @@ import {
 } from "./billingPlans";
 import {
   findCanonicalSubscriptionByPaddleSubscriptionId,
-  findCanonicalUserByEmail,
   findCanonicalUserByExternalId,
   findCanonicalUserByPaddleCustomerId,
   listUsersByPaddleCustomerId,
 } from "./billingIdentity";
+import { ensureCanonicalAuthUser } from "./authUsers";
 import {
   isSubscriptionEntitled,
   pickEffectiveSubscription,
@@ -61,6 +61,11 @@ function getIdentityImageUrl(identity: UserIdentity): string | undefined {
     return picture;
   }
   return undefined;
+}
+
+function getIdentityClaim(identity: UserIdentity, key: string): string | undefined {
+  const value = (identity as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 async function requireIdentity(ctx: AuthCtx) {
@@ -224,52 +229,23 @@ export const syncCurrentUser = mutationGeneric({
     const identity = await requireIdentity(ctx);
     const now = Date.now();
 
-    const email = sanitizeEmail(typeof identity.email === "string" ? identity.email : undefined);
-    const name = typeof identity.name === "string" ? identity.name : undefined;
-    const imageUrl = getIdentityImageUrl(identity);
-
-    const existingByExternalId = await findCanonicalUserByExternalId(
-      ctx.db,
-      identity.subject,
-    );
-    const existing = existingByExternalId ?? (await findCanonicalUserByEmail(ctx.db, email));
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        externalId: identity.subject,
-        email,
-        name,
-        imageUrl,
-        updatedAt: now,
-        lastSeenAt: now,
-      });
-      await replayIgnoredBillingEvents(ctx, {
-        externalId: identity.subject,
-        customerId: existing.paddleCustomerId,
-      });
-      return {
-        userId: existing._id,
-        externalId: identity.subject,
-        paddleCustomerId: existing.paddleCustomerId ?? null,
-      };
-    }
-
-    const userId = await ctx.db.insert("users", {
-      externalId: identity.subject,
-      email,
-      name,
-      imageUrl,
-      createdAt: now,
-      updatedAt: now,
-      lastSeenAt: now,
+    const user = await ensureCanonicalAuthUser(ctx.db, {
+      provider: getIdentityClaim(identity, "provider"),
+      providerSubject: getIdentityClaim(identity, "providerSubject"),
+      externalIdHint: identity.subject,
+      email: sanitizeEmail(typeof identity.email === "string" ? identity.email : undefined),
+      name: typeof identity.name === "string" ? identity.name : undefined,
+      imageUrl: getIdentityImageUrl(identity),
+      now,
     });
     await replayIgnoredBillingEvents(ctx, {
-      externalId: identity.subject,
+      externalId: user.externalId,
+      customerId: user.paddleCustomerId,
     });
     return {
-      userId,
-      externalId: identity.subject,
-      paddleCustomerId: null,
+      userId: user._id,
+      externalId: user.externalId,
+      paddleCustomerId: user.paddleCustomerId ?? null,
     };
   },
 });

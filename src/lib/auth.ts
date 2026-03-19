@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { SignJWT, importPKCS8 } from "jose";
+import { syncCanonicalAuthIdentity } from "@/lib/auth-identity-sync";
 import { consumeOneTimeMagicLink, verifyMagicLinkToken } from "@/lib/magic-link";
 
 function getConvexIssuer() {
@@ -86,6 +87,68 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
+    async jwt({ token, user, account }) {
+      const provider =
+        typeof account?.provider === "string"
+          ? account.provider
+          : typeof (token as { provider?: unknown }).provider === "string"
+            ? ((token as { provider?: string }).provider ?? undefined)
+            : undefined;
+      const providerSubject =
+        typeof account?.providerAccountId === "string" && account.providerAccountId.length > 0
+          ? account.providerAccountId
+          : typeof user?.id === "string" && user.id.length > 0
+            ? user.id
+            : typeof (token as { providerSubject?: unknown }).providerSubject === "string"
+              ? ((token as { providerSubject?: string }).providerSubject ?? undefined)
+              : typeof token.sub === "string"
+                ? token.sub
+                : undefined;
+
+      if (provider) {
+        (token as typeof token & { provider?: string }).provider = provider;
+      }
+      if (providerSubject) {
+        (token as typeof token & { providerSubject?: string }).providerSubject =
+          providerSubject;
+      }
+
+      if (user || account) {
+        try {
+          const canonical = await syncCanonicalAuthIdentity({
+            provider,
+            providerSubject,
+            externalIdHint: typeof token.sub === "string" ? token.sub : providerSubject,
+            email:
+              typeof user?.email === "string"
+                ? user.email
+                : typeof token.email === "string"
+                  ? token.email
+                  : undefined,
+            name:
+              typeof user?.name === "string"
+                ? user.name
+                : typeof token.name === "string"
+                  ? token.name
+                  : undefined,
+            imageUrl:
+              typeof user?.image === "string"
+                ? user.image
+                : typeof token.picture === "string"
+                  ? token.picture
+                  : undefined,
+          });
+          token.sub = canonical.externalId;
+        } catch {
+          // Fall back to the provider subject so auth still works if Convex is unavailable.
+          if (providerSubject) {
+            token.sub = providerSubject;
+          }
+        }
+      }
+
+      return token;
+    },
     async session({ session, token }) {
       const userId = token.sub;
       const privateKeyPem = process.env.CONVEX_AUTH_PRIVATE_KEY;
@@ -106,6 +169,14 @@ export const authOptions: NextAuthOptions = {
         email: typeof token.email === "string" ? token.email : undefined,
         name: typeof token.name === "string" ? token.name : undefined,
         picture: typeof token.picture === "string" ? token.picture : undefined,
+        provider:
+          typeof (token as { provider?: unknown }).provider === "string"
+            ? ((token as { provider?: string }).provider ?? undefined)
+            : undefined,
+        providerSubject:
+          typeof (token as { providerSubject?: unknown }).providerSubject === "string"
+            ? ((token as { providerSubject?: string }).providerSubject ?? undefined)
+            : undefined,
       })
         .setProtectedHeader({ alg: "RS256", kid: keyId })
         .setIssuedAt()

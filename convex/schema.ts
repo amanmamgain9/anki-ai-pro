@@ -18,6 +18,20 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_paddleCustomerId", ["paddleCustomerId"]),
 
+  authIdentities: defineTable({
+    provider: v.string(),
+    providerSubject: v.string(),
+    userId: v.id("users"),
+    email: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_provider_subject", ["provider", "providerSubject"])
+    .index("by_providerSubject_updatedAt", ["providerSubject", "updatedAt"])
+    .index("by_userId_updatedAt", ["userId", "updatedAt"])
+    .index("by_email_updatedAt", ["email", "updatedAt"]),
+
   subscriptions: defineTable({
     userId: v.id("users"),
     paddleSubscriptionId: v.string(),

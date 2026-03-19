@@ -8,6 +8,7 @@ import {
 type BillingIdentityDb = GenericDatabaseReader<DataModel>;
 type BillingUser = Doc<"users">;
 type BillingSubscription = Doc<"subscriptions">;
+type AuthIdentity = Doc<"authIdentities">;
 
 async function scoreBillingUser(db: BillingIdentityDb, user: BillingUser) {
   const subscriptions = await db
@@ -63,15 +64,80 @@ export async function listUsersByPaddleCustomerId(
     .collect();
 }
 
+export async function listUsersByExternalId(
+  db: BillingIdentityDb,
+  externalId: string,
+) {
+  return (await db
+    .query("users")
+    .withIndex("by_externalId", (q) => q.eq("externalId", externalId))
+    .collect()) as BillingUser[];
+}
+
+export async function listUsersByEmail(
+  db: BillingIdentityDb,
+  email: string,
+) {
+  return (await db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .collect()) as BillingUser[];
+}
+
+export async function findAuthIdentityByProviderSubject(
+  db: BillingIdentityDb,
+  provider: string | undefined,
+  providerSubject: string | undefined,
+) {
+  if (!provider || !providerSubject) return null;
+  return (await db
+    .query("authIdentities")
+    .withIndex("by_provider_subject", (q) =>
+      q.eq("provider", provider).eq("providerSubject", providerSubject),
+    )
+    .first()) as AuthIdentity | null;
+}
+
+export async function listAuthIdentitiesByProviderSubject(
+  db: BillingIdentityDb,
+  providerSubject: string | undefined,
+) {
+  if (!providerSubject) return [];
+  return (await db
+    .query("authIdentities")
+    .withIndex("by_providerSubject_updatedAt", (q) =>
+      q.eq("providerSubject", providerSubject),
+    )
+    .collect()) as AuthIdentity[];
+}
+
+export async function listAuthIdentitiesByUserId(
+  db: BillingIdentityDb,
+  userId: Doc<"users">["_id"],
+) {
+  return (await db
+    .query("authIdentities")
+    .withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+    .collect()) as AuthIdentity[];
+}
+
 export async function findCanonicalUserByExternalId(
   db: BillingIdentityDb,
   externalId: string | undefined,
 ) {
   if (!externalId) return null;
-  const candidates = (await db
-    .query("users")
-    .withIndex("by_externalId", (q) => q.eq("externalId", externalId))
-    .collect()) as BillingUser[];
+  const exactCandidates = await listUsersByExternalId(db, externalId);
+  const exactMatch = await pickCanonicalBillingUser(db, exactCandidates);
+  if (exactMatch) return exactMatch;
+
+  const authIdentities = await listAuthIdentitiesByProviderSubject(db, externalId);
+  if (authIdentities.length === 0) return null;
+
+  const candidates: BillingUser[] = [];
+  for (const row of authIdentities) {
+    const user = await db.get(row.userId);
+    if (user) candidates.push(user);
+  }
   return await pickCanonicalBillingUser(db, candidates);
 }
 
@@ -80,10 +146,7 @@ export async function findCanonicalUserByEmail(
   email: string | undefined,
 ) {
   if (!email) return null;
-  const candidates = (await db
-    .query("users")
-    .withIndex("by_email", (q) => q.eq("email", email))
-    .collect()) as BillingUser[];
+  const candidates = await listUsersByEmail(db, email);
   return await pickCanonicalBillingUser(db, candidates);
 }
 

@@ -21,10 +21,10 @@ type EntitlementCtx = {
 
 export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
   const identity = await ctx.auth.getUserIdentity();
-  const externalId = identity?.subject ?? null;
-  if (!externalId) return null;
+  const subject = identity?.subject ?? null;
+  if (!subject) return null;
 
-  const user = await findCanonicalUserByExternalId(ctx.db, externalId);
+  const user = await findCanonicalUserByExternalId(ctx.db, subject);
   if (!user) return null;
 
   const subscriptions = await ctx.db
@@ -34,7 +34,7 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
     .collect();
 
   if (hasAnyEntitledSubscription(subscriptions)) {
-    return externalId;
+    return user.externalId;
   }
 
   return null;
