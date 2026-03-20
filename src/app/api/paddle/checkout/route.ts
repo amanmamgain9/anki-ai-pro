@@ -5,10 +5,15 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
+import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 import { priceHasExpectedTrial } from "@/lib/paddle";
 import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
+
+type SyncUserResult = {
+  externalId: string;
+};
 
 type BillingState = {
   isActive?: boolean;
@@ -77,7 +82,7 @@ export async function POST(request: Request) {
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
 
-    await convex.mutation(api.billing.syncCurrentUser, {});
+    const user = (await convex.mutation(api.billing.syncCurrentUser, {})) as SyncUserResult;
 
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
     const checkoutBlock = shouldBlockNewCheckout(billing);
@@ -134,6 +139,7 @@ export async function POST(request: Request) {
       customerEmail: session.user?.email ?? null,
       paddleCustomerId: billing?.paddleCustomerId ?? null,
       checkoutSessionId,
+      checkoutToken: createPaddleCheckoutToken(user.externalId),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

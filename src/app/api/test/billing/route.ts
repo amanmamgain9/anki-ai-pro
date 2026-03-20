@@ -7,6 +7,7 @@ import { z } from "zod";
 import { type BillingPlan } from "@/lib/billing-plans";
 import { authOptions } from "@/lib/auth";
 import { getPaddlePriceId } from "@/lib/paddle";
+import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 import { buildPaddleWebhookMutationArgs } from "@/lib/paddle-webhook";
 
 const api = anyApi;
@@ -200,6 +201,7 @@ export async function POST(request: Request) {
           canceledAt: parsed.status === "canceled" ? occurredAt : null,
           customData: {
             checkoutSessionId,
+            checkoutToken: createPaddleCheckoutToken(user.externalId),
           },
           items: [
             {

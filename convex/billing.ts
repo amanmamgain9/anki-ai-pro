@@ -508,6 +508,8 @@ export const getMyBilling = queryGeneric({
         ? effectivePaddleCustomerId
         : recoverableCustomerIds.length === 1
           ? recoverableCustomerIds[0]
+          : recoverableCustomerIds.length === 0
+            ? effectivePaddleCustomerId
           : null;
     const paddleSubscriptionIds = Array.from(
       new Set(
@@ -515,7 +517,7 @@ export const getMyBilling = queryGeneric({
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
             if (!billingManagementCustomerId) return false;
-            return row.paddleCustomerId === billingManagementCustomerId;
+            return !row.paddleCustomerId || row.paddleCustomerId === billingManagementCustomerId;
           })
           .map((row) => row.paddleSubscriptionId),
       ),

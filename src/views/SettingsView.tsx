@@ -31,6 +31,7 @@ type CheckoutPayload = {
   customerEmail?: string | null;
   paddleCustomerId?: string | null;
   checkoutSessionId?: string;
+  checkoutToken?: string;
   error?: string;
 };
 
@@ -185,6 +186,7 @@ export default function SettingsView() {
         customer,
         customData: {
           checkoutSessionId: payload.checkoutSessionId,
+          ...(payload.checkoutToken ? { checkoutToken: payload.checkoutToken } : {}),
         },
       });
     } catch (error) {

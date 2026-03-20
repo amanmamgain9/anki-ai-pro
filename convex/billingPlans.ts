@@ -4,7 +4,7 @@ import { ConvexError, v } from "convex/values";
 import { mutationGeneric, queryGeneric } from "convex/server";
 import type { Doc } from "./_generated/dataModel";
 
-export type BillingPlan = "pro_monthly" | "pro_plus_monthly";
+export type BillingPlan = "pro_monthly";
 type BillingTier = "pro" | "pro_plus";
 type BillingInterval = "monthly";
 
@@ -33,15 +33,8 @@ const BILLING_PLAN_CONFIGS: Record<
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
   },
-  pro_plus_monthly: {
-    plan: "pro_plus_monthly",
-    tier: "pro_plus",
-    interval: "monthly",
-    trialEligible: false,
-    envVars: ["PADDLE_PRICE_ID_PRO_PLUS_MONTHLY"],
-  },
 };
-const BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly", "pro_plus_monthly"];
+const BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly"];
 const PUBLIC_BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly"];
 
 const SUPPORT_OPERATOR_EMAILS = new Set([
@@ -196,10 +189,7 @@ export const listPublic = queryGeneric({
 
 export const getPriceForPlan = queryGeneric({
   args: {
-    plan: v.union(
-      v.literal("pro_monthly"),
-      v.literal("pro_plus_monthly"),
-    ),
+    plan: v.literal("pro_monthly"),
   },
   handler: async (ctx, { plan }) => {
     const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
@@ -214,10 +204,7 @@ export const getPriceForPlan = queryGeneric({
 export const adminUpsertPrice = mutationGeneric({
   args: {
     forwardSecret: v.optional(v.string()),
-    plan: v.union(
-      v.literal("pro_monthly"),
-      v.literal("pro_plus_monthly"),
-    ),
+    plan: v.literal("pro_monthly"),
     paddlePriceId: v.string(),
     active: v.optional(v.boolean()),
   },
