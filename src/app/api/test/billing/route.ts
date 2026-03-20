@@ -7,7 +7,6 @@ import { z } from "zod";
 import { type BillingPlan } from "@/lib/billing-plans";
 import { authOptions } from "@/lib/auth";
 import { getPaddlePriceId } from "@/lib/paddle";
-import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 import { buildPaddleWebhookMutationArgs } from "@/lib/paddle-webhook";
 
 const api = anyApi;
@@ -46,6 +45,7 @@ const actionSchema = z.discriminatedUnion("action", [
 
 type SyncUserResult = {
   externalId: string;
+  userId: string;
   paddleCustomerId: string | null;
 };
 
@@ -174,6 +174,12 @@ export async function POST(request: Request) {
       parsed.subscriptionUpdatedAtOffsetDays === undefined
         ? occurredAt
         : offsetIso(parsed.subscriptionUpdatedAtOffsetDays);
+    const checkoutSessionId = `pcs_test_${randomUUID()}`;
+    await convex.mutation(api.billing.createCheckoutSession, {
+      sessionId: checkoutSessionId,
+      plan: parsed.plan,
+      priceId,
+    });
 
     const webhookArgs = buildPaddleWebhookMutationArgs(
       {
@@ -193,7 +199,7 @@ export async function POST(request: Request) {
           nextBilledAt: offsetIso(parsed.nextBilledInDays ?? 29),
           canceledAt: parsed.status === "canceled" ? occurredAt : null,
           customData: {
-            checkoutToken: createPaddleCheckoutToken(user.externalId),
+            checkoutSessionId,
           },
           items: [
             {

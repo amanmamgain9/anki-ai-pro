@@ -1,18 +1,14 @@
+import { randomBytes } from "crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
-import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 import { priceHasExpectedTrial } from "@/lib/paddle";
 import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
-
-type SyncUserResult = {
-  externalId: string;
-};
 
 type BillingState = {
   isActive?: boolean;
@@ -39,6 +35,10 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
   }
 
   return null;
+}
+
+function createCheckoutSessionId() {
+  return `pcs_${randomBytes(24).toString("hex")}`;
 }
 
 export const runtime = "nodejs";
@@ -77,10 +77,7 @@ export async function POST(request: Request) {
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
 
-    const user = (await convex.mutation(
-      api.billing.syncCurrentUser,
-      {},
-    )) as SyncUserResult;
+    await convex.mutation(api.billing.syncCurrentUser, {});
 
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
     const checkoutBlock = shouldBlockNewCheckout(billing);
@@ -125,11 +122,18 @@ export async function POST(request: Request) {
       );
     }
 
+    const checkoutSessionId = createCheckoutSessionId();
+    await convex.mutation(api.billing.createCheckoutSession, {
+      sessionId: checkoutSessionId,
+      plan,
+      priceId: planConfig.priceId,
+    });
+
     return NextResponse.json({
       priceId: planConfig.priceId,
       customerEmail: session.user?.email ?? null,
       paddleCustomerId: billing?.paddleCustomerId ?? null,
-      checkoutToken: createPaddleCheckoutToken(user.externalId),
+      checkoutSessionId,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

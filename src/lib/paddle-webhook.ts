@@ -11,6 +11,7 @@ export type PaddleWebhookMutationArgs = {
   eventId: string;
   eventType: string;
   occurredAt?: string;
+  checkoutSessionId?: string;
   subscriptionId?: string;
   customerId?: string;
   externalId?: string;
@@ -26,6 +27,7 @@ export type PaddleWebhookMutationArgs = {
 };
 
 type SubscriptionSnapshot = {
+  checkoutSessionId?: string;
   subscriptionId?: string;
   customerId?: string;
   checkoutToken?: string;
@@ -68,6 +70,7 @@ export function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot
   const product = asRecord(firstItem?.product);
 
   return {
+    checkoutSessionId: getStringValue(customData, "checkoutSessionId"),
     subscriptionId: getStringValue(root, "subscriptionId") ?? getStringValue(root, "id"),
     customerId: getStringValue(root, "customerId"),
     checkoutToken: getStringValue(customData, "checkoutToken"),
@@ -97,15 +100,18 @@ export function buildPaddleWebhookMutationArgs(
     return null;
   }
   const snapshot = extractSubscriptionSnapshot(event.data);
-  const verifiedExternalId = snapshot.checkoutToken
-    ? verifyPaddleCheckoutToken(snapshot.checkoutToken)
-    : snapshot.externalId;
+  const verifiedExternalId = snapshot.checkoutSessionId
+    ? undefined
+    : snapshot.checkoutToken
+      ? verifyPaddleCheckoutToken(snapshot.checkoutToken)
+      : snapshot.externalId;
 
   return {
     eventId: event.eventId,
     eventType: event.eventType,
     occurredAt: event.occurredAt,
     rawBody,
+    checkoutSessionId: snapshot.checkoutSessionId,
     subscriptionId: snapshot.subscriptionId,
     customerId: snapshot.customerId,
     externalId: verifiedExternalId ?? undefined,

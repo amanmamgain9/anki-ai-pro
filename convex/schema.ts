@@ -62,6 +62,7 @@ export default defineSchema({
     status: v.string(),
     userId: v.optional(v.id("users")),
     externalId: v.optional(v.string()),
+    checkoutSessionId: v.optional(v.string()),
     paddleSubscriptionId: v.optional(v.string()),
     paddleCustomerId: v.optional(v.string()),
     subscriptionUpdatedAt: v.optional(v.string()),
@@ -77,6 +78,21 @@ export default defineSchema({
     .index("by_eventId", ["eventId"])
     .index("by_status_externalId", ["status", "externalId"])
     .index("by_status_customerId", ["status", "paddleCustomerId"]),
+
+  paddleCheckoutSessions: defineTable({
+    sessionId: v.string(),
+    userId: v.id("users"),
+    externalId: v.string(),
+    plan: v.string(),
+    priceId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    paddleCustomerId: v.optional(v.string()),
+    paddleSubscriptionId: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_userId_createdAt", ["userId", "createdAt"]),
 
   billingPlanPrices: defineTable({
     plan: v.string(),

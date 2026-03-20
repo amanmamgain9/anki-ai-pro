@@ -38,6 +38,7 @@ type PaddleWebhookArgs = {
   eventId: string;
   eventType: string;
   occurredAt?: string;
+  checkoutSessionId?: string;
   subscriptionId?: string;
   customerId?: string;
   externalId?: string;
@@ -634,11 +635,46 @@ export const getCheckoutPlanConfig = queryGeneric({
   },
 });
 
+export const createCheckoutSession = mutationGeneric({
+  args: {
+    sessionId: v.string(),
+    plan: v.literal("pro_monthly"),
+    priceId: v.string(),
+  },
+  handler: async (ctx, { sessionId, plan, priceId }) => {
+    const identity = await requireIdentity(ctx);
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("paddleCheckoutSessions")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .first();
+    if (existing) {
+      throw new ConvexError("Checkout session already exists");
+    }
+    await ctx.db.insert("paddleCheckoutSessions", {
+      sessionId,
+      userId: user._id,
+      externalId: user.externalId,
+      plan,
+      priceId,
+      createdAt: now,
+      updatedAt: now,
+      paddleCustomerId: user.paddleCustomerId,
+    });
+    return { sessionId };
+  },
+});
+
 function buildWebhookArgsFromBillingEvent(event: Doc<"billingEvents">): PaddleWebhookArgs {
   return {
     eventId: event.eventId,
     eventType: event.eventType,
     occurredAt: typeof event.occurredAt === "number" ? new Date(event.occurredAt).toISOString() : undefined,
+    checkoutSessionId: event.checkoutSessionId,
     subscriptionId: event.paddleSubscriptionId,
     customerId: event.paddleCustomerId,
     externalId: event.externalId,
@@ -676,12 +712,22 @@ async function applyPaddleWebhookEvent(
     ctx.db,
     args.subscriptionId,
   );
+  const checkoutSession = args.checkoutSessionId
+    ? await ctx.db
+        .query("paddleCheckoutSessions")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.checkoutSessionId!))
+        .first()
+    : null;
 
   const existingSubscriptionOwner = existingSubscription
     ? await ctx.db.get(existingSubscription.userId)
     : null;
 
   let user = existingSubscriptionOwner;
+
+  if (!user && checkoutSession) {
+    user = await ctx.db.get(checkoutSession.userId);
+  }
 
   if (!user && args.externalId) {
     user = await findCanonicalUserByExternalId(ctx.db, args.externalId);
@@ -720,6 +766,15 @@ async function applyPaddleWebhookEvent(
         updatedAt: now,
       });
     }
+  }
+
+  if (processingStatus === "processed" && checkoutSession) {
+    await ctx.db.patch(checkoutSession._id, {
+      updatedAt: now,
+      paddleCustomerId: args.customerId ?? checkoutSession.paddleCustomerId,
+      paddleSubscriptionId: args.subscriptionId ?? checkoutSession.paddleSubscriptionId,
+      completedAt: args.subscriptionId ? now : checkoutSession.completedAt,
+    });
   }
 
   if (processingStatus === "processed" && user && args.subscriptionId) {
@@ -865,6 +920,7 @@ async function applyPaddleWebhookEvent(
     status: processingStatus,
     userId,
     externalId: args.externalId,
+    checkoutSessionId: args.checkoutSessionId,
     paddleSubscriptionId: subscriptionId,
     paddleCustomerId: args.customerId,
     subscriptionUpdatedAt: args.subscriptionUpdatedAt,
@@ -944,6 +1000,7 @@ export const processPaddleWebhook = mutationGeneric({
     subscriptionId: v.optional(v.string()),
     customerId: v.optional(v.string()),
     externalId: v.optional(v.string()),
+    checkoutSessionId: v.optional(v.string()),
     subscriptionUpdatedAt: v.optional(v.string()),
     subscriptionStatus: v.optional(v.string()),
     priceId: v.optional(v.string()),
