@@ -39,7 +39,7 @@ export async function ensureProAccess(session: Session | null) {
   }
 
   return NextResponse.json(
-    { error: "Pro plan required. Start a Pro trial or upgrade in Settings." },
+    { error: "Pro plan required. Continue at /start-trial to start a trial or manage billing." },
     { status: 402 },
   );
 }

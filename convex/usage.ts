@@ -117,6 +117,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
         allowed: true,
         tier,
         unlimited: true,
+        monthKey,
         source: access.trialActive ? "trial" : "subscription",
         trialEndsAt: access.trialActive ? trialEndsAt ?? undefined : undefined,
       } as const;
@@ -159,9 +160,56 @@ export const consumePremiumTtsPreview = mutationGeneric({
       allowed: true,
       tier,
       unlimited: false,
+      monthKey,
       quota,
       used: nextUsed,
       remaining: Math.max(0, quota - nextUsed),
+    } as const;
+  },
+});
+
+export const refundPremiumTtsPreview = mutationGeneric({
+  args: {
+    units: v.number(),
+    monthKey: v.string(),
+  },
+  handler: async (ctx, { units, monthKey }) => {
+    const normalizedUnits = Math.max(1, Math.floor(units));
+    const now = Date.now();
+    const identity = await requireIdentity(ctx);
+
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const rowsForUser = await ctx.db
+      .query("featureUsageMonthly")
+      .withIndex("by_user_month", (q) => q.eq("userId", user._id))
+      .collect();
+    const existing =
+      rowsForUser.find(
+        (row) => row.feature === PREMIUM_TTS_FEATURE && row.monthKey === monthKey,
+      ) ?? null;
+
+    if (!existing) {
+      return {
+        refunded: false,
+        monthKey,
+        used: 0,
+      } as const;
+    }
+
+    const nextUsed = Math.max(0, existing.usedUnits - normalizedUnits);
+    await ctx.db.patch(existing._id, {
+      usedUnits: nextUsed,
+      updatedAt: now,
+    });
+
+    return {
+      refunded: true,
+      monthKey,
+      used: nextUsed,
     } as const;
   },
 });

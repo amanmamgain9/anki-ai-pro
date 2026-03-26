@@ -18,6 +18,7 @@ type ConsumeResult = {
   allowed: boolean;
   reason?: string;
   remaining?: number;
+  monthKey?: string;
 };
 
 function escapeXml(input: string) {
@@ -61,6 +62,18 @@ export async function POST(request: Request) {
     convex.setAuth(session.convexToken);
     await convex.mutation(api.billing.syncCurrentUser, {});
 
+    const speechKey = process.env.AZURE_SPEECH_KEY;
+    const speechRegion = process.env.AZURE_SPEECH_REGION;
+    if (!speechKey || !speechRegion) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing Azure Speech config. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION.",
+        },
+        { status: 500 },
+      );
+    }
+
     const units = parsed.text.length;
     const consume = (await convex.mutation(api.usage.consumePremiumTtsPreview, {
       units,
@@ -81,18 +94,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const speechKey = process.env.AZURE_SPEECH_KEY;
-    const speechRegion = process.env.AZURE_SPEECH_REGION;
-    if (!speechKey || !speechRegion) {
-      return NextResponse.json(
-        {
-          error:
-            "Missing Azure Speech config. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION.",
-        },
-        { status: 500 },
-      );
-    }
-
     const isZh = parsed.locale.toLowerCase().startsWith("zh");
     const voiceName = isZh
       ? process.env.AZURE_SPEECH_VOICE_ZH ?? "zh-CN-XiaoxiaoNeural"
@@ -107,37 +108,68 @@ export async function POST(request: Request) {
       "</speak>",
     ].join("");
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": speechKey,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
-        "User-Agent": "aiankipro-voice",
-      },
-      body: ssml,
-      cache: "no-store",
-    });
+    let consumedPreview:
+      | {
+          units: number;
+          monthKey: string;
+        }
+      | null =
+      typeof consume.monthKey === "string"
+        ? {
+            units,
+            monthKey: consume.monthKey,
+          }
+        : null;
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      return NextResponse.json(
-        {
-          error: `Azure TTS failed (${response.status})`,
-          detail: text.slice(0, 400),
+    const refundPreview = async () => {
+      if (!consumedPreview) return;
+      const refund = consumedPreview;
+      consumedPreview = null;
+      try {
+        await convex.mutation(api.usage.refundPremiumTtsPreview, refund);
+      } catch (refundError) {
+        console.error("Failed to refund premium TTS preview usage", refundError);
+      }
+    };
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": speechKey,
+          "Content-Type": "application/ssml+xml",
+          "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+          "User-Agent": "aiankipro-voice",
         },
-        { status: 502 },
-      );
-    }
+        body: ssml,
+        cache: "no-store",
+      });
 
-    const audioBuffer = await response.arrayBuffer();
-    return new NextResponse(audioBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store",
-      },
-    });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        await refundPreview();
+        return NextResponse.json(
+          {
+            error: `Azure TTS failed (${response.status})`,
+            detail: text.slice(0, 400),
+          },
+          { status: 502 },
+        );
+      }
+
+      const audioBuffer = await response.arrayBuffer();
+      consumedPreview = null;
+      return new NextResponse(audioBuffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "audio/mpeg",
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (error) {
+      await refundPreview();
+      throw error;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
