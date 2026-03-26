@@ -1,7 +1,8 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel, Doc } from "./_generated/dataModel";
 import {
-  isSubscriptionEntitled,
+  pickEffectiveSubscription,
+  resolveBillingAccess,
   subscriptionRequiresBillingManagement,
 } from "./subscriptionAccess";
 
@@ -16,11 +17,14 @@ async function scoreBillingUser(db: BillingIdentityDb, user: BillingUser) {
     .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
     .collect();
   const now = Date.now();
+  const access = resolveBillingAccess(
+    pickEffectiveSubscription(subscriptions, now),
+    user.trialEndsAt,
+    now,
+  );
   return {
     user,
-    entitled: subscriptions.some((row) =>
-      isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, now),
-    ),
+    entitled: access.isActive,
     recoverable: subscriptions.some((row) =>
       subscriptionRequiresBillingManagement(row.status, row.currentPeriodEndsAt, now),
     ),

@@ -4,6 +4,12 @@ function normalizeStatus(status: string | null | undefined) {
   return normalized.length > 0 ? normalized : null;
 }
 
+export type BillingAccessSource =
+  | "none"
+  | "legacy_trial"
+  | "subscription"
+  | "subscription_trial";
+
 export function isSubscriptionEntitled(
   status: string | null | undefined,
   currentPeriodEndsAt: number | null | undefined,
@@ -15,6 +21,13 @@ export function isSubscriptionEntitled(
     return now < currentPeriodEndsAt;
   }
   return false;
+}
+
+export function isLegacyTrialEntitled(
+  trialEndsAt: number | null | undefined,
+  now = Date.now(),
+) {
+  return typeof trialEndsAt === "number" && now < trialEndsAt;
 }
 
 export function subscriptionRequiresBillingManagement(
@@ -51,4 +64,59 @@ export function pickEffectiveSubscription<
     }
   }
   return rows[0] ?? null;
+}
+
+export function resolveBillingAccess<
+  T extends {
+    status?: string | null;
+    currentPeriodEndsAt?: number | null;
+    nextBilledAt?: number | null;
+  },
+>(
+  subscription: T | null | undefined,
+  userTrialEndsAt: number | null | undefined,
+  now = Date.now(),
+) {
+  const status = subscription?.status ?? null;
+  const subscriptionEntitled = isSubscriptionEntitled(
+    status,
+    subscription?.currentPeriodEndsAt,
+    now,
+  );
+  const subscriptionTrialActive =
+    normalizeStatus(status) === "trialing" && subscriptionEntitled;
+  const subscriptionTrialEndsAt =
+    subscriptionTrialActive && subscription
+      ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
+      : null;
+
+  if (subscriptionEntitled) {
+    return {
+      isActive: true,
+      trialActive: subscriptionTrialActive,
+      trialEndsAt: subscriptionTrialEndsAt,
+      accessSource: subscriptionTrialActive
+        ? ("subscription_trial" as const)
+        : ("subscription" as const),
+      subscriptionEntitled: true,
+    };
+  }
+
+  if (isLegacyTrialEntitled(userTrialEndsAt, now)) {
+    return {
+      isActive: true,
+      trialActive: true,
+      trialEndsAt: userTrialEndsAt ?? null,
+      accessSource: "legacy_trial" as const,
+      subscriptionEntitled: false,
+    };
+  }
+
+  return {
+    isActive: false,
+    trialActive: false,
+    trialEndsAt: null as number | null,
+    accessSource: "none" as const,
+    subscriptionEntitled: false,
+  };
 }

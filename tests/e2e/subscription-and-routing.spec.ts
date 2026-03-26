@@ -51,10 +51,12 @@ async function billingAction(
       isActive?: boolean;
       trialActive?: boolean;
       plan?: string;
+      accessSource?: string | null;
       subscriptionStatus?: string | null;
       paddleSubscriptionId?: string | null;
     };
     snapshot?: {
+      userTrialEndsAt?: number | null;
       subscriptionStatus?: string | null;
       currentPeriodEndsAt?: number | null;
       nextBilledAt?: number | null;
@@ -177,6 +179,27 @@ test("trial expiration behavior blocks paid routes and pro APIs", async ({ page,
   await page.goto("/cards");
   await page.waitForURL(/\/start-trial\?/);
   await expect(page).toHaveURL(/from=%2Fcards/);
+});
+
+test("legacy user trial unlocks paid routes and pro API gate", async ({ page, request }) => {
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
+
+  await billingAction(page.request, { action: "reset" });
+  const legacyTrial = await billingAction(page.request, {
+    action: "setLegacyTrial",
+    trialEndsInDays: 30,
+  });
+  expect(legacyTrial.billing?.isActive).toBe(true);
+  expect(legacyTrial.billing?.trialActive).toBe(true);
+  expect(legacyTrial.billing?.plan).toBe("pro_plus");
+  expect(legacyTrial.billing?.accessSource).toBe("legacy_trial");
+
+  const proApi = await page.request.post("/api/ai/edit-cards", { data: {} });
+  expect(proApi.status()).toBe(400);
+
+  await page.goto("/cards");
+  await page.waitForURL(/\/cards/);
 });
 
 test("active paid subscription unlocks paid routes and pro API gate", async ({ page, request }) => {

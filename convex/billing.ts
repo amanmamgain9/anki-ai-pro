@@ -20,8 +20,8 @@ import {
 } from "./billingIdentity";
 import { ensureCanonicalAuthUser } from "./authUsers";
 import {
-  isSubscriptionEntitled,
   pickEffectiveSubscription,
+  resolveBillingAccess,
   subscriptionRequiresBillingManagement,
 } from "./subscriptionAccess";
 
@@ -385,6 +385,7 @@ export const resetMyBillingForTesting = mutationGeneric({
     }
 
     await ctx.db.patch(user._id, {
+      trialEndsAt: 0,
       updatedAt: Date.now(),
       lastSeenAt: Date.now(),
     });
@@ -392,6 +393,35 @@ export const resetMyBillingForTesting = mutationGeneric({
     return {
       userId: user._id,
       deletedSubscriptions: subscriptions.length,
+    };
+  },
+});
+
+export const setMyLegacyTrialEndsAtForTesting = mutationGeneric({
+  args: {
+    testSecret: v.string(),
+    trialEndsAt: v.number(),
+  },
+  handler: async (ctx, { testSecret, trialEndsAt }) => {
+    ensureTestingAllowed(testSecret);
+    const identity = await requireIdentity(ctx);
+    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const now = Date.now();
+    const normalizedTrialEndsAt = Math.max(0, Math.floor(trialEndsAt));
+    await ctx.db.patch(user._id, {
+      trialEndsAt: normalizedTrialEndsAt,
+      updatedAt: now,
+      lastSeenAt: now,
+    });
+
+    return {
+      userId: user._id,
+      trialEndsAt: normalizedTrialEndsAt,
     };
   },
 });
@@ -421,6 +451,7 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
     return {
       userExists: true as const,
       paddleCustomerId: user.paddleCustomerId ?? null,
+      userTrialEndsAt: user.trialEndsAt ?? null,
       subscriptionStatus: subscription?.status ?? null,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddlePriceId: subscription?.priceId ?? null,
@@ -444,6 +475,8 @@ export const getMyBilling = queryGeneric({
         hasPremiumVoice: false,
         trialActive: false,
         trialEndsAt: null as number | null,
+        accessSource: "none" as const,
+        subscriptionEntitled: false,
         premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
         proPreviewQuotaChars: null as number | null,
         proPreviewUsedChars: null as number | null,
@@ -467,6 +500,8 @@ export const getMyBilling = queryGeneric({
         hasPremiumVoice: false,
         trialActive: false,
         trialEndsAt: null as number | null,
+        accessSource: "none" as const,
+        subscriptionEntitled: false,
         premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
         proPreviewQuotaChars: null as number | null,
         proPreviewUsedChars: null as number | null,
@@ -537,19 +572,17 @@ export const getMyBilling = queryGeneric({
     );
 
     const status = subscription?.status ?? null;
-    const isActive = isSubscriptionEntitled(
-      status,
-      subscription?.currentPeriodEndsAt,
-      now,
-    );
-    const tier = isActive ? await resolveSubscriptionTier(ctx.db, subscription) : "free";
-    const trialActive = status === "trialing" && isActive;
-    const trialEndsAt =
-      trialActive && subscription
-        ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
-        : null;
+    const access = resolveBillingAccess(subscription, user.trialEndsAt, now);
+    const isActive = access.isActive;
+    const trialActive = access.trialActive;
+    const trialEndsAt = access.trialEndsAt;
+    const tier = isActive
+      ? access.accessSource === "legacy_trial"
+        ? "pro_plus"
+        : await resolveSubscriptionTier(ctx.db, subscription)
+      : "free";
     const hasPremiumVoice = isActive
-      ? tier === "pro_plus"
+      ? access.accessSource === "legacy_trial" || tier === "pro_plus"
       : false;
     const premiumVoiceSource = trialActive
       ? "trial"
@@ -588,6 +621,8 @@ export const getMyBilling = queryGeneric({
       hasPremiumVoice,
       trialActive,
       trialEndsAt,
+      accessSource: access.accessSource,
+      subscriptionEntitled: access.subscriptionEntitled,
       premiumVoiceSource,
       proPreviewQuotaChars,
       proPreviewUsedChars,

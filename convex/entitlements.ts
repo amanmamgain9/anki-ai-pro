@@ -1,16 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConvexError } from "convex/values";
 import { findCanonicalUserByExternalId } from "./billingIdentity";
-import { isSubscriptionEntitled } from "./subscriptionAccess";
-
-function hasAnyEntitledSubscription(
-  rows: Array<{ status?: string | null; currentPeriodEndsAt?: number | null }>,
-) {
-  const now = Date.now();
-  return rows.some((row) =>
-    isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, now),
-  );
-}
+import { pickEffectiveSubscription, resolveBillingAccess } from "./subscriptionAccess";
 
 type EntitlementCtx = {
   auth: {
@@ -32,8 +23,13 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
     .withIndex("by_userId_updatedAt", (q: any) => q.eq("userId", user._id))
     .order("desc")
     .collect();
+  const access = resolveBillingAccess(
+    pickEffectiveSubscription(subscriptions, Date.now()),
+    user.trialEndsAt,
+    Date.now(),
+  );
 
-  if (hasAnyEntitledSubscription(subscriptions)) {
+  if (access.isActive) {
     return user.externalId;
   }
 

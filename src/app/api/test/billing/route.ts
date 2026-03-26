@@ -32,6 +32,10 @@ const actionSchema = z.discriminatedUnion("action", [
     action: z.literal("reset"),
   }),
   z.object({
+    action: z.literal("setLegacyTrial"),
+    trialEndsInDays: z.number().int().min(-3650).max(3650),
+  }),
+  z.object({
     action: z.literal("simulateWebhook"),
     status: statusSchema,
     plan: planSchema.default("pro_monthly"),
@@ -54,6 +58,7 @@ type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
+  accessSource?: "none" | "legacy_trial" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -153,6 +158,14 @@ export async function POST(request: Request) {
 
     if (parsed.action === "reset") {
       await convex.mutation(api.billing.resetMyBillingForTesting, { testSecret });
+      return NextResponse.json(await getState(convex, testSecret));
+    }
+
+    if (parsed.action === "setLegacyTrial") {
+      await convex.mutation(api.billing.setMyLegacyTrialEndsAtForTesting, {
+        testSecret,
+        trialEndsAt: Date.now() + parsed.trialEndsInDays * DAY_MS,
+      });
       return NextResponse.json(await getState(convex, testSecret));
     }
 

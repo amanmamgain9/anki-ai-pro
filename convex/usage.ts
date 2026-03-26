@@ -4,7 +4,7 @@ import { mutationGeneric, type GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import { resolveBillingTierByPriceId } from "./billingPlans";
 import { findCanonicalUserByExternalId } from "./billingIdentity";
-import { isSubscriptionEntitled, pickEffectiveSubscription } from "./subscriptionAccess";
+import { pickEffectiveSubscription, resolveBillingAccess } from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -74,25 +74,18 @@ export const consumePremiumTtsPreview = mutationGeneric({
       .order("desc")
       .collect();
     const subscription = pickEffectiveSubscription(subscriptions, now);
-    const status = subscription?.status ?? null;
-    const isActive = isSubscriptionEntitled(
-      status,
-      subscription?.currentPeriodEndsAt,
-      now,
-    );
-    const trialActive = status === "trialing" && isActive;
-    if (!isActive) {
+    const access = resolveBillingAccess(subscription, user.trialEndsAt, now);
+    if (!access.isActive) {
       return {
         allowed: false,
         reason: "inactive_plan",
       } as const;
     }
 
-    const tier = (await resolveSubscriptionTier(ctx.db, subscription)) as BillingTier;
-    const trialEndsAt =
-      trialActive && subscription
-        ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
-        : null;
+    const tier = (access.accessSource === "legacy_trial"
+      ? "pro_plus"
+      : await resolveSubscriptionTier(ctx.db, subscription)) as BillingTier;
+    const trialEndsAt = access.trialEndsAt;
 
     const monthKey = getCurrentMonthKey(now);
     const rowsForUser = await ctx.db
@@ -124,8 +117,8 @@ export const consumePremiumTtsPreview = mutationGeneric({
         allowed: true,
         tier,
         unlimited: true,
-        source: trialActive ? "trial" : "subscription",
-        trialEndsAt: trialActive ? trialEndsAt ?? undefined : undefined,
+        source: access.trialActive ? "trial" : "subscription",
+        trialEndsAt: access.trialActive ? trialEndsAt ?? undefined : undefined,
       } as const;
     }
 

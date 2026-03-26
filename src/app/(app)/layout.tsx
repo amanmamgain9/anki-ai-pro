@@ -52,7 +52,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const isBillingStartRoute =
     initialPath === "/start-trial" || initialPath?.startsWith("/start-trial?");
-  const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
+  const hasProAccess = Boolean(billing?.isActive);
   const showUpgradeCta = !hasProAccess;
 
   useEffect(() => {

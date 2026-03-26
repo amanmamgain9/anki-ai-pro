@@ -16,7 +16,7 @@ type SyncUserResult = {
 };
 
 type BillingState = {
-  isActive?: boolean;
+  accessSource?: "none" | "legacy_trial" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -24,7 +24,7 @@ type BillingState = {
 };
 
 function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
-  if (billing?.isActive) {
+  if (billing?.accessSource === "subscription" || billing?.accessSource === "subscription_trial") {
     return {
       code: "active_subscription_exists",
       error: "An active subscription already exists for this account. Use Manage billing to change plan.",

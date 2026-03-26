@@ -94,7 +94,7 @@ export default function SettingsView() {
   const hasPortalSubscriptions = Boolean(
     (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
   );
-  const requiresBillingManagement = Boolean(billing?.isActive || hasBlockingSubscriptions);
+  const requiresBillingManagement = hasBlockingSubscriptions;
   const primaryActionUsesPortal = Boolean(
     billing?.paddleCustomerId && hasPortalSubscriptions && requiresBillingManagement,
   );

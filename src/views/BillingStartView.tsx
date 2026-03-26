@@ -88,7 +88,7 @@ export default function BillingStartView() {
   const requiresBillingManagement =
     hasBlockingSubscriptions && Boolean(billing?.paddleCustomerId) && hasPortalSubscriptions;
   const requiresSupport = hasBlockingSubscriptions && !requiresBillingManagement;
-  const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
+  const hasProAccess = Boolean(billing?.isActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));

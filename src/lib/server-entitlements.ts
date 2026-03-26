@@ -7,7 +7,6 @@ const api = anyApi;
 
 type BillingState = {
   isActive?: boolean;
-  trialActive?: boolean;
 };
 
 export async function ensureProAccess(session: Session | null) {
@@ -35,7 +34,7 @@ export async function ensureProAccess(session: Session | null) {
   // Ensure a user row exists before reading subscription-backed billing state.
   await convex.mutation(api.billing.syncCurrentUser, {});
   const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
-  if (billing?.isActive || billing?.trialActive) {
+  if (billing?.isActive) {
     return null;
   }
 
