@@ -18,6 +18,7 @@ export type PaddleWebhookMutationArgs = {
   subscriptionUpdatedAt?: string;
   subscriptionStatus?: string;
   priceId?: string;
+  priceIds?: string[];
   productId?: string;
   currentPeriodStartsAt?: string | null;
   currentPeriodEndsAt?: string | null;
@@ -35,6 +36,7 @@ type SubscriptionSnapshot = {
   subscriptionUpdatedAt?: string;
   subscriptionStatus?: string;
   priceId?: string;
+  priceIds?: string[];
   productId?: string;
   currentPeriodStartsAt?: string | null;
   currentPeriodEndsAt?: string | null;
@@ -65,9 +67,17 @@ export function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot
   const currentBillingPeriodRaw = root?.currentBillingPeriod;
   const currentBillingPeriod = asRecord(currentBillingPeriodRaw);
   const customData = asRecord(root?.customData);
-  const firstItem = Array.isArray(root?.items) ? asRecord(root.items[0]) : null;
+  const items = Array.isArray(root?.items)
+    ? root.items
+        .map((item) => asRecord(item))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+    : [];
+  const firstItem = items[0] ?? null;
   const price = asRecord(firstItem?.price);
   const product = asRecord(firstItem?.product);
+  const priceIds = items
+    .map((item) => getStringValue(asRecord(item.price), "id"))
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
 
   return {
     checkoutSessionId: getStringValue(customData, "checkoutSessionId"),
@@ -77,7 +87,8 @@ export function extractSubscriptionSnapshot(data: unknown): SubscriptionSnapshot
     externalId: getStringValue(customData, "externalId"),
     subscriptionUpdatedAt: getStringValue(root, "updatedAt"),
     subscriptionStatus: getStringValue(root, "status"),
-    priceId: getStringValue(price, "id"),
+    priceId: priceIds[0] ?? getStringValue(price, "id"),
+    priceIds,
     productId: getStringValue(product, "id") ?? getStringValue(price, "productId"),
     currentPeriodStartsAt:
       currentBillingPeriodRaw === null
@@ -100,10 +111,10 @@ export function buildPaddleWebhookMutationArgs(
     return null;
   }
   const snapshot = extractSubscriptionSnapshot(event.data);
-  const verifiedExternalId = snapshot.checkoutSessionId
-    ? undefined
-    : snapshot.checkoutToken
-      ? verifyPaddleCheckoutToken(snapshot.checkoutToken)
+  const verifiedExternalId = snapshot.checkoutToken
+    ? verifyPaddleCheckoutToken(snapshot.checkoutToken)
+    : snapshot.checkoutSessionId
+      ? undefined
       : snapshot.externalId;
 
   return {
@@ -118,6 +129,7 @@ export function buildPaddleWebhookMutationArgs(
     subscriptionUpdatedAt: snapshot.subscriptionUpdatedAt,
     subscriptionStatus: snapshot.subscriptionStatus,
     priceId: snapshot.priceId,
+    priceIds: snapshot.priceIds,
     productId: snapshot.productId,
     currentPeriodStartsAt: snapshot.currentPeriodStartsAt,
     currentPeriodEndsAt: snapshot.currentPeriodEndsAt,

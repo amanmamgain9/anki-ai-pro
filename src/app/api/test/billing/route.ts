@@ -57,6 +57,7 @@ type BillingState = {
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
+  paddleSubscriptionIds?: string[] | null;
   paddlePriceId?: string | null;
 };
 

@@ -45,6 +45,7 @@ type PaddleWebhookArgs = {
   subscriptionUpdatedAt?: string;
   subscriptionStatus?: string;
   priceId?: string;
+  priceIds?: string[];
   productId?: string;
   currentPeriodStartsAt?: string | null;
   currentPeriodEndsAt?: string | null;
@@ -143,6 +144,8 @@ function getCurrentMonthKey(now: number) {
 function isStoredBillingTier(value: string | undefined): value is StoredBillingTier {
   return value === "pro" || value === "pro_plus";
 }
+
+const OPEN_CHECKOUT_SESSION_WINDOW_MS = 10 * 60_000;
 
 async function setUserPaddleCustomerId(
   db: BillingWriteDb,
@@ -650,6 +653,17 @@ export const createCheckoutSession = mutationGeneric({
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
     const now = Date.now();
+    const openSessionCutoff = now - OPEN_CHECKOUT_SESSION_WINDOW_MS;
+    const existingOpenSession = (
+      await ctx.db
+        .query("paddleCheckoutSessions")
+        .withIndex("by_userId_createdAt", (q) => q.eq("userId", user._id))
+        .order("desc")
+        .collect()
+    ).find((row) => !row.completedAt && row.createdAt >= openSessionCutoff);
+    if (existingOpenSession) {
+      throw new ConvexError("Checkout already in progress");
+    }
     const existing = await ctx.db
       .query("paddleCheckoutSessions")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
@@ -683,6 +697,7 @@ function buildWebhookArgsFromBillingEvent(event: Doc<"billingEvents">): PaddleWe
     subscriptionUpdatedAt: event.subscriptionUpdatedAt,
     subscriptionStatus: event.subscriptionStatus,
     priceId: event.priceId,
+    priceIds: event.priceIds,
     productId: event.productId,
     currentPeriodStartsAt: event.currentPeriodStartsAt,
     currentPeriodEndsAt: event.currentPeriodEndsAt,
@@ -690,6 +705,25 @@ function buildWebhookArgsFromBillingEvent(event: Doc<"billingEvents">): PaddleWe
     canceledAt: event.canceledAt,
     rawBody: event.rawBody,
   };
+}
+
+async function resolveWebhookBillingPriceId(
+  db: BillingReadDb,
+  args: Pick<PaddleWebhookArgs, "priceId" | "priceIds">,
+) {
+  const candidates = Array.from(
+    new Set(
+      [args.priceId, ...(args.priceIds ?? [])].filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+      ),
+    ),
+  );
+  for (const candidate of candidates) {
+    if (await resolveBillingTierByPriceId(db, candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0];
 }
 
 async function applyPaddleWebhookEvent(
@@ -780,6 +814,7 @@ async function applyPaddleWebhookEvent(
   }
 
   if (processingStatus === "processed" && user && args.subscriptionId) {
+    const resolvedPriceId = await resolveWebhookBillingPriceId(ctx.db, args);
     const normalizedStatus = normalizeSubscriptionStatus(
       args.eventType,
       args.subscriptionStatus,
@@ -806,18 +841,18 @@ async function applyPaddleWebhookEvent(
       lastEventType: args.eventType,
       lastEventOccurredAt: incomingEventTime,
     };
-    const resolvedTier = args.priceId
-      ? await resolveBillingTierByPriceId(ctx.db, args.priceId)
+    const resolvedTier = resolvedPriceId
+      ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
       : isStoredBillingTier(existingSubscription?.tier)
         ? existingSubscription.tier
         : undefined;
     if (resolvedTier) {
       patch.tier = resolvedTier;
-      patch.tierSourcePriceId = args.priceId;
+      patch.tierSourcePriceId = resolvedPriceId;
     } else if (
-      args.priceId &&
+      resolvedPriceId &&
       existingSubscription?.priceId &&
-      existingSubscription.priceId !== args.priceId
+      existingSubscription.priceId !== resolvedPriceId
     ) {
       patch.tier = undefined;
       patch.tierSourcePriceId = undefined;
@@ -827,7 +862,7 @@ async function applyPaddleWebhookEvent(
     }
 
     if (args.customerId) patch.paddleCustomerId = args.customerId;
-    if (args.priceId) patch.priceId = args.priceId;
+    if (resolvedPriceId) patch.priceId = resolvedPriceId;
     if (args.productId) patch.productId = args.productId;
     if (args.currentPeriodStartsAt !== undefined) {
       if (args.currentPeriodStartsAt === null) {
@@ -897,10 +932,10 @@ async function applyPaddleWebhookEvent(
         ...(resolvedTier
           ? {
               tier: resolvedTier,
-              tierSourcePriceId: args.priceId,
+              tierSourcePriceId: resolvedPriceId,
             }
           : {}),
-        priceId: args.priceId,
+        priceId: resolvedPriceId,
         productId: args.productId,
         currentPeriodStartsAt,
         currentPeriodEndsAt,
@@ -928,6 +963,7 @@ async function applyPaddleWebhookEvent(
     subscriptionUpdatedAt: args.subscriptionUpdatedAt,
     subscriptionStatus: args.subscriptionStatus,
     priceId: args.priceId,
+    priceIds: args.priceIds,
     productId: args.productId,
     currentPeriodStartsAt: args.currentPeriodStartsAt,
     currentPeriodEndsAt: args.currentPeriodEndsAt,
@@ -1006,6 +1042,7 @@ export const processPaddleWebhook = mutationGeneric({
     subscriptionUpdatedAt: v.optional(v.string()),
     subscriptionStatus: v.optional(v.string()),
     priceId: v.optional(v.string()),
+    priceIds: v.optional(v.array(v.string())),
     productId: v.optional(v.string()),
     currentPeriodStartsAt: v.optional(v.union(v.string(), v.null())),
     currentPeriodEndsAt: v.optional(v.union(v.string(), v.null())),

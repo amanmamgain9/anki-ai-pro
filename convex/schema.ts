@@ -68,6 +68,7 @@ export default defineSchema({
     subscriptionUpdatedAt: v.optional(v.string()),
     subscriptionStatus: v.optional(v.string()),
     priceId: v.optional(v.string()),
+    priceIds: v.optional(v.array(v.string())),
     productId: v.optional(v.string()),
     currentPeriodStartsAt: v.optional(v.union(v.string(), v.null())),
     currentPeriodEndsAt: v.optional(v.union(v.string(), v.null())),
@@ -92,7 +93,8 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_sessionId", ["sessionId"])
-    .index("by_userId_createdAt", ["userId", "createdAt"]),
+    .index("by_userId_createdAt", ["userId", "createdAt"])
+    .index("by_userId_completedAt", ["userId", "completedAt"]),
 
   billingPlanPrices: defineTable({
     plan: v.string(),

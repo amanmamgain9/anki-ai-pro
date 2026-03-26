@@ -18,6 +18,8 @@ type BillingState = {
   plan?: "free" | "pro" | "pro_plus";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
+  paddleSubscriptionId?: string | null;
+  paddleSubscriptionIds?: string[] | null;
   blockingSubscriptionIds?: string[] | null;
   trialEndsAt?: number | null;
 };
@@ -80,8 +82,12 @@ export default function BillingStartView() {
   const from = searchParams.get("from") || "/cards";
   const billingSuccess = searchParams.get("billing") === "success";
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const requiresBillingManagement = hasBlockingSubscriptions && Boolean(billing?.paddleCustomerId);
-  const requiresSupport = hasBlockingSubscriptions && !billing?.paddleCustomerId;
+  const hasPortalSubscriptions = Boolean(
+    (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
+  );
+  const requiresBillingManagement =
+    hasBlockingSubscriptions && Boolean(billing?.paddleCustomerId) && hasPortalSubscriptions;
+  const requiresSupport = hasBlockingSubscriptions && !requiresBillingManagement;
   const hasProAccess = Boolean(billing?.isActive || billing?.trialActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =

@@ -54,6 +54,12 @@ export async function POST() {
         : billing.paddleSubscriptionId
           ? [billing.paddleSubscriptionId]
           : [];
+    if (subscriptionIds.length === 0) {
+      return NextResponse.json(
+        { error: "No Paddle subscriptions found for this account" },
+        { status: 409 },
+      );
+    }
 
     const portalSession = await paddle.customerPortalSessions.create(
       billing.paddleCustomerId,

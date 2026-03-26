@@ -18,6 +18,8 @@ type BillingState = {
   plan?: "free" | "pro" | "pro_plus";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
+  paddleSubscriptionId?: string | null;
+  paddleSubscriptionIds?: string[] | null;
   blockingSubscriptionIds?: string[] | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
@@ -89,12 +91,15 @@ export default function SettingsView() {
   );
   const [paddleReady, setPaddleReady] = useState(false);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
+  const hasPortalSubscriptions = Boolean(
+    (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
+  );
   const requiresBillingManagement = Boolean(billing?.isActive || hasBlockingSubscriptions);
   const primaryActionUsesPortal = Boolean(
-    billing?.paddleCustomerId && requiresBillingManagement,
+    billing?.paddleCustomerId && hasPortalSubscriptions && requiresBillingManagement,
   );
   const primaryActionNeedsSupport = Boolean(
-    hasBlockingSubscriptions && !billing?.paddleCustomerId,
+    requiresBillingManagement && !primaryActionUsesPortal,
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -299,7 +304,7 @@ export default function SettingsView() {
                   ? t("app.settings.changePlan")
                   : t("app.upgradeCta")}
           </button>
-          {billing?.paddleCustomerId && !primaryActionUsesPortal ? (
+          {billing?.paddleCustomerId && hasPortalSubscriptions && !primaryActionUsesPortal ? (
             <button
               type="button"
               onClick={openPortal}

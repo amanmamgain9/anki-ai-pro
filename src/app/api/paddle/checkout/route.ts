@@ -128,11 +128,26 @@ export async function POST(request: Request) {
     }
 
     const checkoutSessionId = createCheckoutSessionId();
-    await convex.mutation(api.billing.createCheckoutSession, {
-      sessionId: checkoutSessionId,
-      plan,
-      priceId: planConfig.priceId,
-    });
+    try {
+      await convex.mutation(api.billing.createCheckoutSession, {
+        sessionId: checkoutSessionId,
+        plan,
+        priceId: planConfig.priceId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      if (message.includes("Checkout already in progress")) {
+        return NextResponse.json(
+          {
+            error:
+              "A checkout is already in progress for this account. Please finish it or wait a few minutes before trying again.",
+            code: "checkout_in_progress",
+          },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       priceId: planConfig.priceId,
