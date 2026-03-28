@@ -88,6 +88,16 @@ export const consumePremiumTtsPreview = mutationGeneric({
     const tier = paidAccess.tier as BillingTier;
     const trialEndsAt = paidAccess.trialEndsAt;
 
+    if (paidAccess.premiumVoiceSource === "trial") {
+      return {
+        allowed: true,
+        tier,
+        unlimited: true,
+        source: "trial",
+        trialEndsAt: trialEndsAt ?? undefined,
+      } as const;
+    }
+
     const monthKey = getCurrentMonthKey(now);
     const rowsForUser = await ctx.db
       .query("featureUsageMonthly")
@@ -98,7 +108,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
         (row) => row.feature === PREMIUM_TTS_FEATURE && row.monthKey === monthKey,
       ) ?? null;
 
-    if (tier === "pro_plus") {
+    if (paidAccess.hasPremiumVoice) {
       if (existing) {
         await ctx.db.patch(existing._id, {
           usedUnits: existing.usedUnits + normalizedUnits,
@@ -119,8 +129,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
         tier,
         unlimited: true,
         monthKey,
-        source: paidAccess.trialActive ? "trial" : "subscription",
-        trialEndsAt: paidAccess.trialActive ? trialEndsAt ?? undefined : undefined,
+        source: "subscription",
       } as const;
     }
 

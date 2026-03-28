@@ -5,6 +5,8 @@ import { mutationGeneric, queryGeneric } from "convex/server";
 import type { Doc } from "./_generated/dataModel";
 
 export type BillingPlan = "pro_monthly";
+// Sellable checkout plans currently resolve only to the Pro tier.
+// Pro+ remains an internal/manual entitlement tier, not a public checkout plan.
 type BillingTier = "pro" | "pro_plus";
 type BillingInterval = "monthly";
 

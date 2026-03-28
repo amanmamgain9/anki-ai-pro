@@ -179,6 +179,17 @@ async function setUserPaddleCustomerId(
   const matches = await listUsersByPaddleCustomerId(db, customerId);
   for (const match of matches) {
     if (match._id === user._id) continue;
+    const subscriptions = await db
+      .query("subscriptions")
+      .withIndex("by_userId_updatedAt", (q) => q.eq("userId", match._id))
+      .collect();
+    for (const row of subscriptions) {
+      if (row.paddleCustomerId !== customerId) continue;
+      await db.patch(row._id, {
+        userId: user._id,
+        updatedAt: now,
+      });
+    }
     await db.patch(match._id, {
       paddleCustomerId: undefined,
       updatedAt: now,
@@ -200,6 +211,70 @@ async function setUserPaddleCustomerId(
     patch.lastSeenAt = now;
   }
   await db.patch(user._id, patch);
+}
+
+type WebhookUserResolution = {
+  user: Doc<"users"> | null;
+  source:
+    | "none"
+    | "existing_subscription"
+    | "customer_id"
+    | "external_id"
+    | "checkout_session";
+};
+
+function pickWebhookUserResolution(
+  candidates: Array<{
+    user: Doc<"users"> | null;
+    source: Exclude<WebhookUserResolution["source"], "none">;
+    priority: number;
+  }>,
+): WebhookUserResolution {
+  const bestByUserId = new Map<
+    string,
+    {
+      user: Doc<"users">;
+      source: Exclude<WebhookUserResolution["source"], "none">;
+      priority: number;
+    }
+  >();
+
+  for (const candidate of candidates) {
+    if (!candidate.user) continue;
+    const key = String(candidate.user._id);
+    const existing = bestByUserId.get(key);
+    if (!existing || candidate.priority > existing.priority) {
+      bestByUserId.set(key, {
+        user: candidate.user,
+        source: candidate.source,
+        priority: candidate.priority,
+      });
+    }
+  }
+
+  const ranked = [...bestByUserId.values()].sort((a, b) => {
+    if (a.priority !== b.priority) return b.priority - a.priority;
+    if ((a.user.updatedAt ?? 0) !== (b.user.updatedAt ?? 0)) {
+      return (b.user.updatedAt ?? 0) - (a.user.updatedAt ?? 0);
+    }
+    if ((a.user.lastSeenAt ?? 0) !== (b.user.lastSeenAt ?? 0)) {
+      return (b.user.lastSeenAt ?? 0) - (a.user.lastSeenAt ?? 0);
+    }
+    return (a.user.createdAt ?? 0) - (b.user.createdAt ?? 0);
+  });
+
+  const resolved = ranked[0];
+  if (!resolved) {
+    return {
+      user: null,
+      source: "none",
+    };
+  }
+
+  return {
+    user: resolved.user,
+    source: resolved.source,
+  };
 }
 
 function pickCanonicalPaddleCustomerId(
@@ -613,7 +688,7 @@ export const getMyBilling = queryGeneric({
     let proPreviewUsedChars: number | null = null;
     let proPreviewRemainingChars: number | null = null;
 
-    if (isActive && tier === "pro") {
+    if (isActive && tier === "pro" && !hasPremiumVoice) {
       const quota = resolveProPreviewQuotaChars();
       const monthKey = getCurrentMonthKey(now);
       const rowsForUser = await ctx.db
@@ -899,20 +974,37 @@ async function applyPaddleWebhookEvent(
   const existingSubscriptionOwner = existingSubscription
     ? await ctx.db.get(existingSubscription.userId)
     : null;
+  const checkoutSessionUser = checkoutSession ? await ctx.db.get(checkoutSession.userId) : null;
+  const externalIdUser = args.externalId
+    ? await findCanonicalUserByExternalId(ctx.db, args.externalId)
+    : null;
+  const customerIdUser = args.customerId
+    ? await findCanonicalUserByPaddleCustomerId(ctx.db, args.customerId)
+    : null;
+  const webhookUserResolution = pickWebhookUserResolution([
+    {
+      user: checkoutSessionUser,
+      source: "checkout_session",
+      priority: 4,
+    },
+    {
+      user: externalIdUser,
+      source: "external_id",
+      priority: 3,
+    },
+    {
+      user: customerIdUser,
+      source: "customer_id",
+      priority: 2,
+    },
+    {
+      user: existingSubscriptionOwner,
+      source: "existing_subscription",
+      priority: 1,
+    },
+  ]);
 
-  let user = existingSubscriptionOwner;
-
-  if (!user && checkoutSession) {
-    user = await ctx.db.get(checkoutSession.userId);
-  }
-
-  if (!user && args.externalId) {
-    user = await findCanonicalUserByExternalId(ctx.db, args.externalId);
-  }
-
-  if (!user && args.customerId) {
-    user = await findCanonicalUserByPaddleCustomerId(ctx.db, args.customerId);
-  }
+  const user = webhookUserResolution.user;
 
   let processingStatus: "processed" | "ignored_missing_user" | "ignored_stale_event" = user
     ? "processed"
@@ -962,6 +1054,7 @@ async function applyPaddleWebhookEvent(
     );
 
     const patch: {
+      userId?: Id<"users">;
       status: string;
       tier?: StoredBillingTier;
       tierSourcePriceId?: string;
@@ -997,6 +1090,9 @@ async function applyPaddleWebhookEvent(
     }
     if (subscriptionUpdatedAt !== undefined) {
       patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
+    }
+    if (existingSubscription && existingSubscription.userId !== user._id) {
+      patch.userId = user._id;
     }
 
     if (args.customerId) patch.paddleCustomerId = args.customerId;

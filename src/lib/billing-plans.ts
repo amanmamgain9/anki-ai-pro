@@ -4,6 +4,8 @@ export const BILLING_PLAN_ORDER = [
 export const PUBLIC_BILLING_PLAN_ORDER = ["pro_monthly"] as const;
 
 export type BillingPlan = (typeof BILLING_PLAN_ORDER)[number];
+// Sellable checkout plans currently resolve only to the Pro tier.
+// Pro+ remains an internal/manual entitlement tier, not a public checkout plan.
 export type BillingTier = "pro" | "pro_plus";
 export type BillingInterval = "monthly";
 

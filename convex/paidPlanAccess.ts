@@ -101,6 +101,8 @@ export async function resolvePaidPlanAccess(
 
   const trialActive = subscriptionEntitled ? access.trialActive : false;
   const activeAccessSource = subscriptionEntitled ? access.accessSource : "none";
+  const hasPremiumVoice =
+    subscriptionEntitled && (trialActive || tier === "pro_plus");
 
   return {
     isActive: subscriptionEntitled,
@@ -109,7 +111,7 @@ export async function resolvePaidPlanAccess(
     accessSource: activeAccessSource,
     subscriptionEntitled,
     tier: subscriptionEntitled ? tier : "inactive",
-    hasPremiumVoice: subscriptionEntitled && tier === "pro_plus",
+    hasPremiumVoice,
     premiumVoiceSource: trialActive
       ? "trial"
       : subscriptionEntitled
