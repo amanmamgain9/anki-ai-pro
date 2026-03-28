@@ -12,7 +12,7 @@ export type ResolvedPaidPlanAccess = {
   trialEndsAt: number | null;
   accessSource: BillingAccessSource;
   subscriptionEntitled: boolean;
-  tier: StoredBillingTier | "free";
+  tier: StoredBillingTier | "inactive";
   hasPremiumVoice: boolean;
   premiumVoiceSource: "none" | "trial" | "pro_preview" | "pro_plus";
 };
@@ -50,12 +50,12 @@ export async function resolveRecognizedSubscriptionTier(
     | { tier?: string; tierSourcePriceId?: string; priceId?: string }
     | null
     | undefined,
-): Promise<StoredBillingTier | "free"> {
-  if (!subscription) return "free";
+): Promise<StoredBillingTier | "inactive"> {
+  if (!subscription) return "inactive";
   if (isStoredBillingTier(subscription.tier)) {
     return subscription.tier;
   }
-  return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "free";
+  return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "inactive";
 }
 
 export async function resolvePaidPlanAccess(
@@ -73,7 +73,6 @@ export async function resolvePaidPlanAccess(
     | undefined,
   user:
     | {
-        trialEndsAt?: number | null;
         manualAccessTier?: string;
         manualAccessEndsAt?: number | null;
       }
@@ -95,24 +94,10 @@ export async function resolvePaidPlanAccess(
     };
   }
 
-  const access = resolveBillingAccess(subscription, user?.trialEndsAt, now);
+  const access = resolveBillingAccess(subscription, now);
 
   const tier = await resolveRecognizedSubscriptionTier(db, subscription);
-  const subscriptionEntitled = access.subscriptionEntitled && tier !== "free";
-  const userTrialActive = access.accessSource === "user_trial" && access.isActive;
-
-  if (userTrialActive) {
-    return {
-      isActive: true,
-      trialActive: true,
-      trialEndsAt: access.trialEndsAt,
-      accessSource: "user_trial",
-      subscriptionEntitled: false,
-      tier: "pro",
-      hasPremiumVoice: false,
-      premiumVoiceSource: "trial",
-    };
-  }
+  const subscriptionEntitled = access.subscriptionEntitled && tier !== "inactive";
 
   const trialActive = subscriptionEntitled ? access.trialActive : false;
   const activeAccessSource = subscriptionEntitled ? access.accessSource : "none";
@@ -123,7 +108,7 @@ export async function resolvePaidPlanAccess(
     trialEndsAt: subscriptionEntitled ? access.trialEndsAt : null,
     accessSource: activeAccessSource,
     subscriptionEntitled,
-    tier: subscriptionEntitled ? tier : "free",
+    tier: subscriptionEntitled ? tier : "inactive",
     hasPremiumVoice: subscriptionEntitled && tier === "pro_plus",
     premiumVoiceSource: trialActive
       ? "trial"

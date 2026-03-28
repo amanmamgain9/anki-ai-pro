@@ -15,8 +15,8 @@ type CheckoutPlan = "pro_monthly";
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
-  plan?: "free" | "pro" | "pro_plus";
-  accessSource?: "none" | "manual" | "subscription" | "subscription_trial" | "user_trial";
+  plan?: "inactive" | "pro" | "pro_plus";
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -100,6 +100,10 @@ export default function BillingStartView() {
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
+  const startButtonLabel =
+    trialDays > 0 ? t("app.settings.startPro") : t("app.settings.startProNoTrial");
+  const billingNote =
+    trialDays > 0 ? t("app.billingStart.trialNote") : t("app.billingStart.trialNoteNoTrial");
   const successUrl =
     typeof window === "undefined"
       ? `/start-trial?billing=success&from=${encodeURIComponent(from)}`
@@ -222,7 +226,9 @@ export default function BillingStartView() {
             ? t("app.billingStart.titleManage")
             : requiresBillingManagement
             ? t("app.billingStart.titleManage")
-            : t("app.billingStart.titleStart")}
+            : trialDays > 0
+              ? t("app.billingStart.titleStart")
+              : t("app.billingStart.titleStartNoTrial")}
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--color-text-secondary)]">
           {requiresSupport
@@ -283,7 +289,7 @@ export default function BillingStartView() {
               className="btn-primary"
               disabled={busyAction !== null || !planAvailability.pro_monthly}
             >
-              {busyAction === "pro_monthly" ? t("app.settings.opening") : t("app.settings.startPro")}
+              {busyAction === "pro_monthly" ? t("app.settings.opening") : startButtonLabel}
             </button>
           )}
           <button
@@ -298,7 +304,7 @@ export default function BillingStartView() {
 
         {!hasBlockingSubscriptions ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
-            {t("app.billingStart.trialNote")}
+            {billingNote}
           </p>
         ) : requiresSupport ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">

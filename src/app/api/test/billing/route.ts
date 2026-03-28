@@ -57,8 +57,8 @@ type SyncUserResult = {
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
-  plan?: "free" | "pro" | "pro_plus";
-  accessSource?: "none" | "manual" | "subscription" | "subscription_trial" | "user_trial";
+  plan?: "inactive" | "pro" | "pro_plus";
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;

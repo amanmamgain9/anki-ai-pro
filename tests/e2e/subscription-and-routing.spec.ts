@@ -56,7 +56,6 @@ async function billingAction(
       paddleSubscriptionId?: string | null;
     };
     snapshot?: {
-      userTrialEndsAt?: number | null;
       manualAccessTier?: string | null;
       manualAccessEndsAt?: number | null;
       subscriptionStatus?: string | null;

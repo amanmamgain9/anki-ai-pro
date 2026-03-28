@@ -393,7 +393,6 @@ export const resetMyBillingForTesting = mutationGeneric({
     }
 
     await ctx.db.patch(user._id, {
-      trialEndsAt: 0,
       manualAccessTier: undefined,
       manualAccessEndsAt: undefined,
       manualAccessReason: undefined,
@@ -434,7 +433,6 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
     return {
       userExists: true as const,
       paddleCustomerId: user.paddleCustomerId ?? null,
-      userTrialEndsAt: user.trialEndsAt ?? null,
       manualAccessTier: user.manualAccessTier ?? null,
       manualAccessEndsAt: user.manualAccessEndsAt ?? null,
       manualAccessReason: user.manualAccessReason ?? null,
@@ -489,7 +487,7 @@ export const getMyBilling = queryGeneric({
       return {
         isAuthenticated: false,
         hasUserRecord: false,
-        plan: "free",
+        plan: "inactive",
         isActive: false,
         hasPremiumVoice: false,
         trialActive: false,
@@ -517,7 +515,7 @@ export const getMyBilling = queryGeneric({
       return {
         isAuthenticated: true,
         hasUserRecord: false,
-        plan: "free",
+        plan: "inactive",
         isActive: false,
         hasPremiumVoice: false,
         trialActive: false,

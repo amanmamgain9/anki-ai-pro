@@ -8,8 +8,7 @@ export type BillingAccessSource =
   | "none"
   | "manual"
   | "subscription"
-  | "subscription_trial"
-  | "user_trial";
+  | "subscription_trial";
 
 function getStoredPeriodEndsAt(
   currentPeriodEndsAt: number | null | undefined,
@@ -182,7 +181,6 @@ export function resolveBillingAccess<
   },
 >(
   subscription: T | null | undefined,
-  _userTrialEndsAt: number | null | undefined,
   now = Date.now(),
 ) {
   const status = subscription?.status ?? null;
@@ -198,10 +196,6 @@ export function resolveBillingAccess<
     subscriptionTrialActive && subscription
       ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
       : null;
-  const userTrialActive =
-    typeof _userTrialEndsAt === "number" &&
-    Number.isFinite(_userTrialEndsAt) &&
-    now < _userTrialEndsAt;
 
   if (subscriptionEntitled) {
     return {
@@ -212,15 +206,6 @@ export function resolveBillingAccess<
         ? ("subscription_trial" as const)
         : ("subscription" as const),
       subscriptionEntitled: true,
-    };
-  }
-  if (userTrialActive) {
-    return {
-      isActive: true,
-      trialActive: true,
-      trialEndsAt: _userTrialEndsAt,
-      accessSource: "user_trial" as const,
-      subscriptionEntitled: false,
     };
   }
   return {

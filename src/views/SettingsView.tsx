@@ -15,8 +15,8 @@ type CheckoutPlan =
   | "pro_monthly";
 type BillingState = {
   isActive?: boolean;
-  plan?: "free" | "pro" | "pro_plus";
-  accessSource?: "none" | "manual" | "subscription" | "subscription_trial" | "user_trial";
+  plan?: "inactive" | "pro" | "pro_plus";
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -92,20 +92,19 @@ export default function SettingsView() {
     DEFAULT_PLAN_AVAILABILITY,
   );
   const [paddleReady, setPaddleReady] = useState(false);
+  const [trialDays, setTrialDays] = useState(3);
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const hasPortalSubscriptions = Boolean(
     (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
   );
-  const requiresBillingManagement = hasBlockingSubscriptions;
-  const primaryActionUsesPortal = Boolean(
-    !hasManualAccess &&
-      billing?.paddleCustomerId &&
-      hasPortalSubscriptions &&
-      requiresBillingManagement,
+  const hasSelfServeSubscription = Boolean(
+    !hasManualAccess && billing?.paddleCustomerId && hasPortalSubscriptions,
   );
+  const requiresBillingManagement = hasBlockingSubscriptions;
+  const primaryActionUsesPortal = hasSelfServeSubscription && (Boolean(billing?.isActive) || requiresBillingManagement);
   const primaryActionNeedsSupport = Boolean(
-    hasManualAccess || (requiresBillingManagement && !primaryActionUsesPortal),
+    hasManualAccess || ((Boolean(billing?.isActive) || requiresBillingManagement) && !primaryActionUsesPortal),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -121,8 +120,12 @@ export default function SettingsView() {
         const response = await fetch("/api/paddle/plans", { cache: "no-store" });
         if (!response.ok) return;
         const payload = (await response.json()) as {
+          trialDays?: number;
           plans?: Array<{ plan?: string; checkoutEnabled?: boolean }>;
         };
+        if (typeof payload.trialDays === "number" && !cancelled) {
+          setTrialDays(Math.max(0, Math.floor(payload.trialDays)));
+        }
         if (!Array.isArray(payload.plans)) return;
         const nextAvailability: PlanAvailability = { ...DEFAULT_PLAN_AVAILABILITY };
         for (const row of payload.plans) {
@@ -256,7 +259,7 @@ export default function SettingsView() {
             ? billing?.plan === "pro_plus"
               ? "Pro+"
               : "Pro"
-            : t("app.settings.free")}
+            : t("app.settings.noActivePlan")}
         </p>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
           <span className="font-semibold text-[var(--color-text)]">{t("app.settings.subscriptionStatus")}</span>{" "}
@@ -352,7 +355,9 @@ export default function SettingsView() {
               <div>
                 <h3 className="text-base font-bold">{t("app.settings.choosePlan")}</h3>
                 <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                  {t("app.settings.continueToCheckout")}
+                  {trialDays > 0
+                    ? t("app.settings.continueToCheckout")
+                    : t("app.settings.continueToCheckoutNoTrial")}
                 </p>
               </div>
               {!upgradeRequired ? (
@@ -377,7 +382,11 @@ export default function SettingsView() {
                     className="btn-primary !px-3 !py-1.5 !text-xs"
                     disabled={busyAction !== null || !planAvailability.pro_monthly}
                   >
-                    {busyAction === "pro_monthly" ? t("app.settings.opening") : t("app.settings.startPro")}
+                    {busyAction === "pro_monthly"
+                      ? t("app.settings.opening")
+                      : trialDays > 0
+                        ? t("app.settings.startPro")
+                        : t("app.settings.startProNoTrial")}
                   </button>
                 </div>
                 {!planAvailability.pro_monthly && (

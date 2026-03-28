@@ -20,7 +20,7 @@ type BillingState = {
   hasUserRecord?: boolean;
   isActive?: boolean;
   trialActive?: boolean;
-  plan?: "free" | "pro" | "pro_plus";
+  plan?: "inactive" | "pro" | "pro_plus";
 };
 type OnboardingState = {
   hasCompletedOnboarding?: boolean;

@@ -27,7 +27,7 @@ type LinearStudyState = {
 };
 type BillingState = {
   isActive: boolean;
-  plan: "free" | "pro" | "pro_plus";
+  plan: "inactive" | "pro" | "pro_plus";
   hasPremiumVoice?: boolean;
   trialActive?: boolean;
   trialEndsAt?: number | null;
@@ -715,9 +715,7 @@ export default function StudyView() {
     applyRating,
     sendTutorMessage,
     ratingLabelByQuality,
-    usePremiumTts: Boolean(
-      billing?.hasPremiumVoice || (billing?.isActive && billing?.plan !== "free"),
-    ),
+    usePremiumTts: Boolean(billing?.hasPremiumVoice || billing?.isActive),
   });
 
   useEffect(() => {

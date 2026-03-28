@@ -12,7 +12,7 @@ type AuthCtx = {
   };
 };
 
-type BillingTier = "free" | "pro" | "pro_plus";
+type BillingTier = "inactive" | "pro" | "pro_plus";
 type UsageReadDb = GenericDatabaseReader<DataModel>;
 
 const PREMIUM_TTS_FEATURE = "premium_tts";

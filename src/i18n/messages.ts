@@ -867,7 +867,7 @@ export const dictionaries = {
         notAvailable: "Not available",
         billing: "Billing",
         plan: "Plan:",
-        free: "Free",
+        noActivePlan: "No active plan",
         subscriptionStatus: "Subscription status:",
         none: "none",
         trialActive: "Trial is active ({count} days left).",
@@ -883,10 +883,13 @@ export const dictionaries = {
         choosePlan: "Choose your plan",
         continueToCheckout:
           "Continue to Paddle checkout. Trial checkout saves your payment method now and charges after the trial unless canceled.",
+        continueToCheckoutNoTrial:
+          "Continue to Paddle checkout. Billing starts as soon as checkout completes.",
         close: "Close",
         proMonthlyPrice: "$8 / month",
         proPlusMonthlyPrice: "$20 / month",
         startPro: "Start Pro trial",
+        startProNoTrial: "Start Pro",
         startProPlus: "Start Pro+",
         checkoutUnavailable: "Checkout is currently unavailable",
         legalNoticePrefix: "By continuing, you agree to the ",
@@ -899,6 +902,7 @@ export const dictionaries = {
       },
       billingStart: {
         titleStart: "Start your Pro trial",
+        titleStartNoTrial: "Start Pro",
         titleManage: "Fix billing to continue",
         subtitleStart:
           "Add your payment details now to begin the {count}-day Pro trial. Paddle will only charge after the trial ends if you do not cancel first.",
@@ -911,6 +915,8 @@ export const dictionaries = {
         accountEmail: "Signed in as",
         trialNote:
           "This trial starts through Paddle checkout. Your payment method is saved now, and billing begins only after the trial unless you cancel in time.",
+        trialNoteNoTrial:
+          "Billing starts through Paddle checkout as soon as your payment details are confirmed.",
         portalNote:
           "Use Manage billing to update payment details or recover your subscription. New checkout is blocked while an existing subscription still needs billing management.",
         supportNote:
@@ -1768,7 +1774,7 @@ export const dictionaries = {
         notAvailable: "不可用",
         billing: "计费",
         plan: "套餐：",
-        free: "免费版",
+        noActivePlan: "当前没有有效套餐",
         subscriptionStatus: "订阅状态：",
         none: "无",
         trialActive: "试用进行中（剩余约 {count} 天）。",
@@ -1781,10 +1787,12 @@ export const dictionaries = {
         checkoutSuccess: "结账已完成。试用或订阅状态通常会在几秒内更新。",
         choosePlan: "选择套餐",
         continueToCheckout: "确认后将跳转到 Paddle 结账页面。试用会先保存付款方式，若未在试用期结束前取消，将在试用结束后扣费。",
+        continueToCheckoutNoTrial: "确认后将跳转到 Paddle 结账页面。结账完成后会立即开始计费。",
         close: "关闭",
         proMonthlyPrice: "$8 / 月",
         proPlusMonthlyPrice: "$20 / 月",
         startPro: "开始 Pro 试用",
+        startProNoTrial: "开始 Pro",
         startProPlus: "开始 Pro+",
         checkoutUnavailable: "当前不可结账",
         legalNoticePrefix: "继续即表示你同意",
@@ -1797,6 +1805,7 @@ export const dictionaries = {
       },
       billingStart: {
         titleStart: "开始你的 Pro 试用",
+        titleStartNoTrial: "开始 Pro",
         titleManage: "先处理账单问题再继续",
         subtitleStart:
           "现在添加付款方式即可开始 {count} 天 Pro 试用。若你在试用结束前取消，Paddle 不会提前扣费。",
@@ -1809,6 +1818,8 @@ export const dictionaries = {
         accountEmail: "当前登录账号",
         trialNote:
           "试用通过 Paddle 结账开始。现在会先保存付款方式，若你没有在试用结束前取消，才会在试用结束后开始扣费。",
+        trialNoteNoTrial:
+          "通过 Paddle 结账确认付款方式后，系统会立即开始计费。",
         portalNote:
           "请使用“管理账单”来更新付款方式或恢复订阅。在仍有待处理订阅时，系统会阻止重新创建新的结账。",
         supportNote:
