@@ -894,12 +894,16 @@ export const dictionaries = {
         legalNoticeAnd: ", and ",
         legalNoticeSuffix: ".",
         legal: "Legal",
+        manualAccessNote:
+          "This access was granted manually and cannot be changed through self-serve billing. Contact support if you want to switch to a paid subscription.",
       },
       billingStart: {
         titleStart: "Start your Pro trial",
         titleManage: "Fix billing to continue",
         subtitleStart:
-          "Add your payment details now to begin the 3-day Pro trial. Paddle will only charge after the trial ends if you do not cancel first.",
+          "Add your payment details now to begin the {count}-day Pro trial. Paddle will only charge after the trial ends if you do not cancel first.",
+        subtitleStartNoTrial:
+          "Add your payment details now to start Pro. Paddle will charge immediately once checkout completes.",
         subtitleManage:
           "Your subscription needs attention before you can continue. Open billing to update payment details, recover renewal, or manage cancellation.",
         subtitleSupport:
@@ -1788,12 +1792,16 @@ export const dictionaries = {
         legalNoticeAnd: "和",
         legalNoticeSuffix: "。",
         legal: "法律",
+        manualAccessNote:
+          "当前访问权限是人工开通的，不能通过自助账单页面自行更改。如需切换为付费订阅，请联系支持。",
       },
       billingStart: {
         titleStart: "开始你的 Pro 试用",
         titleManage: "先处理账单问题再继续",
         subtitleStart:
-          "现在添加付款方式即可开始 3 天 Pro 试用。若你在试用结束前取消，Paddle 不会提前扣费。",
+          "现在添加付款方式即可开始 {count} 天 Pro 试用。若你在试用结束前取消，Paddle 不会提前扣费。",
+        subtitleStartNoTrial:
+          "现在添加付款方式即可开始 Pro。结账完成后，Paddle 会立即开始计费。",
         subtitleManage:
           "你的订阅需要先处理账单问题才能继续。打开账单页面可更新付款方式、恢复续费或管理取消。",
         subtitleSupport:

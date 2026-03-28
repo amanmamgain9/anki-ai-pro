@@ -16,6 +16,7 @@ type CheckoutPlan =
 type BillingState = {
   isActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial" | "user_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -23,6 +24,7 @@ type BillingState = {
   blockingSubscriptionIds?: string[] | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
+  manualAccessTier?: string | null;
   proPreviewQuotaChars?: number | null;
   proPreviewUsedChars?: number | null;
   proPreviewRemainingChars?: number | null;
@@ -90,16 +92,20 @@ export default function SettingsView() {
     DEFAULT_PLAN_AVAILABILITY,
   );
   const [paddleReady, setPaddleReady] = useState(false);
+  const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const hasPortalSubscriptions = Boolean(
     (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
   );
   const requiresBillingManagement = hasBlockingSubscriptions;
   const primaryActionUsesPortal = Boolean(
-    billing?.paddleCustomerId && hasPortalSubscriptions && requiresBillingManagement,
+    !hasManualAccess &&
+      billing?.paddleCustomerId &&
+      hasPortalSubscriptions &&
+      requiresBillingManagement,
   );
   const primaryActionNeedsSupport = Boolean(
-    requiresBillingManagement && !primaryActionUsesPortal,
+    hasManualAccess || (requiresBillingManagement && !primaryActionUsesPortal),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -272,7 +278,11 @@ export default function SettingsView() {
             })}
           </p>
         )}
-        {primaryActionNeedsSupport ? (
+        {hasManualAccess ? (
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            {t("app.settings.manualAccessNote")}
+          </p>
+        ) : primaryActionNeedsSupport ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.billingStart.supportNote")}
           </p>

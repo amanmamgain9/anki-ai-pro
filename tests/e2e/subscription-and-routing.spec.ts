@@ -229,6 +229,11 @@ test("manual pro plus access unlocks paid routes and still blocks checkout", asy
     data: { plan: "pro_monthly" },
   });
   expect(checkout.status()).toBe(409);
+
+  await page.goto("/settings");
+  await expect(
+    page.getByRole("button", { name: /Contact support|联系支持/ }),
+  ).toBeVisible();
 });
 
 test("checkout blocks creating a second subscription when one is already active", async ({ page, request }) => {

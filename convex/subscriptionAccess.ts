@@ -18,6 +18,53 @@ function getStoredPeriodEndsAt(
   return currentPeriodEndsAt ?? nextBilledAt ?? null;
 }
 
+function getEntitledStatusRank(status: string | null | undefined) {
+  switch (normalizeStatus(status)) {
+    case "active":
+      return 3;
+    case "trialing":
+      return 2;
+    case "canceled":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function getRecoverableStatusRank(status: string | null | undefined) {
+  switch (normalizeStatus(status)) {
+    case "past_due":
+      return 3;
+    case "paused":
+      return 2;
+    case "created":
+      return 1;
+    case "active":
+    case "trialing":
+    case "canceled":
+      return 0;
+    default:
+      return -1;
+  }
+}
+
+function getVersionTime(
+  row: {
+    lastSubscriptionUpdatedAt?: number | null;
+    lastEventOccurredAt?: number | null;
+    updatedAt?: number | null;
+    createdAt?: number | null;
+  },
+) {
+  return (
+    row.lastSubscriptionUpdatedAt ??
+    row.lastEventOccurredAt ??
+    row.updatedAt ??
+    row.createdAt ??
+    0
+  );
+}
+
 export function isSubscriptionEntitled(
   status: string | null | undefined,
   currentPeriodEndsAt: number | null | undefined,
@@ -62,26 +109,69 @@ export function pickEffectiveSubscription<
     status?: string | null;
     currentPeriodEndsAt?: number | null;
     nextBilledAt?: number | null;
+    lastSubscriptionUpdatedAt?: number | null;
+    lastEventOccurredAt?: number | null;
+    updatedAt?: number | null;
+    createdAt?: number | null;
   },
 >(rows: T[], now = Date.now()): T | null {
-  for (const row of rows) {
-    if (isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, row.nextBilledAt, now)) {
-      return row;
-    }
-  }
-  for (const row of rows) {
-    if (
-      subscriptionRequiresBillingManagement(
-        row.status,
-        row.currentPeriodEndsAt,
-        row.nextBilledAt,
+  return (
+    [...rows].sort((a, b) => {
+      const aEntitled = isSubscriptionEntitled(
+        a.status,
+        a.currentPeriodEndsAt,
+        a.nextBilledAt,
         now,
-      )
-    ) {
-      return row;
-    }
-  }
-  return rows[0] ?? null;
+      );
+      const bEntitled = isSubscriptionEntitled(
+        b.status,
+        b.currentPeriodEndsAt,
+        b.nextBilledAt,
+        now,
+      );
+      if (aEntitled !== bEntitled) return aEntitled ? -1 : 1;
+      if (aEntitled && bEntitled) {
+        const aRank = getEntitledStatusRank(a.status);
+        const bRank = getEntitledStatusRank(b.status);
+        if (aRank !== bRank) return bRank - aRank;
+      }
+
+      const aRecoverable = subscriptionRequiresBillingManagement(
+        a.status,
+        a.currentPeriodEndsAt,
+        a.nextBilledAt,
+        now,
+      );
+      const bRecoverable = subscriptionRequiresBillingManagement(
+        b.status,
+        b.currentPeriodEndsAt,
+        b.nextBilledAt,
+        now,
+      );
+      if (aRecoverable !== bRecoverable) return aRecoverable ? -1 : 1;
+      if (aRecoverable && bRecoverable) {
+        const aRank = getRecoverableStatusRank(a.status);
+        const bRank = getRecoverableStatusRank(b.status);
+        if (aRank !== bRank) return bRank - aRank;
+      }
+
+      const aEndsAt = getStoredPeriodEndsAt(a.currentPeriodEndsAt, a.nextBilledAt) ?? 0;
+      const bEndsAt = getStoredPeriodEndsAt(b.currentPeriodEndsAt, b.nextBilledAt) ?? 0;
+      if (aEndsAt !== bEndsAt) return bEndsAt - aEndsAt;
+
+      const aVersion = getVersionTime(a);
+      const bVersion = getVersionTime(b);
+      if (aVersion !== bVersion) return bVersion - aVersion;
+
+      const aUpdatedAt = a.updatedAt ?? 0;
+      const bUpdatedAt = b.updatedAt ?? 0;
+      if (aUpdatedAt !== bUpdatedAt) return bUpdatedAt - aUpdatedAt;
+
+      const aCreatedAt = a.createdAt ?? 0;
+      const bCreatedAt = b.createdAt ?? 0;
+      return bCreatedAt - aCreatedAt;
+    })[0] ?? null
+  );
 }
 
 export function resolveBillingAccess<

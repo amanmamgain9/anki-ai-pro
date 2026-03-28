@@ -16,12 +16,14 @@ type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial" | "user_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   paddleSubscriptionIds?: string[] | null;
   blockingSubscriptionIds?: string[] | null;
   trialEndsAt?: number | null;
+  manualAccessTier?: string | null;
 };
 type PlanAvailability = Record<CheckoutPlan, boolean>;
 type CheckoutPayload = {
@@ -79,15 +81,21 @@ export default function BillingStartView() {
     DEFAULT_PLAN_AVAILABILITY,
   );
   const [paddleReady, setPaddleReady] = useState(false);
+  const [trialDays, setTrialDays] = useState(3);
   const from = searchParams.get("from") || "/cards";
   const billingSuccess = searchParams.get("billing") === "success";
+  const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const hasPortalSubscriptions = Boolean(
     (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
   );
   const requiresBillingManagement =
-    hasBlockingSubscriptions && Boolean(billing?.paddleCustomerId) && hasPortalSubscriptions;
-  const requiresSupport = hasBlockingSubscriptions && !requiresBillingManagement;
+    !hasManualAccess &&
+    hasBlockingSubscriptions &&
+    Boolean(billing?.paddleCustomerId) &&
+    hasPortalSubscriptions;
+  const requiresSupport =
+    hasManualAccess || (hasBlockingSubscriptions && !requiresBillingManagement);
   const hasProAccess = Boolean(billing?.isActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -104,8 +112,12 @@ export default function BillingStartView() {
         const response = await fetch("/api/paddle/plans", { cache: "no-store" });
         if (!response.ok) return;
         const payload = (await response.json()) as {
+          trialDays?: number;
           plans?: Array<{ plan?: string; checkoutEnabled?: boolean }>;
         };
+        if (typeof payload.trialDays === "number" && !cancelled) {
+          setTrialDays(Math.max(0, Math.floor(payload.trialDays)));
+        }
         if (!Array.isArray(payload.plans)) return;
         const nextAvailability: PlanAvailability = { ...DEFAULT_PLAN_AVAILABILITY };
         for (const row of payload.plans) {
@@ -217,7 +229,9 @@ export default function BillingStartView() {
             ? t("app.billingStart.subtitleSupport")
             : requiresBillingManagement
             ? t("app.billingStart.subtitleManage")
-            : t("app.billingStart.subtitleStart")}
+            : trialDays > 0
+              ? t("app.billingStart.subtitleStart", { count: trialDays })
+              : t("app.billingStart.subtitleStartNoTrial")}
         </p>
 
         {billing?.trialActive && (
