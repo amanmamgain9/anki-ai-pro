@@ -7,7 +7,7 @@ import type { Doc } from "./_generated/dataModel";
 export type BillingPlan = "pro_monthly";
 // Sellable checkout plans currently resolve only to the Pro tier.
 // Pro+ remains an internal/manual entitlement tier, not a public checkout plan.
-type BillingTier = "pro" | "pro_plus";
+export type BillingTier = "pro" | "pro_plus";
 type BillingInterval = "monthly";
 
 type AuthCtx = {
@@ -155,6 +155,14 @@ export async function resolveBillingTierByPriceId(
     return Array.from(envMatchedTiers)[0];
   }
   return null;
+}
+
+export function resolveBillingTierByPlan(
+  plan: string | undefined,
+): BillingTier | null {
+  if (!plan) return null;
+  const config = BILLING_PLAN_CONFIGS[plan as BillingPlan];
+  return config?.tier ?? null;
 }
 
 export const listPublic = queryGeneric({

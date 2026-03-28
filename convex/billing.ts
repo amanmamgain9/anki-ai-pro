@@ -10,6 +10,7 @@ import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import {
   listPublicBillingPlanConfigs,
   resolveBillingTierByPriceId,
+  resolveBillingTierByPlan,
   resolveCheckoutPlanPriceId,
 } from "./billingPlans";
 import {
@@ -971,8 +972,10 @@ async function applyPaddleWebhookEvent(
   args: PaddleWebhookArgs,
   existingEvent: Doc<"billingEvents"> | null = null,
 ) {
-  const retryIgnoredMissingUser = existingEvent?.status === "ignored_missing_user";
-  if (existingEvent && !retryIgnoredMissingUser) {
+  const retryableIgnoredEvent =
+    existingEvent?.status === "ignored_missing_user" ||
+    existingEvent?.status === "ignored_unknown_plan";
+  if (existingEvent && !retryableIgnoredEvent) {
     return { duplicate: true, eventId: args.eventId };
   }
 
@@ -1057,11 +1060,12 @@ async function applyPaddleWebhookEvent(
   const existingTier = isStoredBillingTier(existingSubscription?.tier)
     ? existingSubscription.tier
     : undefined;
+  const checkoutSessionTier = resolveBillingTierByPlan(checkoutSession?.plan);
   const resolvedTier =
     resolvedPriceId && processingStatus === "processed"
       ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
-      : existingTier;
-  const managesRecognizedPlan = Boolean(resolvedTier || existingTier);
+      : existingTier ?? checkoutSessionTier ?? undefined;
+  const managesRecognizedPlan = Boolean(resolvedTier || existingTier || checkoutSessionTier);
   if (
     processingStatus === "processed" &&
     args.subscriptionId &&
@@ -1120,11 +1124,14 @@ async function applyPaddleWebhookEvent(
     };
     if (resolvedTier) {
       patch.tier = resolvedTier;
-      patch.tierSourcePriceId = resolvedPriceId;
+      patch.tierSourcePriceId = resolvedPriceId ?? checkoutSession?.priceId;
     } else if (isStoredBillingTier(existingSubscription?.tier)) {
       patch.tier = existingSubscription.tier;
       patch.tierSourcePriceId =
         existingSubscription.tierSourcePriceId ?? existingSubscription.priceId;
+    } else if (checkoutSessionTier) {
+      patch.tier = checkoutSessionTier;
+      patch.tierSourcePriceId = checkoutSession?.priceId;
     }
     if (subscriptionUpdatedAt !== undefined) {
       patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
@@ -1204,9 +1211,14 @@ async function applyPaddleWebhookEvent(
         ...(resolvedTier
           ? {
               tier: resolvedTier,
-              tierSourcePriceId: resolvedPriceId,
+              tierSourcePriceId: resolvedPriceId ?? checkoutSession?.priceId,
             }
-          : {}),
+          : checkoutSessionTier
+            ? {
+                tier: checkoutSessionTier,
+                tierSourcePriceId: checkoutSession?.priceId,
+              }
+            : {}),
         priceId: resolvedPriceId,
         productId: args.productId,
         currentPeriodStartsAt,
@@ -1267,25 +1279,33 @@ async function replayIgnoredBillingEvents(
   filters: { externalId?: string; customerId?: string },
 ) {
   const rows: Doc<"billingEvents">[] = [];
+  const statusesToReplay: Array<"ignored_missing_user" | "ignored_unknown_plan"> = [
+    "ignored_missing_user",
+    "ignored_unknown_plan",
+  ];
 
   if (filters.externalId) {
-    const byExternalId = await ctx.db
-      .query("billingEvents")
-      .withIndex("by_status_externalId", (q) =>
-        q.eq("status", "ignored_missing_user").eq("externalId", filters.externalId!),
-      )
-      .collect();
-    rows.push(...byExternalId);
+    for (const status of statusesToReplay) {
+      const byExternalId = await ctx.db
+        .query("billingEvents")
+        .withIndex("by_status_externalId", (q) =>
+          q.eq("status", status).eq("externalId", filters.externalId!),
+        )
+        .collect();
+      rows.push(...byExternalId);
+    }
   }
 
   if (filters.customerId) {
-    const byCustomerId = await ctx.db
-      .query("billingEvents")
-      .withIndex("by_status_customerId", (q) =>
-        q.eq("status", "ignored_missing_user").eq("paddleCustomerId", filters.customerId!),
-      )
-      .collect();
-    rows.push(...byCustomerId);
+    for (const status of statusesToReplay) {
+      const byCustomerId = await ctx.db
+        .query("billingEvents")
+        .withIndex("by_status_customerId", (q) =>
+          q.eq("status", status).eq("paddleCustomerId", filters.customerId!),
+        )
+        .collect();
+      rows.push(...byCustomerId);
+    }
   }
 
   const uniqueRows = Array.from(new Map(rows.map((row) => [row._id, row])).values()).sort((a, b) => {

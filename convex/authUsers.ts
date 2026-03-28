@@ -47,6 +47,48 @@ function buildMergedExternalId(row: Pick<Doc<"users">, "_id" | "externalId">) {
   return `merged:${row.externalId}:${row._id}`;
 }
 
+function selectPreferredManualAccess(
+  primary: BillingUser,
+  secondary: BillingUser,
+  now: number,
+) {
+  const score = (user: BillingUser) => {
+    if (user.manualAccessTier !== "pro_plus") {
+      return {
+        hasAccess: false,
+        active: false,
+        indefinite: false,
+        endsAt: Number.NEGATIVE_INFINITY,
+      };
+    }
+    const endsAt = typeof user.manualAccessEndsAt === "number" ? user.manualAccessEndsAt : null;
+    const active = endsAt === null || endsAt > now;
+    return {
+      hasAccess: true,
+      active,
+      indefinite: endsAt === null,
+      endsAt: endsAt ?? Number.POSITIVE_INFINITY,
+    };
+  };
+
+  const primaryScore = score(primary);
+  const secondaryScore = score(secondary);
+
+  if (primaryScore.hasAccess !== secondaryScore.hasAccess) {
+    return primaryScore.hasAccess ? primary : secondary;
+  }
+  if (primaryScore.active !== secondaryScore.active) {
+    return primaryScore.active ? primary : secondary;
+  }
+  if (primaryScore.indefinite !== secondaryScore.indefinite) {
+    return primaryScore.indefinite ? primary : secondary;
+  }
+  if (primaryScore.endsAt !== secondaryScore.endsAt) {
+    return primaryScore.endsAt > secondaryScore.endsAt ? primary : secondary;
+  }
+  return primary;
+}
+
 async function migrateChatRows(
   db: AuthUserDb,
   fromExternalId: string,
@@ -393,11 +435,22 @@ async function mergeUserIntoCanonical(
   if (!canonical.paddleCustomerId && loser.paddleCustomerId) {
     canonicalPatch.paddleCustomerId = loser.paddleCustomerId;
   }
+  const manualAccessSource = selectPreferredManualAccess(canonical, loser, now);
+  if (manualAccessSource.manualAccessTier === "pro_plus") {
+    canonicalPatch.manualAccessTier = manualAccessSource.manualAccessTier;
+    canonicalPatch.manualAccessEndsAt = manualAccessSource.manualAccessEndsAt;
+    canonicalPatch.manualAccessReason = manualAccessSource.manualAccessReason;
+    canonicalPatch.manualAccessGrantedBy = manualAccessSource.manualAccessGrantedBy;
+  }
   await db.patch(canonical._id, canonicalPatch);
   await db.patch(loser._id, {
     externalId: buildMergedExternalId(loser),
     email: undefined,
     paddleCustomerId: undefined,
+    manualAccessTier: undefined,
+    manualAccessEndsAt: undefined,
+    manualAccessReason: undefined,
+    manualAccessGrantedBy: undefined,
     updatedAt: now,
     lastSeenAt: now,
   });
