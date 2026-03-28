@@ -122,6 +122,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (status !== "authenticated") return;
+
+    const refreshBootstrap = () => {
+      bootstrapKeyRef.current = null;
+      setBootstrapAttempt((n) => n + 1);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshBootstrap();
+      }
+    };
+
+    const intervalId = window.setInterval(refreshBootstrap, 60_000);
+    window.addEventListener("focus", refreshBootstrap);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshBootstrap);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
     if (!initialPath) return;
     if (bootstrapStatus !== "ready") return;
     if (!billing) return;

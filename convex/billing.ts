@@ -14,16 +14,15 @@ import {
 } from "./billingPlans";
 import {
   findCanonicalSubscriptionByPaddleSubscriptionId,
+  findCanonicalUserByEmail,
   findCanonicalUserByExternalId,
+  findCanonicalUserByIdentity,
   findCanonicalUserByPaddleCustomerId,
   listUsersByPaddleCustomerId,
 } from "./billingIdentity";
 import { ensureCanonicalAuthUser } from "./authUsers";
-import {
-  pickEffectiveSubscription,
-  resolveBillingAccess,
-  subscriptionRequiresBillingManagement,
-} from "./subscriptionAccess";
+import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { pickEffectiveSubscription, subscriptionRequiresBillingManagement } from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -78,6 +77,14 @@ async function requireIdentity(ctx: AuthCtx) {
   return identity;
 }
 
+async function findUserForIdentity(db: BillingReadDb, identity: UserIdentity) {
+  return await findCanonicalUserByIdentity(db, {
+    externalId: identity.subject,
+    provider: getIdentityClaim(identity, "provider"),
+    providerSubject: getIdentityClaim(identity, "providerSubject"),
+  });
+}
+
 function ensureTestingAllowed(testSecret: string) {
   const expected = process.env.E2E_TEST_SECRET;
   if (!expected || testSecret !== expected) {
@@ -120,6 +127,12 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
 }
 
 const PREMIUM_TTS_FEATURE = "premium_tts";
+const SUPPORT_OPERATOR_EMAILS = new Set([
+  "amanmamgain9@gmail.com",
+  "support@example.com",
+  "planmyworkday@gmail.com",
+]);
+
 function resolveFreeProPlusTrialDays() {
   const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
   const parsed = Number(raw);
@@ -143,6 +156,15 @@ function getCurrentMonthKey(now: number) {
 
 function isStoredBillingTier(value: string | undefined): value is StoredBillingTier {
   return value === "pro" || value === "pro_plus";
+}
+
+async function requireSupportOperator(ctx: AuthCtx) {
+  const identity = await requireIdentity(ctx);
+  const email = sanitizeEmail(typeof identity.email === "string" ? identity.email : undefined);
+  if (!email || !SUPPORT_OPERATOR_EMAILS.has(email)) {
+    throw new ConvexError("Unauthorized");
+  }
+  return { identity, email };
 }
 
 const OPEN_CHECKOUT_SESSION_WINDOW_MS = 10 * 60_000;
@@ -178,20 +200,6 @@ async function setUserPaddleCustomerId(
     patch.lastSeenAt = now;
   }
   await db.patch(user._id, patch);
-}
-
-async function resolveSubscriptionTier(
-  db: BillingReadDb,
-  subscription: { tier?: string; tierSourcePriceId?: string; priceId?: string } | null | undefined,
-): Promise<StoredBillingTier | "free"> {
-  if (!subscription) return "free";
-  if (
-    isStoredBillingTier(subscription.tier) &&
-    (!subscription.tierSourcePriceId || subscription.tierSourcePriceId === subscription.priceId)
-  ) {
-    return subscription.tier;
-  }
-  return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "free";
 }
 
 function pickCanonicalPaddleCustomerId(
@@ -271,7 +279,7 @@ export const setMyPaddleCustomerId = mutationGeneric({
       throw new ConvexError("Unauthorized");
     }
     const identity = await requireIdentity(ctx);
-    const existing = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const existing = await findUserForIdentity(ctx.db, identity);
     if (!existing) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
@@ -297,7 +305,7 @@ export const getMyOnboardingState = queryGeneric({
       };
     }
 
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
 
     return {
       isAuthenticated: true,
@@ -311,7 +319,7 @@ export const markOnboardingComplete = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
 
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
@@ -341,7 +349,7 @@ export const resetMyOnboardingForTesting = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
 
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
@@ -369,7 +377,7 @@ export const resetMyBillingForTesting = mutationGeneric({
   handler: async (ctx, { testSecret }) => {
     ensureTestingAllowed(testSecret);
     const identity = await requireIdentity(ctx);
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
 
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
@@ -386,6 +394,10 @@ export const resetMyBillingForTesting = mutationGeneric({
 
     await ctx.db.patch(user._id, {
       trialEndsAt: 0,
+      manualAccessTier: undefined,
+      manualAccessEndsAt: undefined,
+      manualAccessReason: undefined,
+      manualAccessGrantedBy: undefined,
       updatedAt: Date.now(),
       lastSeenAt: Date.now(),
     });
@@ -393,35 +405,6 @@ export const resetMyBillingForTesting = mutationGeneric({
     return {
       userId: user._id,
       deletedSubscriptions: subscriptions.length,
-    };
-  },
-});
-
-export const setMyLegacyTrialEndsAtForTesting = mutationGeneric({
-  args: {
-    testSecret: v.string(),
-    trialEndsAt: v.number(),
-  },
-  handler: async (ctx, { testSecret, trialEndsAt }) => {
-    ensureTestingAllowed(testSecret);
-    const identity = await requireIdentity(ctx);
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
-
-    if (!user) {
-      throw new ConvexError("User not found. Run syncCurrentUser first.");
-    }
-
-    const now = Date.now();
-    const normalizedTrialEndsAt = Math.max(0, Math.floor(trialEndsAt));
-    await ctx.db.patch(user._id, {
-      trialEndsAt: normalizedTrialEndsAt,
-      updatedAt: now,
-      lastSeenAt: now,
-    });
-
-    return {
-      userId: user._id,
-      trialEndsAt: normalizedTrialEndsAt,
     };
   },
 });
@@ -436,7 +419,7 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
     if (!identity) {
       throw new ConvexError("Unauthorized");
     }
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
       return {
         userExists: false as const,
@@ -452,6 +435,9 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
       userExists: true as const,
       paddleCustomerId: user.paddleCustomerId ?? null,
       userTrialEndsAt: user.trialEndsAt ?? null,
+      manualAccessTier: user.manualAccessTier ?? null,
+      manualAccessEndsAt: user.manualAccessEndsAt ?? null,
+      manualAccessReason: user.manualAccessReason ?? null,
       subscriptionStatus: subscription?.status ?? null,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddlePriceId: subscription?.priceId ?? null,
@@ -459,6 +445,39 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
       currentPeriodEndsAt: subscription?.currentPeriodEndsAt ?? null,
       nextBilledAt: subscription?.nextBilledAt ?? null,
       updatedAt: subscription?.updatedAt ?? null,
+    };
+  },
+});
+
+export const setMyManualAccessForTesting = mutationGeneric({
+  args: {
+    testSecret: v.string(),
+    tier: v.union(v.literal("pro_plus"), v.null()),
+    endsAt: v.optional(v.union(v.number(), v.null())),
+  },
+  handler: async (ctx, { testSecret, tier, endsAt }) => {
+    ensureTestingAllowed(testSecret);
+    const identity = await requireIdentity(ctx);
+    const user = await findUserForIdentity(ctx.db, identity);
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, {
+      manualAccessTier: tier ?? undefined,
+      manualAccessEndsAt: tier ? (endsAt ?? undefined) : undefined,
+      manualAccessReason: tier ? "test_override" : undefined,
+      manualAccessGrantedBy: tier ? "e2e" : undefined,
+      updatedAt: now,
+      lastSeenAt: now,
+    });
+
+    return {
+      userId: user._id,
+      tier,
+      endsAt: tier ? (endsAt ?? null) : null,
     };
   },
 });
@@ -478,6 +497,9 @@ export const getMyBilling = queryGeneric({
         accessSource: "none" as const,
         subscriptionEntitled: false,
         premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
+        manualAccessTier: null as string | null,
+        manualAccessEndsAt: null as number | null,
+        manualAccessReason: null as string | null,
         proPreviewQuotaChars: null as number | null,
         proPreviewUsedChars: null as number | null,
         proPreviewRemainingChars: null as number | null,
@@ -490,7 +512,7 @@ export const getMyBilling = queryGeneric({
       };
     }
 
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
       return {
         isAuthenticated: true,
@@ -503,6 +525,9 @@ export const getMyBilling = queryGeneric({
         accessSource: "none" as const,
         subscriptionEntitled: false,
         premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
+        manualAccessTier: null as string | null,
+        manualAccessEndsAt: null as number | null,
+        manualAccessReason: null as string | null,
         proPreviewQuotaChars: null as number | null,
         proPreviewUsedChars: null as number | null,
         proPreviewRemainingChars: null as number | null,
@@ -531,6 +556,7 @@ export const getMyBilling = queryGeneric({
       subscriptionRequiresBillingManagement(
         row.status,
         row.currentPeriodEndsAt,
+        row.nextBilledAt,
         now,
       ),
     );
@@ -572,25 +598,18 @@ export const getMyBilling = queryGeneric({
     );
 
     const status = subscription?.status ?? null;
-    const access = resolveBillingAccess(subscription, user.trialEndsAt, now);
-    const isActive = access.isActive;
-    const trialActive = access.trialActive;
-    const trialEndsAt = access.trialEndsAt;
-    const tier = isActive
-      ? access.accessSource === "legacy_trial"
-        ? "pro_plus"
-        : await resolveSubscriptionTier(ctx.db, subscription)
-      : "free";
-    const hasPremiumVoice = isActive
-      ? access.accessSource === "legacy_trial" || tier === "pro_plus"
-      : false;
-    const premiumVoiceSource = trialActive
-      ? "trial"
-      : isActive
-        ? tier === "pro_plus"
-          ? "pro_plus"
-          : "pro_preview"
-        : "none";
+    const paidAccess = await resolvePaidPlanAccess(
+      ctx.db,
+      subscription,
+      user,
+      now,
+    );
+    const isActive = paidAccess.isActive;
+    const trialActive = paidAccess.trialActive;
+    const trialEndsAt = paidAccess.trialEndsAt;
+    const tier = paidAccess.tier;
+    const hasPremiumVoice = paidAccess.hasPremiumVoice;
+    const premiumVoiceSource = paidAccess.premiumVoiceSource;
 
     let proPreviewQuotaChars: number | null = null;
     let proPreviewUsedChars: number | null = null;
@@ -621,9 +640,12 @@ export const getMyBilling = queryGeneric({
       hasPremiumVoice,
       trialActive,
       trialEndsAt,
-      accessSource: access.accessSource,
-      subscriptionEntitled: access.subscriptionEntitled,
+      accessSource: paidAccess.accessSource,
+      subscriptionEntitled: paidAccess.subscriptionEntitled,
       premiumVoiceSource,
+      manualAccessTier: user.manualAccessTier ?? null,
+      manualAccessEndsAt: user.manualAccessEndsAt ?? null,
+      manualAccessReason: user.manualAccessReason ?? null,
       proPreviewQuotaChars,
       proPreviewUsedChars,
       proPreviewRemainingChars,
@@ -675,6 +697,60 @@ export const getCheckoutPlanConfig = queryGeneric({
   },
 });
 
+export const adminSetManualAccess = mutationGeneric({
+  args: {
+    email: v.string(),
+    tier: v.union(v.literal("pro_plus"), v.null()),
+    endsAt: v.optional(v.union(v.number(), v.null())),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { email, tier, endsAt, reason }) => {
+    const { email: grantedBy } = await requireSupportOperator(ctx);
+    const normalizedEmail = sanitizeEmail(email);
+    if (!normalizedEmail) {
+      throw new ConvexError("User email is required");
+    }
+    const user = await findCanonicalUserByEmail(ctx.db, normalizedEmail);
+    if (!user) {
+      throw new ConvexError("User not found");
+    }
+
+    const normalizedReason = reason?.trim();
+    const now = Date.now();
+    if (tier === null) {
+      await ctx.db.patch(user._id, {
+        manualAccessTier: undefined,
+        manualAccessEndsAt: undefined,
+        manualAccessReason: undefined,
+        manualAccessGrantedBy: undefined,
+        updatedAt: now,
+      });
+      return {
+        userId: user._id,
+        email: normalizedEmail,
+        tier: null,
+        endsAt: null,
+      };
+    }
+
+    await ctx.db.patch(user._id, {
+      manualAccessTier: tier,
+      manualAccessEndsAt: endsAt ?? undefined,
+      manualAccessReason:
+        normalizedReason && normalizedReason.length > 0 ? normalizedReason : undefined,
+      manualAccessGrantedBy: grantedBy,
+      updatedAt: now,
+    });
+
+    return {
+      userId: user._id,
+      email: normalizedEmail,
+      tier,
+      endsAt: endsAt ?? null,
+    };
+  },
+});
+
 export const createCheckoutSession = mutationGeneric({
   args: {
     sessionId: v.string(),
@@ -683,11 +759,43 @@ export const createCheckoutSession = mutationGeneric({
   },
   handler: async (ctx, { sessionId, plan, priceId }) => {
     const identity = await requireIdentity(ctx);
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
+    const expectedPriceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
+    if (!expectedPriceId) {
+      throw new ConvexError(`Checkout is not configured for ${plan}`);
+    }
+    if (priceId !== expectedPriceId) {
+      throw new ConvexError("Checkout price does not match the configured plan");
+    }
+    const subscriptions = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .collect();
     const now = Date.now();
+    const currentAccess = await resolvePaidPlanAccess(
+      ctx.db,
+      pickEffectiveSubscription(subscriptions, now),
+      user,
+      now,
+    );
+    if (currentAccess.isActive) {
+      throw new ConvexError("Active access already exists");
+    }
+    const recoverableSubscriptions = subscriptions.filter((row) =>
+      subscriptionRequiresBillingManagement(
+        row.status,
+        row.currentPeriodEndsAt,
+        row.nextBilledAt,
+        now,
+      ),
+    );
+    if (recoverableSubscriptions.length > 0) {
+      throw new ConvexError("Subscription requires billing management");
+    }
     const openSessionCutoff = now - OPEN_CHECKOUT_SESSION_WINDOW_MS;
     const existingOpenSession = (
       await ctx.db
@@ -884,13 +992,10 @@ async function applyPaddleWebhookEvent(
     if (resolvedTier) {
       patch.tier = resolvedTier;
       patch.tierSourcePriceId = resolvedPriceId;
-    } else if (
-      resolvedPriceId &&
-      existingSubscription?.priceId &&
-      existingSubscription.priceId !== resolvedPriceId
-    ) {
-      patch.tier = undefined;
-      patch.tierSourcePriceId = undefined;
+    } else if (isStoredBillingTier(existingSubscription?.tier)) {
+      patch.tier = existingSubscription.tier;
+      patch.tierSourcePriceId =
+        existingSubscription.tierSourcePriceId ?? existingSubscription.priceId;
     }
     if (subscriptionUpdatedAt !== undefined) {
       patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;

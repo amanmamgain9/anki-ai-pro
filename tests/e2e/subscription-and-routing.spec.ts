@@ -57,6 +57,8 @@ async function billingAction(
     };
     snapshot?: {
       userTrialEndsAt?: number | null;
+      manualAccessTier?: string | null;
+      manualAccessEndsAt?: number | null;
       subscriptionStatus?: string | null;
       currentPeriodEndsAt?: number | null;
       nextBilledAt?: number | null;
@@ -181,27 +183,6 @@ test("trial expiration behavior blocks paid routes and pro APIs", async ({ page,
   await expect(page).toHaveURL(/from=%2Fcards/);
 });
 
-test("legacy user trial unlocks paid routes and pro API gate", async ({ page, request }) => {
-  await signInWithMagicLink(page, request, "/start-trial");
-  await page.waitForURL(/\/start-trial/);
-
-  await billingAction(page.request, { action: "reset" });
-  const legacyTrial = await billingAction(page.request, {
-    action: "setLegacyTrial",
-    trialEndsInDays: 30,
-  });
-  expect(legacyTrial.billing?.isActive).toBe(true);
-  expect(legacyTrial.billing?.trialActive).toBe(true);
-  expect(legacyTrial.billing?.plan).toBe("pro_plus");
-  expect(legacyTrial.billing?.accessSource).toBe("legacy_trial");
-
-  const proApi = await page.request.post("/api/ai/edit-cards", { data: {} });
-  expect(proApi.status()).toBe(400);
-
-  await page.goto("/cards");
-  await page.waitForURL(/\/cards/);
-});
-
 test("active paid subscription unlocks paid routes and pro API gate", async ({ page, request }) => {
   await signInWithMagicLink(page, request, "/start-trial");
   await page.waitForURL(/\/start-trial/);
@@ -221,6 +202,33 @@ test("active paid subscription unlocks paid routes and pro API gate", async ({ p
 
   await page.goto("/cards");
   await page.waitForURL(/\/cards/);
+});
+
+test("manual pro plus access unlocks paid routes and still blocks checkout", async ({
+  page,
+  request,
+}) => {
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
+
+  await billingAction(page.request, { action: "reset" });
+  const manual = await billingAction(page.request, {
+    action: "setManualAccess",
+    tier: "pro_plus",
+    endsInDays: 30,
+  });
+  expect(manual.billing?.isActive).toBe(true);
+  expect(manual.billing?.plan).toBe("pro_plus");
+  expect(manual.billing?.accessSource).toBe("manual");
+  expect(manual.snapshot?.manualAccessTier).toBe("pro_plus");
+
+  const proApi = await page.request.post("/api/ai/edit-cards", { data: {} });
+  expect(proApi.status()).toBe(400);
+
+  const checkout = await page.request.post("/api/paddle/checkout", {
+    data: { plan: "pro_monthly" },
+  });
+  expect(checkout.status()).toBe(409);
 });
 
 test("checkout blocks creating a second subscription when one is already active", async ({ page, request }) => {
@@ -325,9 +333,24 @@ test("subscription status transitions enforce access correctly", async ({ page, 
     expectedActive: boolean;
     expectedProApiStatus: number;
     currentPeriodEndsInDays?: number;
+    nextBilledInDays?: number;
   }> = [
     { status: "trialing", expectedActive: true, expectedProApiStatus: 400 },
     { status: "active", expectedActive: true, expectedProApiStatus: 400 },
+    {
+      status: "trialing",
+      expectedActive: false,
+      expectedProApiStatus: 402,
+      currentPeriodEndsInDays: -1,
+      nextBilledInDays: -1,
+    },
+    {
+      status: "active",
+      expectedActive: false,
+      expectedProApiStatus: 402,
+      currentPeriodEndsInDays: -1,
+      nextBilledInDays: -1,
+    },
     { status: "past_due", expectedActive: false, expectedProApiStatus: 402 },
     { status: "canceled", expectedActive: true, expectedProApiStatus: 400, currentPeriodEndsInDays: 29 },
     { status: "expired", expectedActive: false, expectedProApiStatus: 402, currentPeriodEndsInDays: -1 },
@@ -340,6 +363,9 @@ test("subscription status transitions enforce access correctly", async ({ page, 
       plan: "pro_monthly",
       ...(row.currentPeriodEndsInDays !== undefined
         ? { currentPeriodEndsInDays: row.currentPeriodEndsInDays }
+        : {}),
+      ...(row.nextBilledInDays !== undefined
+        ? { nextBilledInDays: row.nextBilledInDays }
         : {}),
     });
     expect(result.billing?.subscriptionStatus).toBe(row.status);

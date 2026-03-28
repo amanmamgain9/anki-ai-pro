@@ -16,7 +16,7 @@ type SyncUserResult = {
 };
 
 type BillingState = {
-  accessSource?: "none" | "legacy_trial" | "subscription" | "subscription_trial";
+  isActive?: boolean;
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -24,10 +24,10 @@ type BillingState = {
 };
 
 function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
-  if (billing?.accessSource === "subscription" || billing?.accessSource === "subscription_trial") {
+  if (billing?.isActive) {
     return {
       code: "active_subscription_exists",
-      error: "An active subscription already exists for this account. Use Manage billing to change plan.",
+      error: "Active access already exists for this account. Use Manage billing if you need to change it.",
     };
   }
 
@@ -142,6 +142,26 @@ export async function POST(request: Request) {
             error:
               "A checkout is already in progress for this account. Please finish it or wait a few minutes before trying again.",
             code: "checkout_in_progress",
+          },
+          { status: 409 },
+        );
+      }
+      if (message.includes("Active access already exists")) {
+        return NextResponse.json(
+          {
+            error:
+              "Active access already exists for this account. Use Manage billing if you need to change it.",
+            code: "active_subscription_exists",
+          },
+          { status: 409 },
+        );
+      }
+      if (message.includes("Subscription requires billing management")) {
+        return NextResponse.json(
+          {
+            error:
+              "An existing subscription already exists for this account. Use Manage billing to update or recover it.",
+            code: "subscription_requires_portal",
           },
           { status: 409 },
         );

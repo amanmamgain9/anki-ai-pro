@@ -6,33 +6,39 @@ function normalizeStatus(status: string | null | undefined) {
 
 export type BillingAccessSource =
   | "none"
-  | "legacy_trial"
+  | "manual"
   | "subscription"
-  | "subscription_trial";
+  | "subscription_trial"
+  | "user_trial";
+
+function getStoredPeriodEndsAt(
+  currentPeriodEndsAt: number | null | undefined,
+  nextBilledAt: number | null | undefined,
+) {
+  return currentPeriodEndsAt ?? nextBilledAt ?? null;
+}
 
 export function isSubscriptionEntitled(
   status: string | null | undefined,
   currentPeriodEndsAt: number | null | undefined,
+  nextBilledAt: number | null | undefined,
   now = Date.now(),
 ) {
   const normalized = normalizeStatus(status);
-  if (normalized === "active" || normalized === "trialing") return true;
+  const storedPeriodEndsAt = getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt);
+  if (normalized === "trialing" || normalized === "active") {
+    return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
+  }
   if (normalized === "canceled" && typeof currentPeriodEndsAt === "number") {
     return now < currentPeriodEndsAt;
   }
   return false;
 }
 
-export function isLegacyTrialEntitled(
-  trialEndsAt: number | null | undefined,
-  now = Date.now(),
-) {
-  return typeof trialEndsAt === "number" && now < trialEndsAt;
-}
-
 export function subscriptionRequiresBillingManagement(
   status: string | null | undefined,
   currentPeriodEndsAt: number | null | undefined,
+  nextBilledAt: number | null | undefined,
   now = Date.now(),
 ) {
   const normalized = normalizeStatus(status);
@@ -41,7 +47,10 @@ export function subscriptionRequiresBillingManagement(
   if (normalized === "canceled") {
     return typeof currentPeriodEndsAt === "number" ? now < currentPeriodEndsAt : false;
   }
-  if (normalized === "active" || normalized === "trialing") return true;
+  if (normalized === "active" || normalized === "trialing") {
+    const storedPeriodEndsAt = getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt);
+    return typeof storedPeriodEndsAt === "number" ? now < storedPeriodEndsAt : true;
+  }
   if (normalized === "past_due" || normalized === "paused" || normalized === "created") {
     return true;
   }
@@ -49,17 +58,26 @@ export function subscriptionRequiresBillingManagement(
 }
 
 export function pickEffectiveSubscription<
-  T extends { status?: string | null; currentPeriodEndsAt?: number | null },
+  T extends {
+    status?: string | null;
+    currentPeriodEndsAt?: number | null;
+    nextBilledAt?: number | null;
+  },
 >(rows: T[], now = Date.now()): T | null {
   for (const row of rows) {
-    const normalized = normalizeStatus(row.status);
-    if (normalized === "active" || normalized === "trialing") return row;
+    if (isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, row.nextBilledAt, now)) {
+      return row;
+    }
   }
   for (const row of rows) {
-    if (isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, now)) return row;
-  }
-  for (const row of rows) {
-    if (subscriptionRequiresBillingManagement(row.status, row.currentPeriodEndsAt, now)) {
+    if (
+      subscriptionRequiresBillingManagement(
+        row.status,
+        row.currentPeriodEndsAt,
+        row.nextBilledAt,
+        now,
+      )
+    ) {
       return row;
     }
   }
@@ -74,13 +92,14 @@ export function resolveBillingAccess<
   },
 >(
   subscription: T | null | undefined,
-  userTrialEndsAt: number | null | undefined,
+  _userTrialEndsAt: number | null | undefined,
   now = Date.now(),
 ) {
   const status = subscription?.status ?? null;
   const subscriptionEntitled = isSubscriptionEntitled(
     status,
     subscription?.currentPeriodEndsAt,
+    subscription?.nextBilledAt,
     now,
   );
   const subscriptionTrialActive =
@@ -89,6 +108,10 @@ export function resolveBillingAccess<
     subscriptionTrialActive && subscription
       ? (subscription.currentPeriodEndsAt ?? subscription.nextBilledAt ?? null)
       : null;
+  const userTrialActive =
+    typeof _userTrialEndsAt === "number" &&
+    Number.isFinite(_userTrialEndsAt) &&
+    now < _userTrialEndsAt;
 
   if (subscriptionEntitled) {
     return {
@@ -101,17 +124,15 @@ export function resolveBillingAccess<
       subscriptionEntitled: true,
     };
   }
-
-  if (isLegacyTrialEntitled(userTrialEndsAt, now)) {
+  if (userTrialActive) {
     return {
       isActive: true,
       trialActive: true,
-      trialEndsAt: userTrialEndsAt ?? null,
-      accessSource: "legacy_trial" as const,
+      trialEndsAt: _userTrialEndsAt,
+      accessSource: "user_trial" as const,
       subscriptionEntitled: false,
     };
   }
-
   return {
     isActive: false,
     trialActive: false,

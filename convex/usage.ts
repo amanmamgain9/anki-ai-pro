@@ -2,9 +2,9 @@ import type { UserIdentity } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { mutationGeneric, type GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
-import { resolveBillingTierByPriceId } from "./billingPlans";
-import { findCanonicalUserByExternalId } from "./billingIdentity";
-import { pickEffectiveSubscription, resolveBillingAccess } from "./subscriptionAccess";
+import { findCanonicalUserByIdentity } from "./billingIdentity";
+import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { pickEffectiveSubscription } from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -16,6 +16,19 @@ type BillingTier = "free" | "pro" | "pro_plus";
 type UsageReadDb = GenericDatabaseReader<DataModel>;
 
 const PREMIUM_TTS_FEATURE = "premium_tts";
+
+function getIdentityClaim(identity: UserIdentity, key: string): string | undefined {
+  const value = (identity as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+async function findUserForIdentity(db: UsageReadDb, identity: UserIdentity) {
+  return await findCanonicalUserByIdentity(db, {
+    externalId: identity.subject,
+    provider: getIdentityClaim(identity, "provider"),
+    providerSubject: getIdentityClaim(identity, "providerSubject"),
+  });
+}
 
 function getCurrentMonthKey(now: number) {
   const d = new Date(now);
@@ -29,21 +42,6 @@ function resolveProPreviewQuotaChars() {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return 60000;
   return Math.max(0, Math.floor(parsed));
-}
-
-function isStoredBillingTier(value: string | undefined): value is Exclude<BillingTier, "free"> {
-  return value === "pro" || value === "pro_plus";
-}
-
-async function resolveSubscriptionTier(
-  db: UsageReadDb,
-  subscription: { tier?: string; priceId?: string } | null | undefined,
-): Promise<BillingTier> {
-  if (!subscription) return "free";
-  if (isStoredBillingTier(subscription.tier)) {
-    return subscription.tier;
-  }
-  return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "free";
 }
 
 async function requireIdentity(ctx: AuthCtx) {
@@ -63,7 +61,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
     const now = Date.now();
     const identity = await requireIdentity(ctx);
 
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
@@ -74,18 +72,21 @@ export const consumePremiumTtsPreview = mutationGeneric({
       .order("desc")
       .collect();
     const subscription = pickEffectiveSubscription(subscriptions, now);
-    const access = resolveBillingAccess(subscription, user.trialEndsAt, now);
-    if (!access.isActive) {
+    const paidAccess = await resolvePaidPlanAccess(
+      ctx.db,
+      subscription,
+      user,
+      now,
+    );
+    if (!paidAccess.isActive) {
       return {
         allowed: false,
         reason: "inactive_plan",
       } as const;
     }
 
-    const tier = (access.accessSource === "legacy_trial"
-      ? "pro_plus"
-      : await resolveSubscriptionTier(ctx.db, subscription)) as BillingTier;
-    const trialEndsAt = access.trialEndsAt;
+    const tier = paidAccess.tier as BillingTier;
+    const trialEndsAt = paidAccess.trialEndsAt;
 
     const monthKey = getCurrentMonthKey(now);
     const rowsForUser = await ctx.db
@@ -118,8 +119,8 @@ export const consumePremiumTtsPreview = mutationGeneric({
         tier,
         unlimited: true,
         monthKey,
-        source: access.trialActive ? "trial" : "subscription",
-        trialEndsAt: access.trialActive ? trialEndsAt ?? undefined : undefined,
+        source: paidAccess.trialActive ? "trial" : "subscription",
+        trialEndsAt: paidAccess.trialActive ? trialEndsAt ?? undefined : undefined,
       } as const;
     }
 
@@ -178,7 +179,7 @@ export const refundPremiumTtsPreview = mutationGeneric({
     const now = Date.now();
     const identity = await requireIdentity(ctx);
 
-    const user = await findCanonicalUserByExternalId(ctx.db, identity.subject);
+    const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }

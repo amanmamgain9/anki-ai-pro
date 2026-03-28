@@ -12,7 +12,6 @@ import { buildPaddleWebhookMutationArgs } from "@/lib/paddle-webhook";
 
 const api = anyApi;
 const DAY_MS = 86_400_000;
-
 const statusSchema = z.enum([
   "trialing",
   "active",
@@ -32,10 +31,6 @@ const actionSchema = z.discriminatedUnion("action", [
     action: z.literal("reset"),
   }),
   z.object({
-    action: z.literal("setLegacyTrial"),
-    trialEndsInDays: z.number().int().min(-3650).max(3650),
-  }),
-  z.object({
     action: z.literal("simulateWebhook"),
     status: statusSchema,
     plan: planSchema.default("pro_monthly"),
@@ -45,6 +40,11 @@ const actionSchema = z.discriminatedUnion("action", [
     currentPeriodEndsInDays: z.number().int().min(-3650).max(3650).optional(),
     nextBilledInDays: z.number().int().min(-3650).max(3650).optional(),
     subscriptionId: z.string().trim().min(2).max(120).optional(),
+  }),
+  z.object({
+    action: z.literal("setManualAccess"),
+    tier: z.union([z.literal("pro_plus"), z.null()]).default("pro_plus"),
+    endsInDays: z.number().int().min(-3650).max(3650).nullable().optional(),
   }),
 ]);
 
@@ -58,7 +58,7 @@ type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
   plan?: "free" | "pro" | "pro_plus";
-  accessSource?: "none" | "legacy_trial" | "subscription" | "subscription_trial";
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial" | "user_trial";
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -161,10 +161,14 @@ export async function POST(request: Request) {
       return NextResponse.json(await getState(convex, testSecret));
     }
 
-    if (parsed.action === "setLegacyTrial") {
-      await convex.mutation(api.billing.setMyLegacyTrialEndsAtForTesting, {
+    if (parsed.action === "setManualAccess") {
+      await convex.mutation(api.billing.setMyManualAccessForTesting, {
         testSecret,
-        trialEndsAt: Date.now() + parsed.trialEndsInDays * DAY_MS,
+        tier: parsed.tier,
+        endsAt:
+          parsed.tier && parsed.endsInDays !== null
+            ? Date.now() + (parsed.endsInDays ?? 30) * DAY_MS
+            : null,
       });
       return NextResponse.json(await getState(convex, testSecret));
     }
@@ -190,11 +194,13 @@ export async function POST(request: Request) {
         ? occurredAt
         : offsetIso(parsed.subscriptionUpdatedAtOffsetDays);
     const checkoutSessionId = `pcs_test_${randomUUID()}`;
-    await convex.mutation(api.billing.createCheckoutSession, {
-      sessionId: checkoutSessionId,
-      plan: parsed.plan,
-      priceId,
-    });
+    if (!preState.billing?.paddleSubscriptionId) {
+      await convex.mutation(api.billing.createCheckoutSession, {
+        sessionId: checkoutSessionId,
+        plan: parsed.plan,
+        priceId,
+      });
+    }
 
     const webhookArgs = buildPaddleWebhookMutationArgs(
       {

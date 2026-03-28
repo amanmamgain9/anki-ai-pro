@@ -1,10 +1,7 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel, Doc } from "./_generated/dataModel";
-import {
-  pickEffectiveSubscription,
-  resolveBillingAccess,
-  subscriptionRequiresBillingManagement,
-} from "./subscriptionAccess";
+import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { pickEffectiveSubscription, subscriptionRequiresBillingManagement } from "./subscriptionAccess";
 
 type BillingIdentityDb = GenericDatabaseReader<DataModel>;
 type BillingUser = Doc<"users">;
@@ -17,16 +14,22 @@ async function scoreBillingUser(db: BillingIdentityDb, user: BillingUser) {
     .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
     .collect();
   const now = Date.now();
-  const access = resolveBillingAccess(
+  const access = await resolvePaidPlanAccess(
+    db,
     pickEffectiveSubscription(subscriptions, now),
-    user.trialEndsAt,
+    user,
     now,
   );
   return {
     user,
     entitled: access.isActive,
     recoverable: subscriptions.some((row) =>
-      subscriptionRequiresBillingManagement(row.status, row.currentPeriodEndsAt, now),
+      subscriptionRequiresBillingManagement(
+        row.status,
+        row.currentPeriodEndsAt,
+        row.nextBilledAt,
+        now,
+      ),
     ),
     subscriptionCount: subscriptions.length,
   };
@@ -102,6 +105,20 @@ export async function findAuthIdentityByProviderSubject(
     .first()) as AuthIdentity | null;
 }
 
+async function listAuthIdentitiesByProviderAndSubject(
+  db: BillingIdentityDb,
+  provider: string | undefined,
+  providerSubject: string | undefined,
+) {
+  if (!provider || !providerSubject) return [];
+  return (await db
+    .query("authIdentities")
+    .withIndex("by_provider_subject", (q) =>
+      q.eq("provider", provider).eq("providerSubject", providerSubject),
+    )
+    .collect()) as AuthIdentity[];
+}
+
 export async function listAuthIdentitiesByProviderSubject(
   db: BillingIdentityDb,
   providerSubject: string | undefined,
@@ -131,10 +148,25 @@ export async function findCanonicalUserByExternalId(
 ) {
   if (!externalId) return null;
   const exactCandidates = await listUsersByExternalId(db, externalId);
-  const exactMatch = await pickCanonicalBillingUser(db, exactCandidates);
+  return await pickCanonicalBillingUser(db, exactCandidates);
+}
+
+export async function findCanonicalUserByIdentity(
+  db: BillingIdentityDb,
+  args: {
+    externalId?: string;
+    provider?: string;
+    providerSubject?: string;
+  },
+) {
+  const exactMatch = await findCanonicalUserByExternalId(db, args.externalId);
   if (exactMatch) return exactMatch;
 
-  const authIdentities = await listAuthIdentitiesByProviderSubject(db, externalId);
+  const authIdentities = await listAuthIdentitiesByProviderAndSubject(
+    db,
+    args.provider,
+    args.providerSubject,
+  );
   if (authIdentities.length === 0) return null;
 
   const candidates: BillingUser[] = [];
