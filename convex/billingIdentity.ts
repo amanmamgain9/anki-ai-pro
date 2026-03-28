@@ -1,6 +1,6 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel, Doc } from "./_generated/dataModel";
-import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAccess";
 import { pickEffectiveSubscription, subscriptionRequiresBillingManagement } from "./subscriptionAccess";
 
 type BillingIdentityDb = GenericDatabaseReader<DataModel>;
@@ -9,10 +9,19 @@ type BillingSubscription = Doc<"subscriptions">;
 type AuthIdentity = Doc<"authIdentities">;
 
 async function scoreBillingUser(db: BillingIdentityDb, user: BillingUser) {
-  const subscriptions = await db
+  const allSubscriptions = await db
     .query("subscriptions")
     .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
     .collect();
+  const recognizedEntries = await Promise.all(
+    allSubscriptions.map(async (row) => ({
+      row,
+      recognized: await isRecognizedSubscription(db, row),
+    })),
+  );
+  const subscriptions = recognizedEntries
+    .filter((entry) => entry.recognized)
+    .map((entry) => entry.row);
   const now = Date.now();
   const access = await resolvePaidPlanAccess(
     db,

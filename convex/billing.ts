@@ -21,7 +21,7 @@ import {
   listUsersByPaddleCustomerId,
 } from "./billingIdentity";
 import { ensureCanonicalAuthUser } from "./authUsers";
-import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAccess";
 import { pickEffectiveSubscription, subscriptionRequiresBillingManagement } from "./subscriptionAccess";
 
 type AuthCtx = {
@@ -52,6 +52,12 @@ type PaddleWebhookArgs = {
   canceledAt?: string | null;
   rawBody?: string;
 };
+
+type BillingEventProcessingStatus =
+  | "processed"
+  | "ignored_missing_user"
+  | "ignored_stale_event"
+  | "ignored_unknown_plan";
 
 function getIdentityImageUrl(identity: UserIdentity): string | undefined {
   if (typeof identity.pictureUrl === "string" && identity.pictureUrl.length > 0) {
@@ -613,11 +619,20 @@ export const getMyBilling = queryGeneric({
       };
     }
 
-    const subscriptions = await ctx.db
+    const allSubscriptions = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
+    const recognizedEntries = await Promise.all(
+      allSubscriptions.map(async (row) => ({
+        row,
+        recognized: await isRecognizedSubscription(ctx.db, row),
+      })),
+    );
+    const subscriptions = recognizedEntries
+      .filter((entry) => entry.recognized)
+      .map((entry) => entry.row);
     const now = Date.now();
     const subscription = pickEffectiveSubscription(subscriptions, now);
     const effectivePaddleCustomerId = pickCanonicalPaddleCustomerId(
@@ -843,11 +858,20 @@ export const createCheckoutSession = mutationGeneric({
     if (priceId !== expectedPriceId) {
       throw new ConvexError("Checkout price does not match the configured plan");
     }
-    const subscriptions = await ctx.db
+    const allSubscriptions = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
+    const recognizedEntries = await Promise.all(
+      allSubscriptions.map(async (row) => ({
+        row,
+        recognized: await isRecognizedSubscription(ctx.db, row),
+      })),
+    );
+    const subscriptions = recognizedEntries
+      .filter((entry) => entry.recognized)
+      .map((entry) => entry.row);
     const now = Date.now();
     const currentAccess = await resolvePaidPlanAccess(
       ctx.db,
@@ -1006,7 +1030,7 @@ async function applyPaddleWebhookEvent(
 
   const user = webhookUserResolution.user;
 
-  let processingStatus: "processed" | "ignored_missing_user" | "ignored_stale_event" = user
+  let processingStatus: BillingEventProcessingStatus = user
     ? "processed"
     : "ignored_missing_user";
 
@@ -1024,6 +1048,26 @@ async function applyPaddleWebhookEvent(
     ) {
       processingStatus = "ignored_stale_event";
     }
+  }
+
+  const resolvedPriceId =
+    processingStatus === "processed" && args.subscriptionId
+      ? await resolveWebhookBillingPriceId(ctx.db, args)
+      : undefined;
+  const existingTier = isStoredBillingTier(existingSubscription?.tier)
+    ? existingSubscription.tier
+    : undefined;
+  const resolvedTier =
+    resolvedPriceId && processingStatus === "processed"
+      ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
+      : existingTier;
+  const managesRecognizedPlan = Boolean(resolvedTier || existingTier);
+  if (
+    processingStatus === "processed" &&
+    args.subscriptionId &&
+    !managesRecognizedPlan
+  ) {
+    processingStatus = "ignored_unknown_plan";
   }
 
   if (processingStatus === "processed" && user) {
@@ -1047,7 +1091,6 @@ async function applyPaddleWebhookEvent(
   }
 
   if (processingStatus === "processed" && user && args.subscriptionId) {
-    const resolvedPriceId = await resolveWebhookBillingPriceId(ctx.db, args);
     const normalizedStatus = normalizeSubscriptionStatus(
       args.eventType,
       args.subscriptionStatus,
@@ -1075,11 +1118,6 @@ async function applyPaddleWebhookEvent(
       lastEventType: args.eventType,
       lastEventOccurredAt: incomingEventTime,
     };
-    const resolvedTier = resolvedPriceId
-      ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
-      : isStoredBillingTier(existingSubscription?.tier)
-        ? existingSubscription.tier
-        : undefined;
     if (resolvedTier) {
       patch.tier = resolvedTier;
       patch.tierSourcePriceId = resolvedPriceId;

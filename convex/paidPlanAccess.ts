@@ -58,6 +58,16 @@ export async function resolveRecognizedSubscriptionTier(
   return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "inactive";
 }
 
+export async function isRecognizedSubscription(
+  db: BillingReadDb,
+  subscription:
+    | { tier?: string; tierSourcePriceId?: string; priceId?: string }
+    | null
+    | undefined,
+) {
+  return (await resolveRecognizedSubscriptionTier(db, subscription)) !== "inactive";
+}
+
 export async function resolvePaidPlanAccess(
   db: BillingReadDb,
   subscription:

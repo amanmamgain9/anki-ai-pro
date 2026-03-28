@@ -110,7 +110,6 @@ export default function SettingsView() {
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
   const billingSuccess = searchParams.get("billing") === "success";
-  const upgradeRequired = searchParams.get("upgrade") === "required";
   const successUrl = getSettingsBillingSuccessUrl();
 
   useEffect(() => {
@@ -150,12 +149,6 @@ export default function SettingsView() {
       setPaddleReady(true);
     }
   }, [successUrl]);
-
-  useEffect(() => {
-    if (!upgradeRequired) return;
-    if (primaryActionUsesPortal || primaryActionNeedsSupport) return;
-    setShowUpgradeModal(true);
-  }, [primaryActionNeedsSupport, primaryActionUsesPortal, upgradeRequired]);
 
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
@@ -360,15 +353,13 @@ export default function SettingsView() {
                     : t("app.settings.continueToCheckoutNoTrial")}
                 </p>
               </div>
-              {!upgradeRequired ? (
-                <button
-                  type="button"
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
-                >
-                  {t("app.settings.close")}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(false)}
+                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+              >
+                {t("app.settings.close")}
+              </button>
             </div>
 
             <div className="mt-4">
