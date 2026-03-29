@@ -11,6 +11,7 @@ type BillingState = {
   paddleCustomerId: string | null;
   paddleSubscriptionId: string | null;
   paddleSubscriptionIds?: string[] | null;
+  merchantReviewRequired?: boolean;
 };
 
 export const runtime = "nodejs";
@@ -41,6 +42,12 @@ export async function POST() {
 
     await convex.mutation(api.billing.syncCurrentUser, {});
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
+    if (billing.merchantReviewRequired) {
+      return NextResponse.json(
+        { error: "Billing needs manual review. Contact support from the app instead of the Paddle portal." },
+        { status: 409 },
+      );
+    }
     if (!billing.paddleCustomerId) {
       return NextResponse.json(
         { error: "No Paddle customer found for this account" },

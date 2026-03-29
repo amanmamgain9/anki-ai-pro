@@ -23,7 +23,11 @@ import {
 } from "./billingIdentity";
 import { ensureCanonicalAuthUser } from "./authUsers";
 import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAccess";
-import { pickEffectiveSubscription, subscriptionRequiresBillingManagement } from "./subscriptionAccess";
+import {
+  pickEffectiveSubscription,
+  subscriptionCanSelfServeManage,
+  subscriptionNeedsMerchantReview,
+} from "./subscriptionAccess";
 
 type AuthCtx = {
   auth: {
@@ -319,12 +323,148 @@ function pickCanonicalPaddleCustomerId(
   return null;
 }
 
+async function listRecognizedSubscriptionsForUser(
+  db: BillingReadDb,
+  userId: Id<"users">,
+) {
+  const allSubscriptions = await db
+    .query("subscriptions")
+    .withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+    .order("desc")
+    .collect();
+  const recognizedEntries = await Promise.all(
+    allSubscriptions.map(async (row) => ({
+      row,
+      recognized: await isRecognizedSubscription(db, row),
+    })),
+  );
+  return recognizedEntries
+    .filter((entry) => entry.recognized)
+    .map((entry) => entry.row);
+}
+
+function listMerchantReviewIssueCodes(
+  subscriptions: Array<
+    Pick<
+      Doc<"subscriptions">,
+      | "status"
+      | "currentPeriodEndsAt"
+      | "nextBilledAt"
+      | "paddleCustomerId"
+      | "paddleSubscriptionId"
+    >
+  >,
+  now: number,
+) {
+  const issueCodes = new Set<string>();
+  for (const row of subscriptions) {
+    if (!subscriptionNeedsMerchantReview(row, now)) continue;
+    const normalizedStatus = row.status?.trim().toLowerCase() ?? null;
+    const storedPeriodEndsAt = row.currentPeriodEndsAt ?? row.nextBilledAt ?? null;
+    if (
+      (normalizedStatus === "active" || normalizedStatus === "trialing") &&
+      typeof storedPeriodEndsAt !== "number"
+    ) {
+      issueCodes.add("missing_period_dates");
+    }
+    if (
+      typeof row.paddleCustomerId !== "string" ||
+      row.paddleCustomerId.length === 0 ||
+      typeof row.paddleSubscriptionId !== "string" ||
+      row.paddleSubscriptionId.length === 0
+    ) {
+      issueCodes.add("missing_portal_identifiers");
+    }
+  }
+  if (issueCodes.size === 0 && subscriptions.length > 0) {
+    issueCodes.add("manual_billing_review");
+  }
+  return [...issueCodes];
+}
+
+async function reconcileBillingRecoveryCases(
+  db: BillingWriteDb,
+  user: Doc<"users">,
+  subscriptions: Doc<"subscriptions">[],
+  now: number,
+) {
+  const merchantReviewSubscriptions = subscriptions.filter((row) =>
+    subscriptionNeedsMerchantReview(row, now),
+  );
+  const openCases = await db
+    .query("billingRecoveryCases")
+    .withIndex("by_user_status", (q) => q.eq("userId", user._id))
+    .collect();
+  const activeOpenCases = openCases.filter((row) => row.status === "open");
+
+  if (merchantReviewSubscriptions.length === 0) {
+    for (const row of activeOpenCases) {
+      await db.patch(row._id, {
+        status: "resolved",
+        resolvedAt: now,
+        updatedAt: now,
+      });
+    }
+    return null;
+  }
+
+  const issueCodes = listMerchantReviewIssueCodes(merchantReviewSubscriptions, now);
+  const paddleCustomerId =
+    pickCanonicalPaddleCustomerId(
+      user.paddleCustomerId,
+      pickEffectiveSubscription(merchantReviewSubscriptions, now),
+      merchantReviewSubscriptions,
+    ) ?? undefined;
+  const paddleSubscriptionIds = Array.from(
+    new Set(
+      merchantReviewSubscriptions
+        .map((row) => row.paddleSubscriptionId)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+  const [primaryCase, ...duplicateCases] = [...activeOpenCases].sort(
+    (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+  );
+
+  if (primaryCase) {
+    await db.patch(primaryCase._id, {
+      externalId: user.externalId,
+      issueCodes,
+      paddleCustomerId,
+      paddleSubscriptionIds,
+      updatedAt: now,
+      lastDetectedAt: now,
+      resolvedAt: undefined,
+    });
+    for (const duplicate of duplicateCases) {
+      await db.patch(duplicate._id, {
+        status: "resolved",
+        resolvedAt: now,
+        updatedAt: now,
+      });
+    }
+    return primaryCase._id;
+  }
+
+  return await db.insert("billingRecoveryCases", {
+    userId: user._id,
+    externalId: user.externalId,
+    status: "open",
+    issueCodes,
+    paddleCustomerId,
+    paddleSubscriptionIds,
+    createdAt: now,
+    updatedAt: now,
+    lastDetectedAt: now,
+  });
+}
+
 export const syncCurrentUser = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
     const now = Date.now();
 
-    const user = await ensureCanonicalAuthUser(ctx.db, {
+    const initialUser = await ensureCanonicalAuthUser(ctx.db, {
       provider: getIdentityClaim(identity, "provider"),
       providerSubject: getIdentityClaim(identity, "providerSubject"),
       externalIdHint: identity.subject,
@@ -334,9 +474,12 @@ export const syncCurrentUser = mutationGeneric({
       now,
     });
     await replayIgnoredBillingEvents(ctx, {
-      externalId: user.externalId,
-      customerId: user.paddleCustomerId,
+      externalId: initialUser.externalId,
+      customerId: initialUser.paddleCustomerId,
     });
+    const user = (await ctx.db.get(initialUser._id)) ?? initialUser;
+    const subscriptions = await listRecognizedSubscriptionsForUser(ctx.db, user._id);
+    await reconcileBillingRecoveryCases(ctx.db, user, subscriptions, now);
     return {
       userId: user._id,
       externalId: user.externalId,
@@ -483,6 +626,17 @@ export const resetMyBillingForTesting = mutationGeneric({
       updatedAt: Date.now(),
       lastSeenAt: Date.now(),
     });
+    const recoveryCases = await ctx.db
+      .query("billingRecoveryCases")
+      .withIndex("by_user_status", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const row of recoveryCases.filter((entry) => entry.status === "open")) {
+      await ctx.db.patch(row._id, {
+        status: "resolved",
+        resolvedAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
 
     return {
       userId: user._id,
@@ -577,10 +731,13 @@ export const getMyBilling = queryGeneric({
         trialEndsAt: null as number | null,
         accessSource: "none" as const,
         subscriptionEntitled: false,
-        premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
-        manualAccessTier: null as string | null,
-        manualAccessEndsAt: null as number | null,
-        manualAccessReason: null as string | null,
+      premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
+      merchantReviewRequired: false,
+      merchantReviewCaseId: null as Id<"billingRecoveryCases"> | null,
+      merchantReviewIssueCodes: [] as string[],
+      manualAccessTier: null as string | null,
+      manualAccessEndsAt: null as number | null,
+      manualAccessReason: null as string | null,
         proPreviewQuotaChars: null as number | null,
         proPreviewUsedChars: null as number | null,
         proPreviewRemainingChars: null as number | null,
@@ -621,20 +778,7 @@ export const getMyBilling = queryGeneric({
       };
     }
 
-    const allSubscriptions = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
-      .order("desc")
-      .collect();
-    const recognizedEntries = await Promise.all(
-      allSubscriptions.map(async (row) => ({
-        row,
-        recognized: await isRecognizedSubscription(ctx.db, row),
-      })),
-    );
-    const subscriptions = recognizedEntries
-      .filter((entry) => entry.recognized)
-      .map((entry) => entry.row);
+    const subscriptions = await listRecognizedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
     const subscription = pickEffectiveSubscription(subscriptions, now);
     const effectivePaddleCustomerId = pickCanonicalPaddleCustomerId(
@@ -642,23 +786,29 @@ export const getMyBilling = queryGeneric({
       subscription,
       subscriptions,
     );
-    const recoverableSubscriptions = subscriptions.filter((row) =>
-      subscriptionRequiresBillingManagement(
-        row.status,
-        row.currentPeriodEndsAt,
-        row.nextBilledAt,
-        now,
-      ),
+    const portalManageableSubscriptions = subscriptions.filter((row) =>
+      subscriptionCanSelfServeManage(row, now),
     );
+    const merchantReviewSubscriptions = subscriptions.filter((row) =>
+      subscriptionNeedsMerchantReview(row, now),
+    );
+    const openRecoveryCase = merchantReviewSubscriptions.length
+      ? (
+          await ctx.db
+            .query("billingRecoveryCases")
+            .withIndex("by_user_status", (q) => q.eq("userId", user._id))
+            .collect()
+        ).find((row) => row.status === "open") ?? null
+      : null;
     const recoverableCustomerIds = Array.from(
       new Set(
-        recoverableSubscriptions
+        portalManageableSubscriptions
           .map((row) => row.paddleCustomerId)
           .filter((value): value is string => typeof value === "string" && value.length > 0),
       ),
     );
     const billingManagementCustomerId =
-      recoverableSubscriptions.length === 0
+      portalManageableSubscriptions.length === 0
         ? effectivePaddleCustomerId
         : recoverableCustomerIds.length === 1
           ? recoverableCustomerIds[0]
@@ -671,14 +821,17 @@ export const getMyBilling = queryGeneric({
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
             if (!billingManagementCustomerId) return false;
-            return !row.paddleCustomerId || row.paddleCustomerId === billingManagementCustomerId;
+            return (
+              subscriptionCanSelfServeManage(row, now) &&
+              (!row.paddleCustomerId || row.paddleCustomerId === billingManagementCustomerId)
+            );
           })
           .map((row) => row.paddleSubscriptionId),
       ),
     );
     const blockingSubscriptionIds = Array.from(
       new Set(
-        recoverableSubscriptions
+        [...portalManageableSubscriptions, ...merchantReviewSubscriptions]
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
             return true;
@@ -737,6 +890,12 @@ export const getMyBilling = queryGeneric({
       accessSource: paidAccess.accessSource,
       subscriptionEntitled: paidAccess.subscriptionEntitled,
       premiumVoiceSource,
+      merchantReviewRequired: merchantReviewSubscriptions.length > 0,
+      merchantReviewCaseId: openRecoveryCase?._id ?? null,
+      merchantReviewIssueCodes:
+        merchantReviewSubscriptions.length > 0
+          ? listMerchantReviewIssueCodes(merchantReviewSubscriptions, now)
+          : [],
       manualAccessTier,
       manualAccessEndsAt,
       manualAccessReason,
@@ -864,20 +1023,7 @@ export const createCheckoutSession = mutationGeneric({
     if (priceId !== expectedPriceId) {
       throw new ConvexError("Checkout price does not match the configured plan");
     }
-    const allSubscriptions = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
-      .order("desc")
-      .collect();
-    const recognizedEntries = await Promise.all(
-      allSubscriptions.map(async (row) => ({
-        row,
-        recognized: await isRecognizedSubscription(ctx.db, row),
-      })),
-    );
-    const subscriptions = recognizedEntries
-      .filter((entry) => entry.recognized)
-      .map((entry) => entry.row);
+    const subscriptions = await listRecognizedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
     const currentAccess = await resolvePaidPlanAccess(
       ctx.db,
@@ -888,16 +1034,18 @@ export const createCheckoutSession = mutationGeneric({
     if (currentAccess.isActive) {
       throw new ConvexError("Active access already exists");
     }
-    const recoverableSubscriptions = subscriptions.filter((row) =>
-      subscriptionRequiresBillingManagement(
-        row.status,
-        row.currentPeriodEndsAt,
-        row.nextBilledAt,
-        now,
-      ),
+    const portalManageableSubscriptions = subscriptions.filter((row) =>
+      subscriptionCanSelfServeManage(row, now),
     );
-    if (recoverableSubscriptions.length > 0) {
+    if (portalManageableSubscriptions.length > 0) {
       throw new ConvexError("Subscription requires billing management");
+    }
+    const merchantReviewSubscriptions = subscriptions.filter((row) =>
+      subscriptionNeedsMerchantReview(row, now),
+    );
+    if (merchantReviewSubscriptions.length > 0) {
+      await reconcileBillingRecoveryCases(ctx.db, user, subscriptions, now);
+      throw new ConvexError("Subscription requires merchant review");
     }
     const openSessionCutoff = now - OPEN_CHECKOUT_SESSION_WINDOW_MS;
     const existingOpenSession = (

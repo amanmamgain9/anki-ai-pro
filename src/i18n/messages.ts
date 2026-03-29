@@ -904,6 +904,8 @@ export const dictionaries = {
           "Billing starts through Paddle checkout as soon as your payment details are confirmed.",
         portalNote:
           "Use Manage billing to update payment details or recover your subscription. New checkout is blocked while an existing subscription still needs billing management.",
+        merchantReviewNote:
+          "We flagged this billing issue for manual review in our system. Contact support from this page so we can reconnect the subscription safely before any new checkout starts.",
         supportNote:
           "If billing management is unavailable for this account, contact support so we can reconnect the subscription to the right Paddle customer.",
       },
@@ -1792,6 +1794,8 @@ export const dictionaries = {
           "通过 Paddle 结账确认付款方式后，系统会立即开始计费。",
         portalNote:
           "请使用“管理账单”来更新付款方式或恢复订阅。在仍有待处理订阅时，系统会阻止重新创建新的结账。",
+        merchantReviewNote:
+          "我们已经在系统中标记了这个账单问题，需要人工复核。请从此页面联系支持，我们会先安全地重新关联订阅，再继续新的结账。",
         supportNote:
           "如果当前账户无法打开账单管理，请联系支持，我们会协助把订阅重新关联到正确的 Paddle 客户。",
       },

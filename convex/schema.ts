@@ -84,6 +84,21 @@ export default defineSchema({
     .index("by_status_externalId", ["status", "externalId"])
     .index("by_status_customerId", ["status", "paddleCustomerId"]),
 
+  billingRecoveryCases: defineTable({
+    userId: v.id("users"),
+    externalId: v.string(),
+    status: v.string(),
+    issueCodes: v.array(v.string()),
+    paddleCustomerId: v.optional(v.string()),
+    paddleSubscriptionIds: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastDetectedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_user_status", ["userId", "status"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
+
   paddleCheckoutSessions: defineTable({
     sessionId: v.string(),
     userId: v.id("users"),

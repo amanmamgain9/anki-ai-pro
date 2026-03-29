@@ -25,6 +25,8 @@ type BillingState = {
   trialActive?: boolean;
   trialEndsAt?: number | null;
   manualAccessTier?: string | null;
+  merchantReviewRequired?: boolean;
+  merchantReviewCaseId?: string | null;
   proPreviewQuotaChars?: number | null;
   proPreviewUsedChars?: number | null;
   proPreviewRemainingChars?: number | null;
@@ -98,13 +100,16 @@ export default function SettingsView() {
   const hasPortalSubscriptions = Boolean(
     (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
   );
+  const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const hasSelfServeSubscription = Boolean(
-    !hasManualAccess && billing?.paddleCustomerId && hasPortalSubscriptions,
+    !hasManualAccess && !merchantReviewRequired && billing?.paddleCustomerId && hasPortalSubscriptions,
   );
   const requiresBillingManagement = hasBlockingSubscriptions;
   const primaryActionUsesPortal = hasSelfServeSubscription && (Boolean(billing?.isActive) || requiresBillingManagement);
   const primaryActionNeedsSupport = Boolean(
-    hasManualAccess || ((Boolean(billing?.isActive) || requiresBillingManagement) && !primaryActionUsesPortal),
+    hasManualAccess ||
+      merchantReviewRequired ||
+      ((Boolean(billing?.isActive) || requiresBillingManagement) && !primaryActionUsesPortal),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -277,6 +282,10 @@ export default function SettingsView() {
         {hasManualAccess ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.settings.manualAccessNote")}
+          </p>
+        ) : merchantReviewRequired ? (
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            {t("app.billingStart.merchantReviewNote")}
           </p>
         ) : primaryActionNeedsSupport ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">

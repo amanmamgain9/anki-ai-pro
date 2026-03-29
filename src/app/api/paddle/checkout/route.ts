@@ -21,6 +21,8 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   blockingSubscriptionIds?: string[] | null;
+  merchantReviewRequired?: boolean;
+  merchantReviewCaseId?: string | null;
 };
 
 function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
@@ -28,6 +30,14 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
     return {
       code: "active_subscription_exists",
       error: "Active access already exists for this account. Use Manage billing if you need to change it.",
+    };
+  }
+
+  if (billing?.merchantReviewRequired) {
+    return {
+      code: "subscription_requires_support",
+      error:
+        "This account has a billing issue that needs manual review before checkout can continue. Open support from the app so we can reconnect it safely.",
     };
   }
 
@@ -93,6 +103,7 @@ export async function POST(request: Request) {
           code: checkoutBlock.code,
           paddleSubscriptionId: billing.paddleSubscriptionId ?? null,
           blockingSubscriptionIds: billing.blockingSubscriptionIds ?? [],
+          merchantReviewCaseId: billing.merchantReviewCaseId ?? null,
           subscriptionStatus: billing.subscriptionStatus ?? null,
         },
         { status: 409 },
@@ -162,6 +173,16 @@ export async function POST(request: Request) {
             error:
               "An existing subscription already exists for this account. Use Manage billing to update or recover it.",
             code: "subscription_requires_portal",
+          },
+          { status: 409 },
+        );
+      }
+      if (message.includes("Subscription requires merchant review")) {
+        return NextResponse.json(
+          {
+            error:
+              "This account has a billing issue that needs manual review before checkout can continue. Open support from the app so we can reconnect it safely.",
+            code: "subscription_requires_support",
           },
           { status: 409 },
         );

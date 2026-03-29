@@ -24,6 +24,8 @@ type BillingState = {
   blockingSubscriptionIds?: string[] | null;
   trialEndsAt?: number | null;
   manualAccessTier?: string | null;
+  merchantReviewRequired?: boolean;
+  merchantReviewCaseId?: string | null;
 };
 type PlanAvailability = Record<CheckoutPlan, boolean>;
 type CheckoutPayload = {
@@ -89,13 +91,15 @@ export default function BillingStartView() {
   const hasPortalSubscriptions = Boolean(
     (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
   );
+  const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const requiresBillingManagement =
     !hasManualAccess &&
+    !merchantReviewRequired &&
     hasBlockingSubscriptions &&
     Boolean(billing?.paddleCustomerId) &&
     hasPortalSubscriptions;
   const requiresSupport =
-    hasManualAccess || (hasBlockingSubscriptions && !requiresBillingManagement);
+    hasManualAccess || merchantReviewRequired || (hasBlockingSubscriptions && !requiresBillingManagement);
   const hasProAccess = Boolean(billing?.isActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -305,6 +309,10 @@ export default function BillingStartView() {
         {!hasBlockingSubscriptions ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
             {billingNote}
+          </p>
+        ) : merchantReviewRequired ? (
+          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {t("app.billingStart.merchantReviewNote")}
           </p>
         ) : requiresSupport ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">

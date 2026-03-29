@@ -103,6 +103,68 @@ export function subscriptionRequiresBillingManagement(
   return false;
 }
 
+export function subscriptionCanSelfServeManage<
+  T extends {
+    status?: string | null;
+    currentPeriodEndsAt?: number | null;
+    nextBilledAt?: number | null;
+    paddleCustomerId?: string | null;
+    paddleSubscriptionId?: string | null;
+  },
+>(row: T | null | undefined, now = Date.now()) {
+  if (!row) return false;
+  if (
+    !subscriptionRequiresBillingManagement(
+      row.status,
+      row.currentPeriodEndsAt,
+      row.nextBilledAt,
+      now,
+    )
+  ) {
+    return false;
+  }
+  if (
+    typeof row.paddleCustomerId !== "string" ||
+    row.paddleCustomerId.length === 0 ||
+    typeof row.paddleSubscriptionId !== "string" ||
+    row.paddleSubscriptionId.length === 0
+  ) {
+    return false;
+  }
+  const normalized = normalizeStatus(row.status);
+  if (normalized === "active" || normalized === "trialing") {
+    const storedPeriodEndsAt = getStoredPeriodEndsAt(
+      row.currentPeriodEndsAt,
+      row.nextBilledAt,
+    );
+    return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
+  }
+  if (normalized === "canceled") {
+    return typeof row.currentPeriodEndsAt === "number" && now < row.currentPeriodEndsAt;
+  }
+  return true;
+}
+
+export function subscriptionNeedsMerchantReview<
+  T extends {
+    status?: string | null;
+    currentPeriodEndsAt?: number | null;
+    nextBilledAt?: number | null;
+    paddleCustomerId?: string | null;
+    paddleSubscriptionId?: string | null;
+  },
+>(row: T | null | undefined, now = Date.now()) {
+  if (!row) return false;
+  return (
+    subscriptionRequiresBillingManagement(
+      row.status,
+      row.currentPeriodEndsAt,
+      row.nextBilledAt,
+      now,
+    ) && !subscriptionCanSelfServeManage(row, now)
+  );
+}
+
 export function pickEffectiveSubscription<
   T extends {
     status?: string | null;
