@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { mutationGeneric, type GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import { findCanonicalUserByIdentity } from "./billingIdentity";
-import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAccess";
 import { pickEffectiveSubscription } from "./subscriptionAccess";
 
 type AuthCtx = {
@@ -71,7 +71,17 @@ export const consumePremiumTtsPreview = mutationGeneric({
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
-    const subscription = pickEffectiveSubscription(subscriptions, now);
+    const recognizedSubscriptions = (
+      await Promise.all(
+        subscriptions.map(async (row) => ({
+          row,
+          recognized: await isRecognizedSubscription(ctx.db, row),
+        })),
+      )
+    )
+      .filter(({ recognized }) => recognized)
+      .map(({ row }) => row);
+    const subscription = pickEffectiveSubscription(recognizedSubscriptions, now);
     const paidAccess = await resolvePaidPlanAccess(
       ctx.db,
       subscription,

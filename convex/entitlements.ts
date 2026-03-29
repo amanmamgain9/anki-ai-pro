@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConvexError } from "convex/values";
 import { findCanonicalUserByIdentity } from "./billingIdentity";
-import { resolvePaidPlanAccess } from "./paidPlanAccess";
+import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAccess";
 import { pickEffectiveSubscription } from "./subscriptionAccess";
 
 type EntitlementIdentity = {
@@ -39,9 +39,19 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
     .withIndex("by_userId_updatedAt", (q: any) => q.eq("userId", user._id))
     .order("desc")
     .collect();
+  const recognizedSubscriptions = (
+    await Promise.all(
+      subscriptions.map(async (row: any) => ({
+        row,
+        recognized: await isRecognizedSubscription(ctx.db, row),
+      })),
+    )
+  )
+    .filter(({ recognized }) => recognized)
+    .map(({ row }) => row);
   const access = await resolvePaidPlanAccess(
     ctx.db,
-    pickEffectiveSubscription(subscriptions, Date.now()),
+    pickEffectiveSubscription(recognizedSubscriptions, Date.now()),
     user,
     Date.now(),
   );

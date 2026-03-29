@@ -58,7 +58,8 @@ type BillingEventProcessingStatus =
   | "processed"
   | "ignored_missing_user"
   | "ignored_stale_event"
-  | "ignored_unknown_plan";
+  | "ignored_unknown_plan"
+  | "ignored_conflicting_owner";
 
 function getIdentityImageUrl(identity: UserIdentity): string | undefined {
   if (typeof identity.pictureUrl === "string" && identity.pictureUrl.length > 0) {
@@ -699,6 +700,10 @@ export const getMyBilling = queryGeneric({
     const tier = paidAccess.tier;
     const hasPremiumVoice = paidAccess.hasPremiumVoice;
     const premiumVoiceSource = paidAccess.premiumVoiceSource;
+    const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
+    const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
+    const manualAccessEndsAt = hasEffectiveManualAccess ? user.manualAccessEndsAt ?? null : null;
+    const manualAccessReason = hasEffectiveManualAccess ? user.manualAccessReason ?? null : null;
 
     let proPreviewQuotaChars: number | null = null;
     let proPreviewUsedChars: number | null = null;
@@ -732,9 +737,9 @@ export const getMyBilling = queryGeneric({
       accessSource: paidAccess.accessSource,
       subscriptionEntitled: paidAccess.subscriptionEntitled,
       premiumVoiceSource,
-      manualAccessTier: user.manualAccessTier ?? null,
-      manualAccessEndsAt: user.manualAccessEndsAt ?? null,
-      manualAccessReason: user.manualAccessReason ?? null,
+      manualAccessTier,
+      manualAccessEndsAt,
+      manualAccessReason,
       proPreviewQuotaChars,
       proPreviewUsedChars,
       proPreviewRemainingChars,
@@ -948,23 +953,27 @@ function buildWebhookArgsFromBillingEvent(event: Doc<"billingEvents">): PaddleWe
   };
 }
 
-async function resolveWebhookBillingPriceId(
-  db: BillingReadDb,
-  args: Pick<PaddleWebhookArgs, "priceId" | "priceIds">,
-) {
-  const candidates = Array.from(
+function listWebhookPriceCandidates(args: Pick<PaddleWebhookArgs, "priceId" | "priceIds">) {
+  return Array.from(
     new Set(
       [args.priceId, ...(args.priceIds ?? [])].filter(
         (value): value is string => typeof value === "string" && value.length > 0,
       ),
     ),
   );
+}
+
+async function resolveWebhookBillingPriceId(
+  db: BillingReadDb,
+  args: Pick<PaddleWebhookArgs, "priceId" | "priceIds">,
+) {
+  const candidates = listWebhookPriceCandidates(args);
   for (const candidate of candidates) {
     if (await resolveBillingTierByPriceId(db, candidate)) {
       return candidate;
     }
   }
-  return candidates[0];
+  return undefined;
 }
 
 async function applyPaddleWebhookEvent(
@@ -1008,28 +1017,35 @@ async function applyPaddleWebhookEvent(
   const customerIdUser = args.customerId
     ? await findCanonicalUserByPaddleCustomerId(ctx.db, args.customerId)
     : null;
-  const webhookUserResolution = pickWebhookUserResolution([
-    {
-      user: checkoutSessionUser,
-      source: "checkout_session",
-      priority: 4,
-    },
-    {
-      user: externalIdUser,
-      source: "external_id",
-      priority: 3,
-    },
-    {
-      user: customerIdUser,
-      source: "customer_id",
-      priority: 2,
-    },
-    {
-      user: existingSubscriptionOwner,
-      source: "existing_subscription",
-      priority: 1,
-    },
-  ]);
+  const conflictingExistingOwnerEvidence = Boolean(
+    existingSubscriptionOwner &&
+      [checkoutSessionUser, externalIdUser, customerIdUser].some(
+        (candidate) =>
+          candidate && candidate._id !== existingSubscriptionOwner._id,
+      ),
+  );
+  const webhookUserResolution = existingSubscriptionOwner
+    ? {
+        user: existingSubscriptionOwner,
+        source: "existing_subscription" as const,
+      }
+    : pickWebhookUserResolution([
+        {
+          user: checkoutSessionUser,
+          source: "checkout_session",
+          priority: 4,
+        },
+        {
+          user: externalIdUser,
+          source: "external_id",
+          priority: 3,
+        },
+        {
+          user: customerIdUser,
+          source: "customer_id",
+          priority: 2,
+        },
+      ]);
 
   const user = webhookUserResolution.user;
 
@@ -1052,15 +1068,26 @@ async function applyPaddleWebhookEvent(
       processingStatus = "ignored_stale_event";
     }
   }
+  if (processingStatus === "processed" && conflictingExistingOwnerEvidence) {
+    processingStatus = "ignored_conflicting_owner";
+  }
 
   const resolvedPriceId =
     processingStatus === "processed" && args.subscriptionId
       ? await resolveWebhookBillingPriceId(ctx.db, args)
       : undefined;
+  const webhookPriceCandidates = listWebhookPriceCandidates(args);
+  const hasExplicitWebhookPrice = webhookPriceCandidates.length > 0;
+  const checkoutSessionPriceMatched = Boolean(
+    !hasExplicitWebhookPrice &&
+      checkoutSession?.priceId,
+  );
   const existingTier = isStoredBillingTier(existingSubscription?.tier)
     ? existingSubscription.tier
     : undefined;
-  const checkoutSessionTier = resolveBillingTierByPlan(checkoutSession?.plan);
+  const checkoutSessionTier = checkoutSessionPriceMatched
+    ? resolveBillingTierByPlan(checkoutSession?.plan)
+    : null;
   const resolvedTier =
     resolvedPriceId && processingStatus === "processed"
       ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
@@ -1069,7 +1096,7 @@ async function applyPaddleWebhookEvent(
   if (
     processingStatus === "processed" &&
     args.subscriptionId &&
-    !managesRecognizedPlan
+    ((hasExplicitWebhookPrice && !resolvedPriceId) || !managesRecognizedPlan)
   ) {
     processingStatus = "ignored_unknown_plan";
   }
@@ -1124,7 +1151,7 @@ async function applyPaddleWebhookEvent(
     };
     if (resolvedTier) {
       patch.tier = resolvedTier;
-      patch.tierSourcePriceId = resolvedPriceId ?? checkoutSession?.priceId;
+      patch.tierSourcePriceId = resolvedPriceId ?? (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined);
     } else if (isStoredBillingTier(existingSubscription?.tier)) {
       patch.tier = existingSubscription.tier;
       patch.tierSourcePriceId =
@@ -1136,12 +1163,20 @@ async function applyPaddleWebhookEvent(
     if (subscriptionUpdatedAt !== undefined) {
       patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
     }
-    if (existingSubscription && existingSubscription.userId !== user._id) {
+    if (
+      existingSubscription &&
+      !existingSubscriptionOwner &&
+      existingSubscription.userId !== user._id
+    ) {
       patch.userId = user._id;
     }
 
     if (args.customerId) patch.paddleCustomerId = args.customerId;
-    if (resolvedPriceId) patch.priceId = resolvedPriceId;
+    if (resolvedPriceId) {
+      patch.priceId = resolvedPriceId;
+    } else if (checkoutSessionPriceMatched && checkoutSession?.priceId) {
+      patch.priceId = checkoutSession.priceId;
+    }
     if (args.productId) patch.productId = args.productId;
     if (args.currentPeriodStartsAt !== undefined) {
       if (args.currentPeriodStartsAt === null) {
@@ -1211,7 +1246,9 @@ async function applyPaddleWebhookEvent(
         ...(resolvedTier
           ? {
               tier: resolvedTier,
-              tierSourcePriceId: resolvedPriceId ?? checkoutSession?.priceId,
+              tierSourcePriceId:
+                resolvedPriceId ??
+                (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined),
             }
           : checkoutSessionTier
             ? {
@@ -1219,7 +1256,9 @@ async function applyPaddleWebhookEvent(
                 tierSourcePriceId: checkoutSession?.priceId,
               }
             : {}),
-        priceId: resolvedPriceId,
+        priceId:
+          resolvedPriceId ??
+          (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined),
         productId: args.productId,
         currentPeriodStartsAt,
         currentPeriodEndsAt,
