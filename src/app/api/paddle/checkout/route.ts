@@ -21,6 +21,7 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   blockingSubscriptionIds?: string[] | null;
+  portalManagementAvailable?: boolean;
   merchantReviewRequired?: boolean;
   merchantReviewCaseId?: string | null;
 };
@@ -33,7 +34,7 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
     };
   }
 
-  if (billing?.merchantReviewRequired) {
+  if (billing?.merchantReviewRequired && !billing.portalManagementAvailable) {
     return {
       code: "subscription_requires_support",
       error:

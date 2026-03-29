@@ -21,6 +21,7 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   paddleSubscriptionIds?: string[] | null;
+  portalManagementAvailable?: boolean;
   blockingSubscriptionIds?: string[] | null;
   trialEndsAt?: number | null;
   manualAccessTier?: string | null;
@@ -88,18 +89,16 @@ export default function BillingStartView() {
   const billingSuccess = searchParams.get("billing") === "success";
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const hasPortalSubscriptions = Boolean(
-    (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
-  );
+  const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const requiresBillingManagement =
     !hasManualAccess &&
-    !merchantReviewRequired &&
     hasBlockingSubscriptions &&
-    Boolean(billing?.paddleCustomerId) &&
-    hasPortalSubscriptions;
+    portalManagementAvailable;
   const requiresSupport =
-    hasManualAccess || merchantReviewRequired || (hasBlockingSubscriptions && !requiresBillingManagement);
+    hasManualAccess ||
+    (merchantReviewRequired && !portalManagementAvailable) ||
+    (hasBlockingSubscriptions && !requiresBillingManagement);
   const hasProAccess = Boolean(billing?.isActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -306,13 +305,13 @@ export default function BillingStartView() {
           </button>
         </div>
 
-        {!hasBlockingSubscriptions ? (
-          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
-            {billingNote}
-          </p>
-        ) : merchantReviewRequired ? (
+        {merchantReviewRequired && !portalManagementAvailable ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
             {t("app.billingStart.merchantReviewNote")}
+          </p>
+        ) : !hasBlockingSubscriptions ? (
+          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {billingNote}
           </p>
         ) : requiresSupport ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">

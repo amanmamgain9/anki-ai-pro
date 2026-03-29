@@ -21,6 +21,7 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   paddleSubscriptionIds?: string[] | null;
+  portalManagementAvailable?: boolean;
   blockingSubscriptionIds?: string[] | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
@@ -97,18 +98,16 @@ export default function SettingsView() {
   const [trialDays, setTrialDays] = useState(3);
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const hasPortalSubscriptions = Boolean(
-    (billing?.paddleSubscriptionIds?.length ?? 0) > 0 || billing?.paddleSubscriptionId,
-  );
+  const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const hasSelfServeSubscription = Boolean(
-    !hasManualAccess && !merchantReviewRequired && billing?.paddleCustomerId && hasPortalSubscriptions,
+    !hasManualAccess && portalManagementAvailable,
   );
   const requiresBillingManagement = hasBlockingSubscriptions;
   const primaryActionUsesPortal = hasSelfServeSubscription && (Boolean(billing?.isActive) || requiresBillingManagement);
   const primaryActionNeedsSupport = Boolean(
     hasManualAccess ||
-      merchantReviewRequired ||
+      (merchantReviewRequired && !portalManagementAvailable) ||
       ((Boolean(billing?.isActive) || requiresBillingManagement) && !primaryActionUsesPortal),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
@@ -283,7 +282,7 @@ export default function SettingsView() {
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.settings.manualAccessNote")}
           </p>
-        ) : merchantReviewRequired ? (
+        ) : merchantReviewRequired && !portalManagementAvailable ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.billingStart.merchantReviewNote")}
           </p>
@@ -319,7 +318,7 @@ export default function SettingsView() {
                   ? t("app.settings.changePlan")
                   : t("app.upgradeCta")}
           </button>
-          {billing?.paddleCustomerId && hasPortalSubscriptions && !primaryActionUsesPortal ? (
+          {portalManagementAvailable && !primaryActionUsesPortal ? (
             <button
               type="button"
               onClick={openPortal}

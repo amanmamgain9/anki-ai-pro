@@ -745,6 +745,7 @@ export const getMyBilling = queryGeneric({
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
         paddleSubscriptionIds: [] as string[],
+        portalManagementAvailable: false,
         blockingSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
@@ -839,6 +840,9 @@ export const getMyBilling = queryGeneric({
           .map((row) => row.paddleSubscriptionId),
       ),
     );
+    const portalManagementAvailable = Boolean(
+      billingManagementCustomerId && paddleSubscriptionIds.length > 0,
+    );
 
     const status = subscription?.status ?? null;
     const paidAccess = await resolvePaidPlanAccess(
@@ -906,6 +910,7 @@ export const getMyBilling = queryGeneric({
       paddleCustomerId: billingManagementCustomerId,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddleSubscriptionIds,
+      portalManagementAvailable,
       blockingSubscriptionIds,
       paddlePriceId: subscription?.priceId ?? null,
       paddleTier: isStoredBillingTier(subscription?.tier) ? subscription.tier : null,
