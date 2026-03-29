@@ -42,6 +42,18 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
     };
   }
 
+  if (
+    Array.isArray(billing?.blockingSubscriptionIds) &&
+    billing.blockingSubscriptionIds.length > 0 &&
+    !billing?.portalManagementAvailable
+  ) {
+    return {
+      code: "subscription_requires_support",
+      error:
+        "This account has multiple billing records that need manual review before checkout can continue. Open support from the app so we can reconnect the right subscription safely.",
+    };
+  }
+
   if (Array.isArray(billing?.blockingSubscriptionIds) && billing.blockingSubscriptionIds.length > 0) {
     return {
       code: "subscription_requires_portal",

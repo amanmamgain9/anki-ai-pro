@@ -16,6 +16,7 @@ type BillingTier = "inactive" | "pro" | "pro_plus";
 type UsageReadDb = GenericDatabaseReader<DataModel>;
 
 const PREMIUM_TTS_FEATURE = "premium_tts";
+const REFUND_PROOF_TTL_MS = 10 * 60 * 1000;
 
 function getIdentityClaim(identity: UserIdentity, key: string): string | undefined {
   const value = (identity as Record<string, unknown>)[key];
@@ -50,6 +51,32 @@ async function requireIdentity(ctx: AuthCtx) {
     throw new ConvexError("Unauthorized");
   }
   return identity;
+}
+
+function getTtsRefundProofSecret() {
+  const secret = process.env.PADDLE_WEBHOOK_FORWARD_SECRET;
+  if (!secret) {
+    throw new ConvexError("Missing PADDLE_WEBHOOK_FORWARD_SECRET");
+  }
+  return secret;
+}
+
+async function signRefundProof(value: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(getTtsRefundProofSecret()),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export const consumePremiumTtsPreview = mutationGeneric({
@@ -192,8 +219,10 @@ export const refundPremiumTtsPreview = mutationGeneric({
   args: {
     units: v.number(),
     monthKey: v.string(),
+    proofIssuedAt: v.number(),
+    refundSignature: v.string(),
   },
-  handler: async (ctx, { units, monthKey }) => {
+  handler: async (ctx, { units, monthKey, proofIssuedAt, refundSignature }) => {
     const normalizedUnits = Math.max(1, Math.floor(units));
     const now = Date.now();
     const identity = await requireIdentity(ctx);
@@ -201,6 +230,18 @@ export const refundPremiumTtsPreview = mutationGeneric({
     const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+    if (!Number.isFinite(proofIssuedAt) || proofIssuedAt > now) {
+      throw new ConvexError("Invalid refund authorization");
+    }
+    if (now - proofIssuedAt > REFUND_PROOF_TTL_MS) {
+      throw new ConvexError("Expired refund authorization");
+    }
+    const expectedSignature = await signRefundProof(
+      `${user._id}:${monthKey}:${normalizedUnits}:${proofIssuedAt}`,
+    );
+    if (refundSignature !== expectedSignature) {
+      throw new ConvexError("Invalid refund authorization");
     }
 
     const rowsForUser = await ctx.db

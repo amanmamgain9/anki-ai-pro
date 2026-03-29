@@ -1,3 +1,4 @@
+import { createHmac } from "crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { getServerSession } from "next-auth";
@@ -21,6 +22,10 @@ type ConsumeResult = {
   monthKey?: string;
 };
 
+type SyncUserResult = {
+  userId: string;
+};
+
 function escapeXml(input: string) {
   return input
     .replace(/&/g, "&amp;")
@@ -28,6 +33,25 @@ function escapeXml(input: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+function getTtsRefundProofSecret() {
+  const secret = process.env.PADDLE_WEBHOOK_FORWARD_SECRET;
+  if (!secret) {
+    throw new Error("Missing PADDLE_WEBHOOK_FORWARD_SECRET");
+  }
+  return secret;
+}
+
+function createRefundSignature(
+  userId: string,
+  monthKey: string,
+  units: number,
+  proofIssuedAt: number,
+) {
+  return createHmac("sha256", getTtsRefundProofSecret())
+    .update(`${userId}:${monthKey}:${units}:${proofIssuedAt}`)
+    .digest("hex");
 }
 
 export async function POST(request: Request) {
@@ -60,7 +84,7 @@ export async function POST(request: Request) {
 
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
-    await convex.mutation(api.billing.syncCurrentUser, {});
+    const synced = (await convex.mutation(api.billing.syncCurrentUser, {})) as SyncUserResult;
 
     const speechKey = process.env.AZURE_SPEECH_KEY;
     const speechRegion = process.env.AZURE_SPEECH_REGION;
@@ -112,13 +136,25 @@ export async function POST(request: Request) {
       | {
           units: number;
           monthKey: string;
+          proofIssuedAt: number;
+          refundSignature: string;
         }
       | null =
       typeof consume.monthKey === "string"
-        ? {
-            units,
-            monthKey: consume.monthKey,
-          }
+        ? (() => {
+            const proofIssuedAt = Date.now();
+            return {
+              units,
+              monthKey: consume.monthKey,
+              proofIssuedAt,
+              refundSignature: createRefundSignature(
+                synced.userId,
+                consume.monthKey,
+                units,
+                proofIssuedAt,
+              ),
+            };
+          })()
         : null;
 
     const refundPreview = async () => {

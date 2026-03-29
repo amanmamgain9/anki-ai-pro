@@ -1042,7 +1042,31 @@ export const createCheckoutSession = mutationGeneric({
     const portalManageableSubscriptions = subscriptions.filter((row) =>
       subscriptionCanSelfServeManage(row, now),
     );
+    const recoverableCustomerIds = Array.from(
+      new Set(
+        portalManageableSubscriptions
+          .map((row) => row.paddleCustomerId)
+          .filter((value): value is string => typeof value === "string" && value.length > 0),
+      ),
+    );
+    const billingManagementCustomerId =
+      portalManageableSubscriptions.length === 0
+        ? pickCanonicalPaddleCustomerId(user.paddleCustomerId, null, subscriptions)
+        : recoverableCustomerIds.length === 1
+          ? recoverableCustomerIds[0]
+          : recoverableCustomerIds.length === 0
+            ? pickCanonicalPaddleCustomerId(user.paddleCustomerId, null, subscriptions)
+            : null;
+    const portalManagementAvailable = Boolean(
+      billingManagementCustomerId &&
+      portalManageableSubscriptions.some(
+        (row) => row.paddleCustomerId === billingManagementCustomerId,
+      ),
+    );
     if (portalManageableSubscriptions.length > 0) {
+      if (!portalManagementAvailable) {
+        throw new ConvexError("Subscription requires merchant review");
+      }
       throw new ConvexError("Subscription requires billing management");
     }
     const merchantReviewSubscriptions = subscriptions.filter((row) =>
