@@ -157,6 +157,41 @@ export async function resolveBillingTierByPriceId(
   return null;
 }
 
+export async function resolveBillingPlanByPriceId(
+  db: any,
+  priceId: string | undefined,
+): Promise<BillingPlan | null> {
+  if (!priceId) return null;
+
+  const rows = await getRowsByPriceId(db, priceId);
+  const mappedPlans = Array.from(
+    new Set(
+      rows
+        .map((row) => row.plan)
+        .filter((plan): plan is BillingPlan => plan === "pro_monthly"),
+    ),
+  );
+  if (mappedPlans.length === 1) {
+    return mappedPlans[0];
+  }
+  if (mappedPlans.length > 1) {
+    return null;
+  }
+
+  const envMatchedPlans = new Set<BillingPlan>();
+  for (const [plan] of Object.entries(BILLING_PLAN_CONFIGS) as Array<
+    [BillingPlan, (typeof BILLING_PLAN_CONFIGS)[BillingPlan]]
+  >) {
+    if (resolvePriceIdFromEnv(plan) === priceId) {
+      envMatchedPlans.add(plan);
+    }
+  }
+  if (envMatchedPlans.size === 1) {
+    return Array.from(envMatchedPlans)[0];
+  }
+  return null;
+}
+
 export function resolveBillingTierByPlan(
   plan: string | undefined,
 ): BillingTier | null {

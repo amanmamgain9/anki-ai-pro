@@ -15,7 +15,8 @@ type AuthCtx = {
 type BillingTier = "inactive" | "pro" | "pro_plus";
 type UsageReadDb = GenericDatabaseReader<DataModel>;
 
-const PREMIUM_TTS_FEATURE = "premium_tts";
+const PREMIUM_TTS_PREVIEW_FEATURE = "premium_tts";
+const PREMIUM_TTS_UNLIMITED_FEATURE = "premium_tts_unlimited";
 const REFUND_PROOF_TTL_MS = 10 * 60 * 1000;
 
 function getIdentityClaim(identity: UserIdentity, key: string): string | undefined {
@@ -142,19 +143,23 @@ export const consumePremiumTtsPreview = mutationGeneric({
       .collect();
     const existing =
       rowsForUser.find(
-        (row) => row.feature === PREMIUM_TTS_FEATURE && row.monthKey === monthKey,
+        (row) => row.feature === PREMIUM_TTS_PREVIEW_FEATURE && row.monthKey === monthKey,
+      ) ?? null;
+    const unlimitedExisting =
+      rowsForUser.find(
+        (row) => row.feature === PREMIUM_TTS_UNLIMITED_FEATURE && row.monthKey === monthKey,
       ) ?? null;
 
     if (paidAccess.hasPremiumVoice) {
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          usedUnits: existing.usedUnits + normalizedUnits,
+      if (unlimitedExisting) {
+        await ctx.db.patch(unlimitedExisting._id, {
+          usedUnits: unlimitedExisting.usedUnits + normalizedUnits,
           updatedAt: now,
         });
       } else {
         await ctx.db.insert("featureUsageMonthly", {
           userId: user._id,
-          feature: PREMIUM_TTS_FEATURE,
+          feature: PREMIUM_TTS_UNLIMITED_FEATURE,
           monthKey,
           usedUnits: normalizedUnits,
           createdAt: now,
@@ -194,7 +199,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
     } else {
       await ctx.db.insert("featureUsageMonthly", {
         userId: user._id,
-        feature: PREMIUM_TTS_FEATURE,
+        feature: PREMIUM_TTS_PREVIEW_FEATURE,
         monthKey,
         usedUnits: nextUsed,
         quotaUnits: quota,
@@ -250,7 +255,7 @@ export const refundPremiumTtsPreview = mutationGeneric({
       .collect();
     const existing =
       rowsForUser.find(
-        (row) => row.feature === PREMIUM_TTS_FEATURE && row.monthKey === monthKey,
+        (row) => row.feature === PREMIUM_TTS_PREVIEW_FEATURE && row.monthKey === monthKey,
       ) ?? null;
 
     if (!existing) {

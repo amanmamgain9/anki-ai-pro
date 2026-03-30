@@ -8,6 +8,8 @@ import {
 } from "convex/server";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import {
+  type BillingPlan,
+  resolveBillingPlanByPriceId,
   listPublicBillingPlanConfigs,
   resolveBillingTierByPriceId,
   resolveBillingTierByPlan,
@@ -138,7 +140,7 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
   }
 }
 
-const PREMIUM_TTS_FEATURE = "premium_tts";
+const PREMIUM_TTS_PREVIEW_FEATURE = "premium_tts";
 const SUPPORT_OPERATOR_EMAILS = new Set([
   "amanmamgain9@gmail.com",
   "support@example.com",
@@ -323,7 +325,40 @@ function pickCanonicalPaddleCustomerId(
   return null;
 }
 
-async function listRecognizedSubscriptionsForUser(
+function isStoredBillingPlan(value: string | undefined): value is BillingPlan {
+  return value === "pro_monthly";
+}
+
+async function inferAppOwnedPlan(
+  db: BillingReadDb,
+  subscription:
+    | {
+        appPlan?: string;
+        tier?: string;
+        tierSourcePriceId?: string;
+        priceId?: string;
+      }
+    | null
+    | undefined,
+): Promise<BillingPlan | null> {
+  if (!subscription) return null;
+  if (isStoredBillingPlan(subscription.appPlan)) {
+    return subscription.appPlan;
+  }
+  const byTierSource = await resolveBillingPlanByPriceId(
+    db,
+    subscription.tierSourcePriceId,
+  );
+  if (byTierSource) return byTierSource;
+  const byPriceId = await resolveBillingPlanByPriceId(db, subscription.priceId);
+  if (byPriceId) return byPriceId;
+  if (subscription.tier === "pro") {
+    return "pro_monthly";
+  }
+  return null;
+}
+
+async function listManagedSubscriptionsForUser(
   db: BillingReadDb,
   userId: Id<"users">,
 ) {
@@ -335,11 +370,12 @@ async function listRecognizedSubscriptionsForUser(
   const recognizedEntries = await Promise.all(
     allSubscriptions.map(async (row) => ({
       row,
+      appOwnedPlan: await inferAppOwnedPlan(db, row),
       recognized: await isRecognizedSubscription(db, row),
     })),
   );
   return recognizedEntries
-    .filter((entry) => entry.recognized)
+    .filter((entry) => entry.recognized || entry.appOwnedPlan)
     .map((entry) => entry.row);
 }
 
@@ -478,7 +514,7 @@ export const syncCurrentUser = mutationGeneric({
       customerId: initialUser.paddleCustomerId,
     });
     const user = (await ctx.db.get(initialUser._id)) ?? initialUser;
-    const subscriptions = await listRecognizedSubscriptionsForUser(ctx.db, user._id);
+    const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     await reconcileBillingRecoveryCases(ctx.db, user, subscriptions, now);
     return {
       userId: user._id,
@@ -779,12 +815,22 @@ export const getMyBilling = queryGeneric({
       };
     }
 
-    const subscriptions = await listRecognizedSubscriptionsForUser(ctx.db, user._id);
+    const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
-    const subscription = pickEffectiveSubscription(subscriptions, now);
+    const recognizedSubscriptions = (
+      await Promise.all(
+        subscriptions.map(async (row) => ({
+          row,
+          recognized: await isRecognizedSubscription(ctx.db, row),
+        })),
+      )
+    )
+      .filter(({ recognized }) => recognized)
+      .map(({ row }) => row);
+    const subscription = pickEffectiveSubscription(recognizedSubscriptions, now);
     const effectivePaddleCustomerId = pickCanonicalPaddleCustomerId(
       user.paddleCustomerId,
-      subscription,
+      pickEffectiveSubscription(subscriptions, now),
       subscriptions,
     );
     const portalManageableSubscriptions = subscriptions.filter((row) =>
@@ -875,7 +921,7 @@ export const getMyBilling = queryGeneric({
         .collect();
       const existing =
         rowsForUser.find(
-          (row) => row.feature === PREMIUM_TTS_FEATURE && row.monthKey === monthKey,
+          (row) => row.feature === PREMIUM_TTS_PREVIEW_FEATURE && row.monthKey === monthKey,
         ) ?? null;
       const used = existing?.usedUnits ?? 0;
       proPreviewQuotaChars = quota;
@@ -1028,11 +1074,21 @@ export const createCheckoutSession = mutationGeneric({
     if (priceId !== expectedPriceId) {
       throw new ConvexError("Checkout price does not match the configured plan");
     }
-    const subscriptions = await listRecognizedSubscriptionsForUser(ctx.db, user._id);
+    const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
+    const recognizedSubscriptions = (
+      await Promise.all(
+        subscriptions.map(async (row) => ({
+          row,
+          recognized: await isRecognizedSubscription(ctx.db, row),
+        })),
+      )
+    )
+      .filter(({ recognized }) => recognized)
+      .map(({ row }) => row);
     const currentAccess = await resolvePaidPlanAccess(
       ctx.db,
-      pickEffectiveSubscription(subscriptions, now),
+      pickEffectiveSubscription(recognizedSubscriptions, now),
       user,
       now,
     );
@@ -1160,7 +1216,8 @@ async function applyPaddleWebhookEvent(
 ) {
   const retryableIgnoredEvent =
     existingEvent?.status === "ignored_missing_user" ||
-    existingEvent?.status === "ignored_unknown_plan";
+    existingEvent?.status === "ignored_unknown_plan" ||
+    existingEvent?.status === "ignored_conflicting_owner";
   if (existingEvent && !retryableIgnoredEvent) {
     return { duplicate: true, eventId: args.eventId };
   }
@@ -1259,6 +1316,14 @@ async function applyPaddleWebhookEvent(
     !hasExplicitWebhookPrice &&
       checkoutSession?.priceId,
   );
+  const existingAppPlan = await inferAppOwnedPlan(ctx.db, existingSubscription);
+  const checkoutSessionPlan = isStoredBillingPlan(checkoutSession?.plan)
+    ? checkoutSession.plan
+    : null;
+  const resolvedAppPlan =
+    checkoutSessionPlan ??
+    existingAppPlan ??
+    (resolvedPriceId ? await resolveBillingPlanByPriceId(ctx.db, resolvedPriceId) : null);
   const existingTier = isStoredBillingTier(existingSubscription?.tier)
     ? existingSubscription.tier
     : undefined;
@@ -1268,12 +1333,14 @@ async function applyPaddleWebhookEvent(
   const resolvedTier =
     resolvedPriceId && processingStatus === "processed"
       ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
-      : existingTier ?? checkoutSessionTier ?? undefined;
-  const managesRecognizedPlan = Boolean(resolvedTier || existingTier || checkoutSessionTier);
+      : hasExplicitWebhookPrice
+        ? undefined
+        : existingTier ?? checkoutSessionTier ?? undefined;
+  const managesAppPlan = Boolean(resolvedAppPlan);
   if (
     processingStatus === "processed" &&
     args.subscriptionId &&
-    ((hasExplicitWebhookPrice && !resolvedPriceId) || !managesRecognizedPlan)
+    !managesAppPlan
   ) {
     processingStatus = "ignored_unknown_plan";
   }
@@ -1307,6 +1374,7 @@ async function applyPaddleWebhookEvent(
     const patch: {
       userId?: Id<"users">;
       status: string;
+      appPlan?: BillingPlan;
       tier?: StoredBillingTier;
       tierSourcePriceId?: string;
       updatedAt: number;
@@ -1326,16 +1394,22 @@ async function applyPaddleWebhookEvent(
       lastEventType: args.eventType,
       lastEventOccurredAt: incomingEventTime,
     };
+    if (resolvedAppPlan) {
+      patch.appPlan = resolvedAppPlan;
+    }
     if (resolvedTier) {
       patch.tier = resolvedTier;
       patch.tierSourcePriceId = resolvedPriceId ?? (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined);
-    } else if (isStoredBillingTier(existingSubscription?.tier)) {
+    } else if (!hasExplicitWebhookPrice && isStoredBillingTier(existingSubscription?.tier)) {
       patch.tier = existingSubscription.tier;
       patch.tierSourcePriceId =
         existingSubscription.tierSourcePriceId ?? existingSubscription.priceId;
-    } else if (checkoutSessionTier) {
+    } else if (!hasExplicitWebhookPrice && checkoutSessionTier) {
       patch.tier = checkoutSessionTier;
       patch.tierSourcePriceId = checkoutSession?.priceId;
+    } else if (hasExplicitWebhookPrice) {
+      patch.tier = undefined;
+      patch.tierSourcePriceId = undefined;
     }
     if (subscriptionUpdatedAt !== undefined) {
       patch.lastSubscriptionUpdatedAt = subscriptionUpdatedAt;
@@ -1351,6 +1425,8 @@ async function applyPaddleWebhookEvent(
     if (args.customerId) patch.paddleCustomerId = args.customerId;
     if (resolvedPriceId) {
       patch.priceId = resolvedPriceId;
+    } else if (hasExplicitWebhookPrice) {
+      patch.priceId = webhookPriceCandidates[0];
     } else if (checkoutSessionPriceMatched && checkoutSession?.priceId) {
       patch.priceId = checkoutSession.priceId;
     }
@@ -1420,6 +1496,7 @@ async function applyPaddleWebhookEvent(
         paddleSubscriptionId: args.subscriptionId,
         paddleCustomerId: args.customerId,
         status: normalizedStatus,
+        ...(resolvedAppPlan ? { appPlan: resolvedAppPlan } : {}),
         ...(resolvedTier
           ? {
               tier: resolvedTier,
@@ -1427,7 +1504,7 @@ async function applyPaddleWebhookEvent(
                 resolvedPriceId ??
                 (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined),
             }
-          : checkoutSessionTier
+          : !hasExplicitWebhookPrice && checkoutSessionTier
             ? {
                 tier: checkoutSessionTier,
                 tierSourcePriceId: checkoutSession?.priceId,
@@ -1435,7 +1512,11 @@ async function applyPaddleWebhookEvent(
             : {}),
         priceId:
           resolvedPriceId ??
-          (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined),
+          (hasExplicitWebhookPrice
+            ? webhookPriceCandidates[0]
+            : checkoutSessionPriceMatched
+              ? checkoutSession?.priceId
+              : undefined),
         productId: args.productId,
         currentPeriodStartsAt,
         currentPeriodEndsAt,
@@ -1495,9 +1576,12 @@ async function replayIgnoredBillingEvents(
   filters: { externalId?: string; customerId?: string },
 ) {
   const rows: Doc<"billingEvents">[] = [];
-  const statusesToReplay: Array<"ignored_missing_user" | "ignored_unknown_plan"> = [
+  const statusesToReplay: Array<
+    "ignored_missing_user" | "ignored_unknown_plan" | "ignored_conflicting_owner"
+  > = [
     "ignored_missing_user",
     "ignored_unknown_plan",
+    "ignored_conflicting_owner",
   ];
 
   if (filters.externalId) {
