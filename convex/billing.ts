@@ -67,6 +67,15 @@ type BillingEventProcessingStatus =
   | "ignored_unknown_plan"
   | "ignored_conflicting_owner";
 
+const RETRYABLE_IGNORED_EVENT_STATUSES = [
+  "ignored_missing_user",
+  "ignored_unknown_plan",
+  "ignored_conflicting_owner",
+] as const;
+
+type RetryableIgnoredBillingEventStatus =
+  (typeof RETRYABLE_IGNORED_EVENT_STATUSES)[number];
+
 function getIdentityImageUrl(identity: UserIdentity): string | undefined {
   if (typeof identity.pictureUrl === "string" && identity.pictureUrl.length > 0) {
     return identity.pictureUrl;
@@ -379,6 +388,92 @@ async function listManagedSubscriptionsForUser(
     .map((entry) => entry.row);
 }
 
+async function listRetryableIgnoredBillingEvents(
+  db: BillingReadDb,
+  filters: { userId?: Id<"users">; externalId?: string; customerId?: string },
+) {
+  const deduped = new Map<Id<"billingEvents">, Doc<"billingEvents">>();
+
+  if (filters.externalId) {
+    for (const status of RETRYABLE_IGNORED_EVENT_STATUSES) {
+      const rows = await db
+        .query("billingEvents")
+        .withIndex("by_status_externalId", (q) =>
+          q.eq("status", status).eq("externalId", filters.externalId!),
+        )
+        .collect();
+      for (const row of rows) {
+        deduped.set(row._id, row);
+      }
+    }
+  }
+
+  if (filters.customerId) {
+    for (const status of RETRYABLE_IGNORED_EVENT_STATUSES) {
+      const rows = await db
+        .query("billingEvents")
+        .withIndex("by_status_customerId", (q) =>
+          q.eq("status", status).eq("paddleCustomerId", filters.customerId!),
+        )
+        .collect();
+      for (const row of rows) {
+        deduped.set(row._id, row);
+      }
+    }
+  }
+
+  const rows = [...deduped.values()];
+  const filtered: Doc<"billingEvents">[] = [];
+  for (const row of rows) {
+    const externalIdMatched =
+      Boolean(filters.externalId) && row.externalId === filters.externalId;
+    const customerIdMatched =
+      Boolean(filters.customerId) && row.paddleCustomerId === filters.customerId;
+    let checkoutSessionMatched = false;
+    if (filters.userId && row.checkoutSessionId) {
+      const checkoutSession = await db
+        .query("paddleCheckoutSessions")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", row.checkoutSessionId!))
+        .first();
+      checkoutSessionMatched = checkoutSession?.userId === filters.userId;
+    }
+
+    if (externalIdMatched || checkoutSessionMatched) {
+      filtered.push(row);
+      continue;
+    }
+
+    if (customerIdMatched) {
+      filtered.push(row);
+    }
+  }
+
+  return filtered.sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
+}
+
+function listRetryableIgnoredBillingIssueCodes(
+  events: Array<Pick<Doc<"billingEvents">, "status">>,
+) {
+  const issueCodes = new Set<string>();
+  for (const event of events) {
+    switch (event.status as RetryableIgnoredBillingEventStatus) {
+      case "ignored_unknown_plan":
+        issueCodes.add("pending_unknown_plan_event");
+        break;
+      case "ignored_conflicting_owner":
+        issueCodes.add("pending_conflicting_owner_event");
+        break;
+      case "ignored_missing_user":
+        issueCodes.add("pending_missing_user_event");
+        break;
+      default:
+        issueCodes.add("pending_billing_event");
+        break;
+    }
+  }
+  return [...issueCodes];
+}
+
 function listMerchantReviewIssueCodes(
   subscriptions: Array<
     Pick<
@@ -418,22 +513,82 @@ function listMerchantReviewIssueCodes(
   return [...issueCodes];
 }
 
-async function reconcileBillingRecoveryCases(
-  db: BillingWriteDb,
-  user: Doc<"users">,
-  subscriptions: Doc<"subscriptions">[],
+function listRecoverableCustomerIds(
+  subscriptions: Array<
+    Pick<Doc<"subscriptions">, "paddleCustomerId" | "status" | "currentPeriodEndsAt" | "nextBilledAt">
+  >,
   now: number,
 ) {
+  return Array.from(
+    new Set(
+      subscriptions
+        .filter((row) => subscriptionCanSelfServeManage(row, now))
+        .map((row) => row.paddleCustomerId)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+}
+
+function buildMerchantReviewContext(
+  subscriptions: Doc<"subscriptions">[],
+  pendingIgnoredEvents: Doc<"billingEvents">[],
+  now: number,
+) {
+  const portalManageableSubscriptions = subscriptions.filter((row) =>
+    subscriptionCanSelfServeManage(row, now),
+  );
   const merchantReviewSubscriptions = subscriptions.filter((row) =>
     subscriptionNeedsMerchantReview(row, now),
   );
+  const recoverableCustomerIds = listRecoverableCustomerIds(subscriptions, now);
+  const hasRecoverableCustomerConflict = recoverableCustomerIds.length > 1;
+  const reviewSubscriptions = hasRecoverableCustomerConflict
+    ? Array.from(
+        new Map(
+          [...merchantReviewSubscriptions, ...portalManageableSubscriptions].map((row) => [
+            row._id,
+            row,
+          ]),
+        ).values(),
+      )
+    : merchantReviewSubscriptions;
+  const issueCodes = Array.from(
+    new Set([
+      ...listMerchantReviewIssueCodes(merchantReviewSubscriptions, now),
+      ...listRetryableIgnoredBillingIssueCodes(pendingIgnoredEvents),
+      ...(hasRecoverableCustomerConflict ? ["multiple_recoverable_customer_ids"] : []),
+    ]),
+  );
+
+  return {
+    portalManageableSubscriptions,
+    merchantReviewSubscriptions,
+    recoverableCustomerIds,
+    hasRecoverableCustomerConflict,
+    reviewSubscriptions,
+    issueCodes,
+    merchantReviewRequired:
+      reviewSubscriptions.length > 0 ||
+      pendingIgnoredEvents.length > 0 ||
+      hasRecoverableCustomerConflict,
+  };
+}
+
+async function reconcileBillingRecoveryCases(
+  db: BillingWriteDb,
+  user: Doc<"users">,
+  reviewSubscriptions: Doc<"subscriptions">[],
+  pendingIgnoredEvents: Doc<"billingEvents">[],
+  issueCodes: string[],
+  now: number,
+) {
   const openCases = await db
     .query("billingRecoveryCases")
     .withIndex("by_user_status", (q) => q.eq("userId", user._id))
     .collect();
   const activeOpenCases = openCases.filter((row) => row.status === "open");
 
-  if (merchantReviewSubscriptions.length === 0) {
+  if (reviewSubscriptions.length === 0 && pendingIgnoredEvents.length === 0) {
     for (const row of activeOpenCases) {
       await db.patch(row._id, {
         status: "resolved",
@@ -444,16 +599,19 @@ async function reconcileBillingRecoveryCases(
     return null;
   }
 
-  const issueCodes = listMerchantReviewIssueCodes(merchantReviewSubscriptions, now);
   const paddleCustomerId =
     pickCanonicalPaddleCustomerId(
       user.paddleCustomerId,
-      pickEffectiveSubscription(merchantReviewSubscriptions, now),
-      merchantReviewSubscriptions,
-    ) ?? undefined;
+      pickEffectiveSubscription(reviewSubscriptions, now),
+      reviewSubscriptions,
+    ) ??
+    pendingIgnoredEvents.find(
+      (row) => typeof row.paddleCustomerId === "string" && row.paddleCustomerId.length > 0,
+    )?.paddleCustomerId ??
+    undefined;
   const paddleSubscriptionIds = Array.from(
     new Set(
-      merchantReviewSubscriptions
+      [...reviewSubscriptions, ...pendingIgnoredEvents]
         .map((row) => row.paddleSubscriptionId)
         .filter((value): value is string => typeof value === "string" && value.length > 0),
     ),
@@ -515,7 +673,20 @@ export const syncCurrentUser = mutationGeneric({
     });
     const user = (await ctx.db.get(initialUser._id)) ?? initialUser;
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
-    await reconcileBillingRecoveryCases(ctx.db, user, subscriptions, now);
+    const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
+      userId: user._id,
+      externalId: user.externalId,
+      customerId: user.paddleCustomerId,
+    });
+    const merchantReview = buildMerchantReviewContext(subscriptions, pendingIgnoredEvents, now);
+    await reconcileBillingRecoveryCases(
+      ctx.db,
+      user,
+      merchantReview.reviewSubscriptions,
+      pendingIgnoredEvents,
+      merchantReview.issueCodes,
+      now,
+    );
     return {
       userId: user._id,
       externalId: user.externalId,
@@ -817,6 +988,11 @@ export const getMyBilling = queryGeneric({
 
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
+    const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
+      userId: user._id,
+      externalId: user.externalId,
+      customerId: user.paddleCustomerId,
+    });
     const recognizedSubscriptions = (
       await Promise.all(
         subscriptions.map(async (row) => ({
@@ -833,13 +1009,11 @@ export const getMyBilling = queryGeneric({
       pickEffectiveSubscription(subscriptions, now),
       subscriptions,
     );
-    const portalManageableSubscriptions = subscriptions.filter((row) =>
-      subscriptionCanSelfServeManage(row, now),
-    );
-    const merchantReviewSubscriptions = subscriptions.filter((row) =>
-      subscriptionNeedsMerchantReview(row, now),
-    );
-    const openRecoveryCase = merchantReviewSubscriptions.length
+    const merchantReview = buildMerchantReviewContext(subscriptions, pendingIgnoredEvents, now);
+    const portalManageableSubscriptions = merchantReview.portalManageableSubscriptions;
+    const merchantReviewSubscriptions = merchantReview.merchantReviewSubscriptions;
+    const merchantReviewRequired = merchantReview.merchantReviewRequired;
+    const openRecoveryCase = merchantReviewRequired
       ? (
           await ctx.db
             .query("billingRecoveryCases")
@@ -847,13 +1021,7 @@ export const getMyBilling = queryGeneric({
             .collect()
         ).find((row) => row.status === "open") ?? null
       : null;
-    const recoverableCustomerIds = Array.from(
-      new Set(
-        portalManageableSubscriptions
-          .map((row) => row.paddleCustomerId)
-          .filter((value): value is string => typeof value === "string" && value.length > 0),
-      ),
-    );
+    const recoverableCustomerIds = merchantReview.recoverableCustomerIds;
     const billingManagementCustomerId =
       portalManageableSubscriptions.length === 0
         ? effectivePaddleCustomerId
@@ -878,7 +1046,7 @@ export const getMyBilling = queryGeneric({
     );
     const blockingSubscriptionIds = Array.from(
       new Set(
-        [...portalManageableSubscriptions, ...merchantReviewSubscriptions]
+        [...portalManageableSubscriptions, ...merchantReviewSubscriptions, ...pendingIgnoredEvents]
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
             return true;
@@ -940,12 +1108,9 @@ export const getMyBilling = queryGeneric({
       accessSource: paidAccess.accessSource,
       subscriptionEntitled: paidAccess.subscriptionEntitled,
       premiumVoiceSource,
-      merchantReviewRequired: merchantReviewSubscriptions.length > 0,
+      merchantReviewRequired,
       merchantReviewCaseId: openRecoveryCase?._id ?? null,
-      merchantReviewIssueCodes:
-        merchantReviewSubscriptions.length > 0
-          ? listMerchantReviewIssueCodes(merchantReviewSubscriptions, now)
-          : [],
+      merchantReviewIssueCodes: merchantReviewRequired ? merchantReview.issueCodes : [],
       manualAccessTier,
       manualAccessEndsAt,
       manualAccessReason,
@@ -1098,6 +1263,12 @@ export const createCheckoutSession = mutationGeneric({
     const portalManageableSubscriptions = subscriptions.filter((row) =>
       subscriptionCanSelfServeManage(row, now),
     );
+    const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
+      userId: user._id,
+      externalId: user.externalId,
+      customerId: user.paddleCustomerId,
+    });
+    const merchantReview = buildMerchantReviewContext(subscriptions, pendingIgnoredEvents, now);
     const recoverableCustomerIds = Array.from(
       new Set(
         portalManageableSubscriptions
@@ -1121,15 +1292,27 @@ export const createCheckoutSession = mutationGeneric({
     );
     if (portalManageableSubscriptions.length > 0) {
       if (!portalManagementAvailable) {
+        await reconcileBillingRecoveryCases(
+          ctx.db,
+          user,
+          merchantReview.reviewSubscriptions,
+          pendingIgnoredEvents,
+          merchantReview.issueCodes,
+          now,
+        );
         throw new ConvexError("Subscription requires merchant review");
       }
       throw new ConvexError("Subscription requires billing management");
     }
-    const merchantReviewSubscriptions = subscriptions.filter((row) =>
-      subscriptionNeedsMerchantReview(row, now),
-    );
-    if (merchantReviewSubscriptions.length > 0) {
-      await reconcileBillingRecoveryCases(ctx.db, user, subscriptions, now);
+    if (merchantReview.merchantReviewRequired) {
+      await reconcileBillingRecoveryCases(
+        ctx.db,
+        user,
+        merchantReview.reviewSubscriptions,
+        pendingIgnoredEvents,
+        merchantReview.issueCodes,
+        now,
+      );
       throw new ConvexError("Subscription requires merchant review");
     }
     const openSessionCutoff = now - OPEN_CHECKOUT_SESSION_WINDOW_MS;
@@ -1214,10 +1397,12 @@ async function applyPaddleWebhookEvent(
   args: PaddleWebhookArgs,
   existingEvent: Doc<"billingEvents"> | null = null,
 ) {
-  const retryableIgnoredEvent =
-    existingEvent?.status === "ignored_missing_user" ||
-    existingEvent?.status === "ignored_unknown_plan" ||
-    existingEvent?.status === "ignored_conflicting_owner";
+  const retryableIgnoredEvent = Boolean(
+    existingEvent?.status &&
+      RETRYABLE_IGNORED_EVENT_STATUSES.includes(
+        existingEvent.status as RetryableIgnoredBillingEventStatus,
+      ),
+  );
   if (existingEvent && !retryableIgnoredEvent) {
     return { duplicate: true, eventId: args.eventId };
   }
@@ -1576,13 +1761,7 @@ async function replayIgnoredBillingEvents(
   filters: { externalId?: string; customerId?: string },
 ) {
   const rows: Doc<"billingEvents">[] = [];
-  const statusesToReplay: Array<
-    "ignored_missing_user" | "ignored_unknown_plan" | "ignored_conflicting_owner"
-  > = [
-    "ignored_missing_user",
-    "ignored_unknown_plan",
-    "ignored_conflicting_owner",
-  ];
+  const statusesToReplay = RETRYABLE_IGNORED_EVENT_STATUSES;
 
   if (filters.externalId) {
     for (const status of statusesToReplay) {

@@ -113,9 +113,7 @@ export function buildPaddleWebhookMutationArgs(
   const snapshot = extractSubscriptionSnapshot(event.data);
   const verifiedExternalId = snapshot.checkoutToken
     ? verifyPaddleCheckoutToken(snapshot.checkoutToken)
-    : snapshot.checkoutSessionId
-      ? undefined
-      : snapshot.externalId;
+    : undefined;
 
   return {
     eventId: event.eventId,
