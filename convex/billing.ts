@@ -762,6 +762,7 @@ export const syncCurrentUser = mutationGeneric({
       now,
     });
     await replayIgnoredBillingEvents(ctx, {
+      userId: initialUser._id,
       externalId: initialUser.externalId,
       customerId: initialUser.paddleCustomerId,
     });
@@ -825,6 +826,7 @@ export const setMyPaddleCustomerId = mutationGeneric({
       touchLastSeen: true,
     });
     await replayIgnoredBillingEvents(ctx, {
+      userId: existing._id,
       externalId: existing.externalId,
       customerId,
     });
@@ -1791,6 +1793,10 @@ async function applyPaddleWebhookEvent(
         ? undefined
         : existingTier ?? checkoutSessionTier ?? undefined;
   const managesAppPlan = Boolean(resolvedAppPlan);
+  const normalizedStatus = normalizeSubscriptionStatus(
+    args.eventType,
+    args.subscriptionStatus,
+  );
   if (
     processingStatus === "processed" &&
     args.subscriptionId &&
@@ -1810,6 +1816,8 @@ async function applyPaddleWebhookEvent(
     }
     if (
       resolvedAppPlan &&
+      normalizedStatus !== "created" &&
+      normalizedStatus !== "unknown" &&
       resolveFreeProPlusTrialDays() > 0 &&
       typeof user.trialRedeemedAt !== "number"
     ) {
@@ -1830,11 +1838,6 @@ async function applyPaddleWebhookEvent(
   }
 
   if (processingStatus === "processed" && user && args.subscriptionId) {
-    const normalizedStatus = normalizeSubscriptionStatus(
-      args.eventType,
-      args.subscriptionStatus,
-    );
-
     const patch: {
       userId?: Id<"users">;
       status: string;
@@ -2044,36 +2047,9 @@ async function applyPaddleWebhookEvent(
 
 async function replayIgnoredBillingEvents(
   ctx: { db: BillingWriteDb },
-  filters: { externalId?: string; customerId?: string },
+  filters: { userId?: Id<"users">; externalId?: string; customerId?: string },
 ) {
-  const rows: Doc<"billingEvents">[] = [];
-  const statusesToReplay = RETRYABLE_IGNORED_EVENT_STATUSES;
-
-  if (filters.externalId) {
-    for (const status of statusesToReplay) {
-      const byExternalId = await ctx.db
-        .query("billingEvents")
-        .withIndex("by_status_externalId", (q) =>
-          q.eq("status", status).eq("externalId", filters.externalId!),
-        )
-        .collect();
-      rows.push(...byExternalId);
-    }
-  }
-
-  if (filters.customerId) {
-    for (const status of statusesToReplay) {
-      const byCustomerId = await ctx.db
-        .query("billingEvents")
-        .withIndex("by_status_customerId", (q) =>
-          q.eq("status", status).eq("paddleCustomerId", filters.customerId!),
-        )
-        .collect();
-      rows.push(...byCustomerId);
-    }
-  }
-
-  const uniqueRows = Array.from(new Map(rows.map((row) => [row._id, row])).values()).sort((a, b) => {
+  const uniqueRows = (await listRetryableIgnoredBillingEvents(ctx.db, filters)).sort((a, b) => {
     const aTime = a.occurredAt ?? a.processedAt;
     const bTime = b.occurredAt ?? b.processedAt;
     if (aTime !== bTime) return aTime - bTime;
