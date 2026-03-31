@@ -437,6 +437,29 @@ async function listRetryableIgnoredBillingEvents(
     }
   }
 
+  if (filters.userId) {
+    const checkoutSessions = await db
+      .query("paddleCheckoutSessions")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", filters.userId!))
+      .collect();
+    for (const session of checkoutSessions) {
+      const rows = await db
+        .query("billingEvents")
+        .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", session.sessionId))
+        .collect();
+      for (const row of rows) {
+        if (
+          row.status &&
+          RETRYABLE_IGNORED_EVENT_STATUSES.includes(
+            row.status as RetryableIgnoredBillingEventStatus,
+          )
+        ) {
+          deduped.set(row._id, row);
+        }
+      }
+    }
+  }
+
   const rows = [...deduped.values()];
   const filtered: Doc<"billingEvents">[] = [];
   for (const row of rows) {

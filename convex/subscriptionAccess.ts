@@ -199,6 +199,14 @@ export function pickEffectiveSubscription<
       );
       if (aEntitled !== bEntitled) return aEntitled ? -1 : 1;
       if (aEntitled && bEntitled) {
+        const aEndsAt = getStoredPeriodEndsAt(a.currentPeriodEndsAt, a.nextBilledAt) ?? 0;
+        const bEndsAt = getStoredPeriodEndsAt(b.currentPeriodEndsAt, b.nextBilledAt) ?? 0;
+        if (aEndsAt !== bEndsAt) return bEndsAt - aEndsAt;
+
+        const aVersion = getVersionTime(a);
+        const bVersion = getVersionTime(b);
+        if (aVersion !== bVersion) return bVersion - aVersion;
+
         const aRank = getEntitledStatusRank(a.status);
         const bRank = getEntitledStatusRank(b.status);
         if (aRank !== bRank) return bRank - aRank;

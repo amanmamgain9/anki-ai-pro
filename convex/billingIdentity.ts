@@ -178,7 +178,9 @@ export async function findCanonicalUserByIdentity(
     args.provider,
     args.providerSubject,
   );
-  if (authIdentities.length === 0) return null;
+  if (authIdentities.length === 0) {
+    return await findCanonicalUserByEmail(db, args.email);
+  }
 
   const candidates: BillingUser[] = [];
   for (const row of authIdentities) {
