@@ -12,6 +12,7 @@ export type ResolvedPaidPlanAccess = {
   trialEndsAt: number | null;
   accessSource: BillingAccessSource;
   subscriptionEntitled: boolean;
+  // "inactive" is a locked-out state, not a signed-in free/basic tier.
   tier: StoredBillingTier | "inactive";
   hasPremiumVoice: boolean;
   premiumVoiceSource: "none" | "trial" | "pro_preview" | "pro_plus";
@@ -47,11 +48,20 @@ function resolveManualAccessTier(
 export async function resolveRecognizedSubscriptionTier(
   db: BillingReadDb,
   subscription:
-    | { tier?: string; tierSourcePriceId?: string; priceId?: string }
+    | {
+        tier?: string;
+        tierSourcePriceId?: string;
+        priceId?: string;
+        requiresPriceMappingReview?: boolean;
+      }
     | null
     | undefined,
 ): Promise<StoredBillingTier | "inactive"> {
+  // No recognized paid tier means no app access. This is not a free/basic plan.
   if (!subscription) return "inactive";
+  if (subscription.requiresPriceMappingReview === true) {
+    return "inactive";
+  }
   if (isStoredBillingTier(subscription.tier)) {
     return subscription.tier;
   }
@@ -61,7 +71,12 @@ export async function resolveRecognizedSubscriptionTier(
 export async function isRecognizedSubscription(
   db: BillingReadDb,
   subscription:
-    | { tier?: string; tierSourcePriceId?: string; priceId?: string }
+    | {
+        tier?: string;
+        tierSourcePriceId?: string;
+        priceId?: string;
+        requiresPriceMappingReview?: boolean;
+      }
     | null
     | undefined,
 ) {
@@ -78,6 +93,7 @@ export async function resolvePaidPlanAccess(
         tier?: string;
         tierSourcePriceId?: string;
         priceId?: string;
+        requiresPriceMappingReview?: boolean;
       }
     | null
     | undefined,
@@ -120,6 +136,7 @@ export async function resolvePaidPlanAccess(
     trialEndsAt: subscriptionEntitled ? access.trialEndsAt : null,
     accessSource: activeAccessSource,
     subscriptionEntitled,
+    // Inactive users are redirected to /start-trial; there is no signed-in free tier.
     tier: subscriptionEntitled ? tier : "inactive",
     hasPremiumVoice,
     premiumVoiceSource: trialActive

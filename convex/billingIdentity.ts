@@ -37,6 +37,7 @@ async function scoreBillingUser(db: BillingIdentityDb, user: BillingUser) {
         row.status,
         row.currentPeriodEndsAt,
         row.nextBilledAt,
+        row.requiresPriceMappingReview === true,
         now,
       ),
     ),

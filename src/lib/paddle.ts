@@ -17,14 +17,26 @@ export function getPaddleClient() {
   });
 }
 
-export function getPaddlePriceId(plan: BillingPlan) {
+export function getPaddlePriceId(
+  plan: BillingPlan,
+  options?: { trialEligible?: boolean },
+) {
   const config = getBillingPlanConfig(plan);
-  const priceId = resolvePriceId(config.envVars, config.legacyEnvVars);
+  const priceId =
+    options?.trialEligible === false
+      ? resolvePriceId(config.noTrialEnvVars ?? [])
+      : resolvePriceId(config.envVars, config.legacyEnvVars);
   if (!priceId) {
-    const preferred = config.envVars.join(" or ");
-    const fallback = config.legacyEnvVars?.length
-      ? ` (fallback: ${config.legacyEnvVars.join(" or ")})`
-      : "";
+    const preferred =
+      options?.trialEligible === false
+        ? (config.noTrialEnvVars ?? []).join(" or ")
+        : config.envVars.join(" or ");
+    const fallback =
+      options?.trialEligible === false
+        ? ""
+        : config.legacyEnvVars?.length
+          ? ` (fallback: ${config.legacyEnvVars.join(" or ")})`
+          : "";
     throw new Error(`Missing ${preferred}${fallback}`);
   }
   return priceId;

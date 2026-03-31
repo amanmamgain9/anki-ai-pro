@@ -57,6 +57,7 @@ type SyncUserResult = {
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
+  // "inactive" is the non-entitled state used by the app; there is no free tier.
   plan?: "inactive" | "pro" | "pro_plus";
   accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;

@@ -20,6 +20,8 @@ type BillingState = {
   hasUserRecord?: boolean;
   isActive?: boolean;
   trialActive?: boolean;
+  accessEndsAt?: number | null;
+  // "inactive" means the signed-in account currently has no access and should go to /start-trial.
   plan?: "inactive" | "pro" | "pro_plus";
 };
 type OnboardingState = {
@@ -76,14 +78,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       session?.user?.email ??
       session?.user?.name ??
       "authenticated";
-    if (bootstrapKeyRef.current === sessionKey) {
+    const bootstrapKey = `${sessionKey}:${initialPath ?? ""}`;
+    if (bootstrapKeyRef.current === bootstrapKey) {
       return;
     }
-    bootstrapKeyRef.current = sessionKey;
+    bootstrapKeyRef.current = bootstrapKey;
     let cancelled = false;
     setBootstrapStatus("loading");
     void (async () => {
       try {
+        const syncResponse = await fetch("/api/app/sync-user", {
+          method: "POST",
+        });
+        const syncPayload = (await syncResponse.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (!syncResponse.ok) {
+          throw new Error(syncPayload.error ?? `User sync failed (${syncResponse.status})`);
+        }
         const response = await fetch("/api/app/bootstrap", {
           method: "POST",
         });
@@ -108,7 +120,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [bootstrapAttempt, session?.user?.email, session?.user?.name, status]);
+  }, [bootstrapAttempt, initialPath, session?.user?.email, session?.user?.name, status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (bootstrapStatus !== "ready") return;
+    const accessEndsAt =
+      typeof billing?.accessEndsAt === "number" ? billing.accessEndsAt : null;
+    if (!accessEndsAt || accessEndsAt <= Date.now()) return;
+
+    const timeoutMs = Math.max(0, accessEndsAt - Date.now() + 1000);
+    const timeoutId = window.setTimeout(() => {
+      bootstrapKeyRef.current = null;
+      setBootstrapAttempt((n) => n + 1);
+    }, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [billing?.accessEndsAt, bootstrapStatus, status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -119,30 +149,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (initialPath !== "/cards" && !initialPath.startsWith("/cards?")) return;
     router.replace("/cards/generate?onboarding=1");
   }, [bootstrapStatus, initialPath, onboarding, router, status]);
-
-  useEffect(() => {
-    if (status !== "authenticated") return;
-
-    const refreshBootstrap = () => {
-      bootstrapKeyRef.current = null;
-      setBootstrapAttempt((n) => n + 1);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshBootstrap();
-      }
-    };
-
-    const intervalId = window.setInterval(refreshBootstrap, 60_000);
-    window.addEventListener("focus", refreshBootstrap);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshBootstrap);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;

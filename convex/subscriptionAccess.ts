@@ -75,8 +75,8 @@ export function isSubscriptionEntitled(
   if (normalized === "trialing" || normalized === "active") {
     return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
   }
-  if (normalized === "canceled" && typeof currentPeriodEndsAt === "number") {
-    return now < currentPeriodEndsAt;
+  if (normalized === "canceled") {
+    return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
   }
   return false;
 }
@@ -85,16 +85,18 @@ export function subscriptionRequiresBillingManagement(
   status: string | null | undefined,
   currentPeriodEndsAt: number | null | undefined,
   nextBilledAt: number | null | undefined,
+  requiresPriceMappingReview = false,
   now = Date.now(),
 ) {
+  if (requiresPriceMappingReview) return true;
   const normalized = normalizeStatus(status);
+  const storedPeriodEndsAt = getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt);
   if (!normalized) return false;
   if (normalized === "expired") return false;
   if (normalized === "canceled") {
-    return typeof currentPeriodEndsAt === "number" ? now < currentPeriodEndsAt : false;
+    return typeof storedPeriodEndsAt === "number" ? now < storedPeriodEndsAt : false;
   }
   if (normalized === "active" || normalized === "trialing") {
-    const storedPeriodEndsAt = getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt);
     return typeof storedPeriodEndsAt === "number" ? now < storedPeriodEndsAt : true;
   }
   if (normalized === "past_due" || normalized === "paused" || normalized === "created") {
@@ -108,6 +110,7 @@ export function subscriptionCanSelfServeManage<
     status?: string | null;
     currentPeriodEndsAt?: number | null;
     nextBilledAt?: number | null;
+    requiresPriceMappingReview?: boolean | null;
     paddleCustomerId?: string | null;
     paddleSubscriptionId?: string | null;
   },
@@ -118,6 +121,7 @@ export function subscriptionCanSelfServeManage<
       row.status,
       row.currentPeriodEndsAt,
       row.nextBilledAt,
+      row.requiresPriceMappingReview === true,
       now,
     )
   ) {
@@ -132,15 +136,15 @@ export function subscriptionCanSelfServeManage<
     return false;
   }
   const normalized = normalizeStatus(row.status);
+  const storedPeriodEndsAt = getStoredPeriodEndsAt(
+    row.currentPeriodEndsAt,
+    row.nextBilledAt,
+  );
   if (normalized === "active" || normalized === "trialing") {
-    const storedPeriodEndsAt = getStoredPeriodEndsAt(
-      row.currentPeriodEndsAt,
-      row.nextBilledAt,
-    );
     return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
   }
   if (normalized === "canceled") {
-    return typeof row.currentPeriodEndsAt === "number" && now < row.currentPeriodEndsAt;
+    return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
   }
   return true;
 }
@@ -150,6 +154,7 @@ export function subscriptionNeedsMerchantReview<
     status?: string | null;
     currentPeriodEndsAt?: number | null;
     nextBilledAt?: number | null;
+    requiresPriceMappingReview?: boolean | null;
     paddleCustomerId?: string | null;
     paddleSubscriptionId?: string | null;
   },
@@ -160,6 +165,7 @@ export function subscriptionNeedsMerchantReview<
       row.status,
       row.currentPeriodEndsAt,
       row.nextBilledAt,
+      row.requiresPriceMappingReview === true,
       now,
     ) && !subscriptionCanSelfServeManage(row, now)
   );
@@ -170,6 +176,7 @@ export function pickEffectiveSubscription<
     status?: string | null;
     currentPeriodEndsAt?: number | null;
     nextBilledAt?: number | null;
+    requiresPriceMappingReview?: boolean | null;
     lastSubscriptionUpdatedAt?: number | null;
     lastEventOccurredAt?: number | null;
     updatedAt?: number | null;
@@ -201,12 +208,14 @@ export function pickEffectiveSubscription<
         a.status,
         a.currentPeriodEndsAt,
         a.nextBilledAt,
+        a.requiresPriceMappingReview === true,
         now,
       );
       const bRecoverable = subscriptionRequiresBillingManagement(
         b.status,
         b.currentPeriodEndsAt,
         b.nextBilledAt,
+        b.requiresPriceMappingReview === true,
         now,
       );
       if (aRecoverable !== bRecoverable) return aRecoverable ? -1 : 1;

@@ -150,6 +150,7 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
 }
 
 const PREMIUM_TTS_PREVIEW_FEATURE = "premium_tts";
+const CHECKOUT_WEBHOOK_GRACE_MS = 2 * 60_000;
 const SUPPORT_OPERATOR_EMAILS = new Set([
   "amanmamgain9@gmail.com",
   "support@example.com",
@@ -298,6 +299,18 @@ function pickWebhookUserResolution(
     user: resolved.user,
     source: resolved.source,
   };
+}
+
+function countDistinctWebhookUsers(
+  candidates: Array<{
+    user: Doc<"users"> | null;
+  }>,
+) {
+  return new Set(
+    candidates
+      .map((candidate) => candidate.user?._id)
+      .filter((value): value is Id<"users"> => Boolean(value)),
+  ).size;
 }
 
 function pickCanonicalPaddleCustomerId(
@@ -451,6 +464,36 @@ async function listRetryableIgnoredBillingEvents(
   return filtered.sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
 }
 
+async function listPendingWebhookCheckoutSessions(
+  db: BillingReadDb,
+  userId: Id<"users">,
+) {
+  const rows = await db
+    .query("paddleCheckoutSessions")
+    .withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+    .order("desc")
+    .collect();
+  return rows.filter(
+    (row) =>
+      typeof row.clientCompletedAt === "number" &&
+      !Number.isNaN(row.clientCompletedAt) &&
+      typeof row.completedAt !== "number",
+  );
+}
+
+function splitPendingWebhookCheckoutSessions(
+  sessions: Doc<"paddleCheckoutSessions">[],
+  now: number,
+) {
+  const pending = sessions.filter(
+    (row) => typeof row.clientCompletedAt === "number" && now - row.clientCompletedAt < CHECKOUT_WEBHOOK_GRACE_MS,
+  );
+  const stale = sessions.filter(
+    (row) => typeof row.clientCompletedAt === "number" && now - row.clientCompletedAt >= CHECKOUT_WEBHOOK_GRACE_MS,
+  );
+  return { pending, stale };
+}
+
 function listRetryableIgnoredBillingIssueCodes(
   events: Array<Pick<Doc<"billingEvents">, "status">>,
 ) {
@@ -474,6 +517,12 @@ function listRetryableIgnoredBillingIssueCodes(
   return [...issueCodes];
 }
 
+function listPendingCheckoutIssueCodes(
+  sessions: Array<Pick<Doc<"paddleCheckoutSessions">, "clientCompletedAt">>,
+) {
+  return sessions.length > 0 ? ["checkout_pending_webhook"] : [];
+}
+
 function listMerchantReviewIssueCodes(
   subscriptions: Array<
     Pick<
@@ -481,6 +530,7 @@ function listMerchantReviewIssueCodes(
       | "status"
       | "currentPeriodEndsAt"
       | "nextBilledAt"
+      | "requiresPriceMappingReview"
       | "paddleCustomerId"
       | "paddleSubscriptionId"
     >
@@ -490,6 +540,9 @@ function listMerchantReviewIssueCodes(
   const issueCodes = new Set<string>();
   for (const row of subscriptions) {
     if (!subscriptionNeedsMerchantReview(row, now)) continue;
+    if (row.requiresPriceMappingReview) {
+      issueCodes.add("price_mapping_review");
+    }
     const normalizedStatus = row.status?.trim().toLowerCase() ?? null;
     const storedPeriodEndsAt = row.currentPeriodEndsAt ?? row.nextBilledAt ?? null;
     if (
@@ -532,6 +585,7 @@ function listRecoverableCustomerIds(
 function buildMerchantReviewContext(
   subscriptions: Doc<"subscriptions">[],
   pendingIgnoredEvents: Doc<"billingEvents">[],
+  pendingCheckoutSessions: Doc<"paddleCheckoutSessions">[],
   now: number,
 ) {
   const portalManageableSubscriptions = subscriptions.filter((row) =>
@@ -556,6 +610,7 @@ function buildMerchantReviewContext(
     new Set([
       ...listMerchantReviewIssueCodes(merchantReviewSubscriptions, now),
       ...listRetryableIgnoredBillingIssueCodes(pendingIgnoredEvents),
+      ...listPendingCheckoutIssueCodes(pendingCheckoutSessions),
       ...(hasRecoverableCustomerConflict ? ["multiple_recoverable_customer_ids"] : []),
     ]),
   );
@@ -570,6 +625,7 @@ function buildMerchantReviewContext(
     merchantReviewRequired:
       reviewSubscriptions.length > 0 ||
       pendingIgnoredEvents.length > 0 ||
+      pendingCheckoutSessions.length > 0 ||
       hasRecoverableCustomerConflict,
   };
 }
@@ -579,6 +635,7 @@ async function reconcileBillingRecoveryCases(
   user: Doc<"users">,
   reviewSubscriptions: Doc<"subscriptions">[],
   pendingIgnoredEvents: Doc<"billingEvents">[],
+  pendingCheckoutSessions: Doc<"paddleCheckoutSessions">[],
   issueCodes: string[],
   now: number,
 ) {
@@ -588,7 +645,11 @@ async function reconcileBillingRecoveryCases(
     .collect();
   const activeOpenCases = openCases.filter((row) => row.status === "open");
 
-  if (reviewSubscriptions.length === 0 && pendingIgnoredEvents.length === 0) {
+  if (
+    reviewSubscriptions.length === 0 &&
+    pendingIgnoredEvents.length === 0 &&
+    pendingCheckoutSessions.length === 0
+  ) {
     for (const row of activeOpenCases) {
       await db.patch(row._id, {
         status: "resolved",
@@ -606,6 +667,9 @@ async function reconcileBillingRecoveryCases(
       reviewSubscriptions,
     ) ??
     pendingIgnoredEvents.find(
+      (row) => typeof row.paddleCustomerId === "string" && row.paddleCustomerId.length > 0,
+    )?.paddleCustomerId ??
+    pendingCheckoutSessions.find(
       (row) => typeof row.paddleCustomerId === "string" && row.paddleCustomerId.length > 0,
     )?.paddleCustomerId ??
     undefined;
@@ -678,12 +742,22 @@ export const syncCurrentUser = mutationGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
-    const merchantReview = buildMerchantReviewContext(subscriptions, pendingIgnoredEvents, now);
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
+    const {
+      stale: pendingCheckoutSessions,
+    } = splitPendingWebhookCheckoutSessions(allPendingCheckoutSessions, now);
+    const merchantReview = buildMerchantReviewContext(
+      subscriptions,
+      pendingIgnoredEvents,
+      pendingCheckoutSessions,
+      now,
+    );
     await reconcileBillingRecoveryCases(
       ctx.db,
       user,
       merchantReview.reviewSubscriptions,
       pendingIgnoredEvents,
+      pendingCheckoutSessions,
       merchantReview.issueCodes,
       now,
     );
@@ -820,12 +894,37 @@ export const resetMyBillingForTesting = mutationGeneric({
       .query("subscriptions")
       .withIndex("by_userId_updatedAt", (q) => q.eq("userId", user._id))
       .collect();
+    const checkoutSessions = await ctx.db
+      .query("paddleCheckoutSessions")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", user._id))
+      .collect();
+    const billingEvents = (await ctx.db.query("billingEvents").collect()).filter(
+      (row) =>
+        row.userId === user._id ||
+        row.externalId === user.externalId ||
+        (typeof user.paddleCustomerId === "string" && row.paddleCustomerId === user.paddleCustomerId),
+    );
+    const recoveryCases = await ctx.db
+      .query("billingRecoveryCases")
+      .withIndex("by_user_status", (q) => q.eq("userId", user._id))
+      .collect();
 
     for (const row of subscriptions) {
       await ctx.db.delete(row._id);
     }
+    for (const row of checkoutSessions) {
+      await ctx.db.delete(row._id);
+    }
+    for (const row of billingEvents) {
+      await ctx.db.delete(row._id);
+    }
+    for (const row of recoveryCases) {
+      await ctx.db.delete(row._id);
+    }
 
     await ctx.db.patch(user._id, {
+      paddleCustomerId: undefined,
+      trialRedeemedAt: undefined,
       manualAccessTier: undefined,
       manualAccessEndsAt: undefined,
       manualAccessReason: undefined,
@@ -833,17 +932,6 @@ export const resetMyBillingForTesting = mutationGeneric({
       updatedAt: Date.now(),
       lastSeenAt: Date.now(),
     });
-    const recoveryCases = await ctx.db
-      .query("billingRecoveryCases")
-      .withIndex("by_user_status", (q) => q.eq("userId", user._id))
-      .collect();
-    for (const row of recoveryCases.filter((entry) => entry.status === "open")) {
-      await ctx.db.patch(row._id, {
-        status: "resolved",
-        resolvedAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-    }
 
     return {
       userId: user._id,
@@ -936,15 +1024,18 @@ export const getMyBilling = queryGeneric({
         hasPremiumVoice: false,
         trialActive: false,
         trialEndsAt: null as number | null,
+        accessEndsAt: null as number | null,
+        trialEligible: resolveFreeProPlusTrialDays() > 0,
+        checkoutPendingConfirmation: false,
         accessSource: "none" as const,
         subscriptionEntitled: false,
-      premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
-      merchantReviewRequired: false,
-      merchantReviewCaseId: null as Id<"billingRecoveryCases"> | null,
-      merchantReviewIssueCodes: [] as string[],
-      manualAccessTier: null as string | null,
-      manualAccessEndsAt: null as number | null,
-      manualAccessReason: null as string | null,
+        premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
+        merchantReviewRequired: false,
+        merchantReviewCaseId: null as Id<"billingRecoveryCases"> | null,
+        merchantReviewIssueCodes: [] as string[],
+        manualAccessTier: null as string | null,
+        manualAccessEndsAt: null as number | null,
+        manualAccessReason: null as string | null,
         proPreviewQuotaChars: null as number | null,
         proPreviewUsedChars: null as number | null,
         proPreviewRemainingChars: null as number | null,
@@ -968,6 +1059,9 @@ export const getMyBilling = queryGeneric({
         hasPremiumVoice: false,
         trialActive: false,
         trialEndsAt: null as number | null,
+        accessEndsAt: null as number | null,
+        trialEligible: resolveFreeProPlusTrialDays() > 0,
+        checkoutPendingConfirmation: false,
         accessSource: "none" as const,
         subscriptionEntitled: false,
         premiumVoiceSource: "none" as "none" | "trial" | "pro_preview" | "pro_plus",
@@ -993,6 +1087,11 @@ export const getMyBilling = queryGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
+    const {
+      pending: checkoutPendingConfirmationSessions,
+      stale: pendingCheckoutSessions,
+    } = splitPendingWebhookCheckoutSessions(allPendingCheckoutSessions, now);
     const recognizedSubscriptions = (
       await Promise.all(
         subscriptions.map(async (row) => ({
@@ -1009,7 +1108,12 @@ export const getMyBilling = queryGeneric({
       pickEffectiveSubscription(subscriptions, now),
       subscriptions,
     );
-    const merchantReview = buildMerchantReviewContext(subscriptions, pendingIgnoredEvents, now);
+    const merchantReview = buildMerchantReviewContext(
+      subscriptions,
+      pendingIgnoredEvents,
+      pendingCheckoutSessions,
+      now,
+    );
     const portalManageableSubscriptions = merchantReview.portalManageableSubscriptions;
     const merchantReviewSubscriptions = merchantReview.merchantReviewSubscriptions;
     const merchantReviewRequired = merchantReview.merchantReviewRequired;
@@ -1071,10 +1175,18 @@ export const getMyBilling = queryGeneric({
     const tier = paidAccess.tier;
     const hasPremiumVoice = paidAccess.hasPremiumVoice;
     const premiumVoiceSource = paidAccess.premiumVoiceSource;
+    const trialEligible =
+      resolveFreeProPlusTrialDays() > 0 && typeof user.trialRedeemedAt !== "number";
+    const checkoutPendingConfirmation = checkoutPendingConfirmationSessions.length > 0;
     const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
     const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
     const manualAccessEndsAt = hasEffectiveManualAccess ? user.manualAccessEndsAt ?? null : null;
     const manualAccessReason = hasEffectiveManualAccess ? user.manualAccessReason ?? null : null;
+    const accessEndsAt = hasEffectiveManualAccess
+      ? user.manualAccessEndsAt ?? null
+      : paidAccess.subscriptionEntitled
+        ? (subscription?.currentPeriodEndsAt ?? subscription?.nextBilledAt ?? null)
+        : null;
 
     let proPreviewQuotaChars: number | null = null;
     let proPreviewUsedChars: number | null = null;
@@ -1105,6 +1217,9 @@ export const getMyBilling = queryGeneric({
       hasPremiumVoice,
       trialActive,
       trialEndsAt,
+      accessEndsAt,
+      trialEligible,
+      checkoutPendingConfirmation,
       accessSource: paidAccess.accessSource,
       subscriptionEntitled: paidAccess.subscriptionEntitled,
       premiumVoiceSource,
@@ -1134,7 +1249,9 @@ export const getBillingPlansPublic = queryGeneric({
     const trialDays = resolveFreeProPlusTrialDays();
     const plans = await Promise.all(
       listPublicBillingPlanConfigs().map(async (config) => {
-        const priceId = await resolveCheckoutPlanPriceId(ctx.db, config.plan);
+        const priceId = await resolveCheckoutPlanPriceId(ctx.db, config.plan, {
+          trialEligible: true,
+        });
         return {
           plan: config.plan,
           tier: config.tier,
@@ -1155,12 +1272,20 @@ export const getBillingPlansPublic = queryGeneric({
 export const getCheckoutPlanConfig = queryGeneric({
   args: {
     plan: v.literal("pro_monthly"),
+    trialEligible: v.optional(v.boolean()),
   },
-  handler: async (ctx, { plan }: { plan: "pro_monthly" }) => {
-    const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
+  handler: async (
+    ctx,
+    { plan, trialEligible }: { plan: "pro_monthly"; trialEligible?: boolean },
+  ) => {
+    const resolvedTrialEligible = trialEligible !== false;
+    const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
+      trialEligible: resolvedTrialEligible,
+    });
     return {
       plan,
       priceId,
+      trialEligible: resolvedTrialEligible,
       checkoutEnabled: Boolean(priceId),
     };
   },
@@ -1232,7 +1357,11 @@ export const createCheckoutSession = mutationGeneric({
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
-    const expectedPriceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
+    const trialEligible =
+      resolveFreeProPlusTrialDays() > 0 && typeof user.trialRedeemedAt !== "number";
+    const expectedPriceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
+      trialEligible,
+    });
     if (!expectedPriceId) {
       throw new ConvexError(`Checkout is not configured for ${plan}`);
     }
@@ -1268,7 +1397,20 @@ export const createCheckoutSession = mutationGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
-    const merchantReview = buildMerchantReviewContext(subscriptions, pendingIgnoredEvents, now);
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
+    const {
+      pending: checkoutPendingConfirmationSessions,
+      stale: pendingCheckoutSessions,
+    } = splitPendingWebhookCheckoutSessions(allPendingCheckoutSessions, now);
+    const merchantReview = buildMerchantReviewContext(
+      subscriptions,
+      pendingIgnoredEvents,
+      pendingCheckoutSessions,
+      now,
+    );
+    if (checkoutPendingConfirmationSessions.length > 0) {
+      throw new ConvexError("Checkout confirmation pending");
+    }
     const recoverableCustomerIds = Array.from(
       new Set(
         portalManageableSubscriptions
@@ -1297,6 +1439,7 @@ export const createCheckoutSession = mutationGeneric({
           user,
           merchantReview.reviewSubscriptions,
           pendingIgnoredEvents,
+          pendingCheckoutSessions,
           merchantReview.issueCodes,
           now,
         );
@@ -1310,6 +1453,7 @@ export const createCheckoutSession = mutationGeneric({
         user,
         merchantReview.reviewSubscriptions,
         pendingIgnoredEvents,
+        pendingCheckoutSessions,
         merchantReview.issueCodes,
         now,
       );
@@ -1344,6 +1488,63 @@ export const createCheckoutSession = mutationGeneric({
       paddleCustomerId: user.paddleCustomerId,
     });
     return { sessionId };
+  },
+});
+
+export const markCheckoutCompletedFromClient = mutationGeneric({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, { sessionId }) => {
+    const identity = await requireIdentity(ctx);
+    const user = await findUserForIdentity(ctx.db, identity);
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const checkoutSession = await ctx.db
+      .query("paddleCheckoutSessions")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .first();
+    if (!checkoutSession || checkoutSession.userId !== user._id) {
+      throw new ConvexError("Checkout session not found");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(checkoutSession._id, {
+      clientCompletedAt: checkoutSession.clientCompletedAt ?? now,
+      paddleCustomerId: checkoutSession.paddleCustomerId ?? user.paddleCustomerId,
+      updatedAt: now,
+    });
+
+    const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
+    const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
+      userId: user._id,
+      externalId: user.externalId,
+      customerId: user.paddleCustomerId,
+    });
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
+    const { stale: pendingCheckoutSessions } = splitPendingWebhookCheckoutSessions(
+      allPendingCheckoutSessions,
+      now,
+    );
+    const merchantReview = buildMerchantReviewContext(
+      subscriptions,
+      pendingIgnoredEvents,
+      pendingCheckoutSessions,
+      now,
+    );
+    await reconcileBillingRecoveryCases(
+      ctx.db,
+      user,
+      merchantReview.reviewSubscriptions,
+      pendingIgnoredEvents,
+      pendingCheckoutSessions,
+      merchantReview.issueCodes,
+      now,
+    );
+
+    return { sessionId, clientCompletedAt: checkoutSession.clientCompletedAt ?? now };
   },
 });
 
@@ -1436,35 +1637,26 @@ async function applyPaddleWebhookEvent(
   const customerIdUser = args.customerId
     ? await findCanonicalUserByPaddleCustomerId(ctx.db, args.customerId)
     : null;
+  const ownershipEvidence = [
+    { user: checkoutSessionUser, source: "checkout_session" as const, priority: 4 },
+    { user: externalIdUser, source: "external_id" as const, priority: 3 },
+    { user: customerIdUser, source: "customer_id" as const, priority: 2 },
+  ];
   const conflictingExistingOwnerEvidence = Boolean(
     existingSubscriptionOwner &&
-      [checkoutSessionUser, externalIdUser, customerIdUser].some(
-        (candidate) =>
-          candidate && candidate._id !== existingSubscriptionOwner._id,
+      ownershipEvidence.some(
+        (candidate) => candidate.user && candidate.user._id !== existingSubscriptionOwner._id,
       ),
+  );
+  const conflictingFirstSeenOwnerEvidence = Boolean(
+    !existingSubscriptionOwner && countDistinctWebhookUsers(ownershipEvidence) > 1,
   );
   const webhookUserResolution = existingSubscriptionOwner
     ? {
         user: existingSubscriptionOwner,
         source: "existing_subscription" as const,
       }
-    : pickWebhookUserResolution([
-        {
-          user: checkoutSessionUser,
-          source: "checkout_session",
-          priority: 4,
-        },
-        {
-          user: externalIdUser,
-          source: "external_id",
-          priority: 3,
-        },
-        {
-          user: customerIdUser,
-          source: "customer_id",
-          priority: 2,
-        },
-      ]);
+    : pickWebhookUserResolution(ownershipEvidence);
 
   const user = webhookUserResolution.user;
 
@@ -1487,7 +1679,10 @@ async function applyPaddleWebhookEvent(
       processingStatus = "ignored_stale_event";
     }
   }
-  if (processingStatus === "processed" && conflictingExistingOwnerEvidence) {
+  if (
+    processingStatus === "processed" &&
+    (conflictingExistingOwnerEvidence || conflictingFirstSeenOwnerEvidence)
+  ) {
     processingStatus = "ignored_conflicting_owner";
   }
 
@@ -1515,9 +1710,14 @@ async function applyPaddleWebhookEvent(
   const checkoutSessionTier = checkoutSessionPriceMatched
     ? resolveBillingTierByPlan(checkoutSession?.plan)
     : null;
+  const explicitUnknownManagedPrice = Boolean(
+    hasExplicitWebhookPrice && resolvedAppPlan && !resolvedPriceId,
+  );
   const resolvedTier =
     resolvedPriceId && processingStatus === "processed"
       ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
+      : explicitUnknownManagedPrice && existingTier
+        ? existingTier
       : hasExplicitWebhookPrice
         ? undefined
         : existingTier ?? checkoutSessionTier ?? undefined;
@@ -1532,10 +1732,24 @@ async function applyPaddleWebhookEvent(
 
   if (processingStatus === "processed" && user) {
     userId = user._id;
+    const normalizedStatusForUser = normalizeSubscriptionStatus(
+      args.eventType,
+      args.subscriptionStatus,
+    );
     if (args.customerId) {
       await setUserPaddleCustomerId(ctx.db, user, args.customerId, now);
     } else {
       await ctx.db.patch(user._id, {
+        updatedAt: now,
+      });
+    }
+    if (
+      normalizedStatusForUser === "trialing" &&
+      resolveFreeProPlusTrialDays() > 0 &&
+      typeof user.trialRedeemedAt !== "number"
+    ) {
+      await ctx.db.patch(user._id, {
+        trialRedeemedAt: now,
         updatedAt: now,
       });
     }
@@ -1560,6 +1774,7 @@ async function applyPaddleWebhookEvent(
       userId?: Id<"users">;
       status: string;
       appPlan?: BillingPlan;
+      requiresPriceMappingReview?: boolean;
       tier?: StoredBillingTier;
       tierSourcePriceId?: string;
       updatedAt: number;
@@ -1575,6 +1790,7 @@ async function applyPaddleWebhookEvent(
       lastSubscriptionUpdatedAt?: number;
     } = {
       status: normalizedStatus,
+      requiresPriceMappingReview: explicitUnknownManagedPrice ? true : undefined,
       updatedAt: now,
       lastEventType: args.eventType,
       lastEventOccurredAt: incomingEventTime,
@@ -1585,6 +1801,11 @@ async function applyPaddleWebhookEvent(
     if (resolvedTier) {
       patch.tier = resolvedTier;
       patch.tierSourcePriceId = resolvedPriceId ?? (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined);
+      if (explicitUnknownManagedPrice && !patch.tierSourcePriceId) {
+        patch.tierSourcePriceId =
+          existingSubscription?.tierSourcePriceId ??
+          existingSubscription?.priceId;
+      }
     } else if (!hasExplicitWebhookPrice && isStoredBillingTier(existingSubscription?.tier)) {
       patch.tier = existingSubscription.tier;
       patch.tierSourcePriceId =

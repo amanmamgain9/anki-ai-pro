@@ -47,13 +47,17 @@ function buildMergedExternalId(row: Pick<Doc<"users">, "_id" | "externalId">) {
   return `merged:${row.externalId}:${row._id}`;
 }
 
+function isStoredManualAccessTier(value: string | undefined): value is "pro" | "pro_plus" {
+  return value === "pro" || value === "pro_plus";
+}
+
 function selectPreferredManualAccess(
   primary: BillingUser,
   secondary: BillingUser,
   now: number,
 ) {
   const score = (user: BillingUser) => {
-    if (user.manualAccessTier !== "pro_plus") {
+    if (!isStoredManualAccessTier(user.manualAccessTier)) {
       return {
         hasAccess: false,
         active: false,
@@ -294,6 +298,46 @@ async function migrateBillingEventRows(
   }
 }
 
+async function migrateCheckoutSessionRows(
+  db: AuthUserDb,
+  loser: BillingUser,
+  canonical: BillingUser,
+  now: number,
+) {
+  const rows = await db
+    .query("paddleCheckoutSessions")
+    .withIndex("by_userId_createdAt", (q) => q.eq("userId", loser._id))
+    .collect();
+  for (const row of rows) {
+    await db.patch(row._id, {
+      userId: canonical._id,
+      externalId: canonical.externalId,
+      paddleCustomerId: row.paddleCustomerId ?? canonical.paddleCustomerId,
+      updatedAt: now,
+    });
+  }
+}
+
+async function migrateBillingRecoveryCaseRows(
+  db: AuthUserDb,
+  loser: BillingUser,
+  canonical: BillingUser,
+  now: number,
+) {
+  const rows = await db
+    .query("billingRecoveryCases")
+    .withIndex("by_user_status", (q) => q.eq("userId", loser._id))
+    .collect();
+  for (const row of rows) {
+    await db.patch(row._id, {
+      userId: canonical._id,
+      externalId: canonical.externalId,
+      paddleCustomerId: row.paddleCustomerId ?? canonical.paddleCustomerId,
+      updatedAt: now,
+    });
+  }
+}
+
 async function migrateSubscriptionRows(
   db: AuthUserDb,
   loserUserId: Id<"users">,
@@ -423,6 +467,8 @@ async function mergeUserIntoCanonical(
   await migrateSubscriptionRows(db, loser._id, canonical._id, now);
   await migrateFeatureUsageRows(db, loser._id, canonical._id, now);
   await migrateBillingEventRows(db, loser, canonical, now);
+  await migrateCheckoutSessionRows(db, loser, canonical, now);
+  await migrateBillingRecoveryCaseRows(db, loser, canonical, now);
   await repointAuthIdentityRows(db, loser._id, canonical._id, now);
 
   const canonicalPatch: Partial<Doc<"users">> & { updatedAt: number; lastSeenAt: number } = {
@@ -435,8 +481,21 @@ async function mergeUserIntoCanonical(
   if (!canonical.paddleCustomerId && loser.paddleCustomerId) {
     canonicalPatch.paddleCustomerId = loser.paddleCustomerId;
   }
+  const canonicalTrialRedeemedAt =
+    typeof canonical.trialRedeemedAt === "number" ? canonical.trialRedeemedAt : null;
+  const loserTrialRedeemedAt =
+    typeof loser.trialRedeemedAt === "number" ? loser.trialRedeemedAt : null;
+  const mergedTrialRedeemedAt =
+    canonicalTrialRedeemedAt === null
+      ? loserTrialRedeemedAt
+      : loserTrialRedeemedAt === null
+        ? canonicalTrialRedeemedAt
+        : Math.min(canonicalTrialRedeemedAt, loserTrialRedeemedAt);
+  if (mergedTrialRedeemedAt !== null) {
+    canonicalPatch.trialRedeemedAt = mergedTrialRedeemedAt;
+  }
   const manualAccessSource = selectPreferredManualAccess(canonical, loser, now);
-  if (manualAccessSource.manualAccessTier === "pro_plus") {
+  if (isStoredManualAccessTier(manualAccessSource.manualAccessTier)) {
     canonicalPatch.manualAccessTier = manualAccessSource.manualAccessTier;
     canonicalPatch.manualAccessEndsAt = manualAccessSource.manualAccessEndsAt;
     canonicalPatch.manualAccessReason = manualAccessSource.manualAccessReason;
@@ -447,6 +506,7 @@ async function mergeUserIntoCanonical(
     externalId: buildMergedExternalId(loser),
     email: undefined,
     paddleCustomerId: undefined,
+    trialRedeemedAt: undefined,
     manualAccessTier: undefined,
     manualAccessEndsAt: undefined,
     manualAccessReason: undefined,

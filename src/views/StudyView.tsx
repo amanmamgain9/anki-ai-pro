@@ -27,6 +27,7 @@ type LinearStudyState = {
 };
 type BillingState = {
   isActive: boolean;
+  // "inactive" means locked out until trial, paid, or manual access is active.
   plan: "inactive" | "pro" | "pro_plus";
   hasPremiumVoice?: boolean;
   trialActive?: boolean;

@@ -15,6 +15,10 @@ type CheckoutPlan = "pro_monthly";
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
+  trialEligible?: boolean;
+  checkoutPendingConfirmation?: boolean;
+  accessEndsAt?: number | null;
+  // "inactive" is a locked state, not a usable free tier.
   plan?: "inactive" | "pro" | "pro_plus";
   accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
@@ -59,7 +63,22 @@ function initializePaddleForBilling(successUrl: string) {
     eventCallback(event) {
       if (event?.name === "checkout.completed") {
         const target = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
-        window.location.replace(target);
+        const sessionId = window.__aiankiPaddleCheckoutSessionId;
+        void (async () => {
+          if (sessionId) {
+            try {
+              await fetch("/api/paddle/checkout/complete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId }),
+                keepalive: true,
+              });
+            } catch {
+              // Best effort: server-side reconciliation still relies on webhook or support.
+            }
+          }
+          window.location.replace(target);
+        })();
       }
     },
     checkout: {
@@ -91,6 +110,7 @@ export default function BillingStartView() {
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
+  const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
   const requiresBillingManagement =
     !hasManualAccess &&
     hasBlockingSubscriptions &&
@@ -103,10 +123,11 @@ export default function BillingStartView() {
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
+  const trialEligible = Boolean(billing?.trialEligible) && trialDays > 0;
   const startButtonLabel =
-    trialDays > 0 ? t("app.settings.startPro") : t("app.settings.startProNoTrial");
+    trialEligible ? t("app.settings.startPro") : t("app.settings.startProNoTrial");
   const billingNote =
-    trialDays > 0 ? t("app.billingStart.trialNote") : t("app.billingStart.trialNoteNoTrial");
+    trialEligible ? t("app.billingStart.trialNote") : t("app.billingStart.trialNoteNoTrial");
   const successUrl =
     typeof window === "undefined"
       ? `/start-trial?billing=success&from=${encodeURIComponent(from)}`
@@ -184,6 +205,7 @@ export default function BillingStartView() {
       const customer = payload.paddleCustomerId
         ? { id: payload.paddleCustomerId }
         : { email: payload.customerEmail ?? undefined };
+      window.__aiankiPaddleCheckoutSessionId = payload.checkoutSessionId;
       open({
         items: [{ priceId: payload.priceId, quantity: 1 }],
         customer,
@@ -229,7 +251,7 @@ export default function BillingStartView() {
             ? t("app.billingStart.titleManage")
             : requiresBillingManagement
             ? t("app.billingStart.titleManage")
-            : trialDays > 0
+            : trialEligible
               ? t("app.billingStart.titleStart")
               : t("app.billingStart.titleStartNoTrial")}
         </h1>
@@ -238,7 +260,7 @@ export default function BillingStartView() {
             ? t("app.billingStart.subtitleSupport")
             : requiresBillingManagement
             ? t("app.billingStart.subtitleManage")
-            : trialDays > 0
+            : trialEligible
               ? t("app.billingStart.subtitleStart", { count: trialDays })
               : t("app.billingStart.subtitleStartNoTrial")}
         </p>
@@ -290,9 +312,15 @@ export default function BillingStartView() {
               type="button"
               onClick={() => startCheckout("pro_monthly")}
               className="btn-primary"
-              disabled={busyAction !== null || !planAvailability.pro_monthly}
+              disabled={
+                busyAction !== null ||
+                checkoutPendingConfirmation ||
+                !planAvailability.pro_monthly
+              }
             >
-              {busyAction === "pro_monthly" ? t("app.settings.opening") : startButtonLabel}
+              {busyAction === "pro_monthly" || checkoutPendingConfirmation
+                ? t("app.settings.opening")
+                : startButtonLabel}
             </button>
           )}
           <button
@@ -305,7 +333,11 @@ export default function BillingStartView() {
           </button>
         </div>
 
-        {merchantReviewRequired && !portalManagementAvailable ? (
+        {checkoutPendingConfirmation ? (
+          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {t("app.settings.checkoutSuccess")}
+          </p>
+        ) : merchantReviewRequired && !portalManagementAvailable ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
             {t("app.billingStart.merchantReviewNote")}
           </p>

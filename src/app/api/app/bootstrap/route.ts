@@ -26,7 +26,6 @@ export async function POST() {
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
 
-    await convex.mutation(api.billing.syncCurrentUser, {});
     const billing = await convex.query(api.billing.getMyBilling, {});
     const onboarding = await convex.query(api.billing.getMyOnboardingState, {});
 

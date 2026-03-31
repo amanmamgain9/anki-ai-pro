@@ -4,8 +4,9 @@ export const BILLING_PLAN_ORDER = [
 export const PUBLIC_BILLING_PLAN_ORDER = ["pro_monthly"] as const;
 
 export type BillingPlan = (typeof BILLING_PLAN_ORDER)[number];
-// Sellable checkout plans currently resolve only to the Pro tier.
-// Pro+ remains an internal/manual entitlement tier, not a public checkout plan.
+// There is no public free/basic plan. Signed-in users without active access are
+// redirected to /start-trial. Sellable checkout plans currently resolve only to
+// the Pro tier, while Pro+ remains an internal/manual entitlement tier.
 export type BillingTier = "pro" | "pro_plus";
 export type BillingInterval = "monthly";
 
@@ -16,6 +17,7 @@ export type BillingPlanConfig = {
   trialEligible: boolean;
   envVars: readonly string[];
   legacyEnvVars?: readonly string[];
+  noTrialEnvVars?: readonly string[];
 };
 
 const BILLING_PLAN_CONFIGS: Record<BillingPlan, BillingPlanConfig> = {
@@ -26,6 +28,7 @@ const BILLING_PLAN_CONFIGS: Record<BillingPlan, BillingPlanConfig> = {
     trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
+    noTrialEnvVars: ["PADDLE_PRICE_ID_PRO_MONTHLY_NO_TRIAL"],
   },
 };
 

@@ -25,6 +25,7 @@ const BILLING_PLAN_CONFIGS: Record<
     trialEligible: boolean;
     envVars: readonly string[];
     legacyEnvVars?: readonly string[];
+    noTrialEnvVars?: readonly string[];
   }
 > = {
   pro_monthly: {
@@ -34,6 +35,7 @@ const BILLING_PLAN_CONFIGS: Record<
     trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
+    noTrialEnvVars: ["PADDLE_PRICE_ID_PRO_MONTHLY_NO_TRIAL"],
   },
 };
 const BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly"];
@@ -52,8 +54,18 @@ function resolveFreeProPlusTrialDays() {
   return Math.max(0, Math.floor(parsed));
 }
 
-function resolvePriceIdFromEnv(plan: BillingPlan) {
+function resolvePriceIdFromEnv(
+  plan: BillingPlan,
+  options?: { trialEligible?: boolean },
+) {
   const config = BILLING_PLAN_CONFIGS[plan];
+  if (options?.trialEligible === false) {
+    for (const envVar of config.noTrialEnvVars ?? []) {
+      const value = process.env[envVar];
+      if (value && value.length > 0) return value;
+    }
+    return null;
+  }
   for (const envVar of config.envVars) {
     const value = process.env[envVar];
     if (value && value.length > 0) return value;
@@ -98,12 +110,15 @@ function pickNewestRow<T extends { updatedAt: number; createdAt: number }>(rows:
   })[0] ?? null;
 }
 
-async function getActiveRowByPlan(db: any, plan: BillingPlan) {
-  const rows = (await db
-    .query("billingPlanPrices")
-    .withIndex("by_active_plan", (q: any) => q.eq("active", true).eq("plan", plan))
-    .collect()) as Doc<"billingPlanPrices">[];
-  return pickNewestRow(rows);
+async function getActiveRowByPlanAndTrialEligibility(
+  db: any,
+  plan: BillingPlan,
+  trialEligible: boolean,
+) {
+  const rows = await getRowsByPlan(db, plan);
+  return pickNewestRow(
+    rows.filter((row) => row.active && row.trialEligible === trialEligible),
+  );
 }
 
 export function listBillingPlanConfigs() {
@@ -114,12 +129,17 @@ export function listPublicBillingPlanConfigs() {
   return PUBLIC_BILLING_PLAN_ORDER.map((plan) => BILLING_PLAN_CONFIGS[plan]);
 }
 
-export async function resolveCheckoutPlanPriceId(db: any, plan: BillingPlan) {
-  const row = await getActiveRowByPlan(db, plan);
+export async function resolveCheckoutPlanPriceId(
+  db: any,
+  plan: BillingPlan,
+  options?: { trialEligible?: boolean },
+) {
+  const trialEligible = options?.trialEligible !== false;
+  const row = await getActiveRowByPlanAndTrialEligibility(db, plan, trialEligible);
   if (row?.active && row.paddlePriceId) {
     return row.paddlePriceId;
   }
-  return resolvePriceIdFromEnv(plan);
+  return resolvePriceIdFromEnv(plan, { trialEligible });
 }
 
 export async function resolveBillingTierByPriceId(
@@ -147,7 +167,10 @@ export async function resolveBillingTierByPriceId(
   for (const [plan, config] of Object.entries(BILLING_PLAN_CONFIGS) as Array<
     [BillingPlan, (typeof BILLING_PLAN_CONFIGS)[BillingPlan]]
   >) {
-    if (resolvePriceIdFromEnv(plan) === priceId) {
+    if (
+      resolvePriceIdFromEnv(plan, { trialEligible: true }) === priceId ||
+      resolvePriceIdFromEnv(plan, { trialEligible: false }) === priceId
+    ) {
       envMatchedTiers.add(config.tier);
     }
   }
@@ -182,7 +205,10 @@ export async function resolveBillingPlanByPriceId(
   for (const [plan] of Object.entries(BILLING_PLAN_CONFIGS) as Array<
     [BillingPlan, (typeof BILLING_PLAN_CONFIGS)[BillingPlan]]
   >) {
-    if (resolvePriceIdFromEnv(plan) === priceId) {
+    if (
+      resolvePriceIdFromEnv(plan, { trialEligible: true }) === priceId ||
+      resolvePriceIdFromEnv(plan, { trialEligible: false }) === priceId
+    ) {
       envMatchedPlans.add(plan);
     }
   }
@@ -206,21 +232,16 @@ export const listPublic = queryGeneric({
     const plans = await Promise.all(
       PUBLIC_BILLING_PLAN_ORDER.map(async (plan) => {
         const config = BILLING_PLAN_CONFIGS[plan];
-        const row = await getActiveRowByPlan(ctx.db, plan);
-        const priceId =
-          row?.active && row.paddlePriceId ? row.paddlePriceId : resolvePriceIdFromEnv(plan);
+        const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
+          trialEligible: true,
+        });
         return {
           plan,
           tier: config.tier,
           interval: config.interval,
           trialEligible: config.trialEligible && trialDays > 0,
           checkoutEnabled: Boolean(priceId),
-          source:
-            row?.active && row.paddlePriceId
-              ? "db"
-              : priceId
-                ? "env"
-                : "missing",
+          source: priceId ? "configured" : "missing",
         };
       }),
     );
@@ -235,12 +256,16 @@ export const listPublic = queryGeneric({
 export const getPriceForPlan = queryGeneric({
   args: {
     plan: v.literal("pro_monthly"),
+    trialEligible: v.optional(v.boolean()),
   },
-  handler: async (ctx, { plan }) => {
-    const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan);
+  handler: async (ctx, { plan, trialEligible }) => {
+    const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
+      trialEligible: trialEligible !== false,
+    });
     return {
       plan,
       priceId,
+      trialEligible: trialEligible !== false,
       checkoutEnabled: Boolean(priceId),
     };
   },
@@ -252,8 +277,9 @@ export const adminUpsertPrice = mutationGeneric({
     plan: v.literal("pro_monthly"),
     paddlePriceId: v.string(),
     active: v.optional(v.boolean()),
+    trialEligible: v.optional(v.boolean()),
   },
-  handler: async (ctx, { forwardSecret, plan, paddlePriceId, active }) => {
+  handler: async (ctx, { forwardSecret, plan, paddlePriceId, active, trialEligible }) => {
     const expectedSecret = process.env.PADDLE_WEBHOOK_FORWARD_SECRET;
     const forwardAllowed =
       Boolean(expectedSecret) && forwardSecret === expectedSecret;
@@ -262,6 +288,7 @@ export const adminUpsertPrice = mutationGeneric({
     }
     const now = Date.now();
     const config = BILLING_PLAN_CONFIGS[plan];
+    const resolvedTrialEligible = trialEligible ?? config.trialEligible;
     const normalizedPriceId = paddlePriceId.trim();
     if (normalizedPriceId.length === 0) {
       throw new ConvexError("Paddle price ID is required");
@@ -282,6 +309,7 @@ export const adminUpsertPrice = mutationGeneric({
         if (matchingRow && row._id === matchingRow._id) continue;
         if (!matchingRow && row.paddlePriceId === normalizedPriceId) continue;
         if (!row.active) continue;
+        if (row.trialEligible !== resolvedTrialEligible) continue;
         await ctx.db.patch(row._id, {
           active: false,
           updatedAt: now,
@@ -293,7 +321,7 @@ export const adminUpsertPrice = mutationGeneric({
       await ctx.db.patch(matchingRow._id, {
         tier: config.tier,
         interval: config.interval,
-        trialEligible: config.trialEligible,
+        trialEligible: resolvedTrialEligible,
         paddlePriceId: normalizedPriceId,
         active: nextActive,
         updatedAt: now,
@@ -305,7 +333,7 @@ export const adminUpsertPrice = mutationGeneric({
       plan,
       tier: config.tier,
       interval: config.interval,
-      trialEligible: config.trialEligible,
+      trialEligible: resolvedTrialEligible,
       paddlePriceId: normalizedPriceId,
       active: nextActive,
       createdAt: now,

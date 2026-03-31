@@ -11,12 +11,10 @@ import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
 
-type SyncUserResult = {
-  externalId: string;
-};
-
 type BillingState = {
   isActive?: boolean;
+  trialEligible?: boolean;
+  checkoutPendingConfirmation?: boolean;
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
@@ -59,6 +57,14 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
       code: "subscription_requires_portal",
       error:
         "An existing subscription already exists for this account. Use Manage billing to update or recover it.",
+    };
+  }
+
+  if (billing?.checkoutPendingConfirmation) {
+    return {
+      code: "checkout_pending_confirmation",
+      error:
+        "Your purchase is still being confirmed. Please wait a moment before trying checkout again.",
     };
   }
 
@@ -105,7 +111,9 @@ export async function POST(request: Request) {
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
 
-    const user = (await convex.mutation(api.billing.syncCurrentUser, {})) as SyncUserResult;
+    const user = (await convex.mutation(api.billing.syncCurrentUser, {})) as {
+      externalId: string;
+    };
 
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
     const checkoutBlock = shouldBlockNewCheckout(billing);
@@ -123,12 +131,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const trialEligible = billing?.trialEligible !== false;
     const planConfig = (await convex.query(api.billing.getCheckoutPlanConfig, {
       plan,
-    })) as { priceId: string | null; checkoutEnabled: boolean };
+      trialEligible,
+    })) as { priceId: string | null; checkoutEnabled: boolean; trialEligible: boolean };
     if (!planConfig.checkoutEnabled || !planConfig.priceId) {
       return NextResponse.json(
-        { error: `Checkout is not configured for ${plan}` },
+        {
+          error:
+            trialEligible
+              ? `Checkout is not configured for ${plan}`
+              : "Returning Pro checkout is temporarily unavailable because billing is misconfigured.",
+        },
         { status: 503 },
       );
     }
@@ -140,12 +155,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedTrialDays = resolveFreeProPlusTrialDays();
+    const expectedTrialDays = planConfig.trialEligible ? resolveFreeProPlusTrialDays() : 0;
     if (!(await priceHasExpectedTrial(planConfig.priceId, expectedTrialDays))) {
       return NextResponse.json(
         {
           error:
-            "The Pro trial is temporarily unavailable because billing is misconfigured. Please try again later.",
+            planConfig.trialEligible
+              ? "The Pro trial is temporarily unavailable because billing is misconfigured. Please try again later."
+              : "Returning Pro checkout is temporarily unavailable because billing is misconfigured. Please try again later.",
         },
         { status: 503 },
       );
@@ -196,6 +213,16 @@ export async function POST(request: Request) {
             error:
               "This account has a billing issue that needs manual review before checkout can continue. Open support from the app so we can reconnect it safely.",
             code: "subscription_requires_support",
+          },
+          { status: 409 },
+        );
+      }
+      if (message.includes("Checkout confirmation pending")) {
+        return NextResponse.json(
+          {
+            error:
+              "Your purchase is still being confirmed. Please wait a moment before trying checkout again.",
+            code: "checkout_pending_confirmation",
           },
           { status: 409 },
         );

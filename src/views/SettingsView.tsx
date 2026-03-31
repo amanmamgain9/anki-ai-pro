@@ -15,6 +15,9 @@ type CheckoutPlan =
   | "pro_monthly";
 type BillingState = {
   isActive?: boolean;
+  trialEligible?: boolean;
+  checkoutPendingConfirmation?: boolean;
+  // "inactive" is a locked state, not a usable free tier.
   plan?: "inactive" | "pro" | "pro_plus";
   accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   subscriptionStatus?: string | null;
@@ -70,7 +73,22 @@ function initializePaddleForBilling(successUrl: string) {
     eventCallback(event) {
       if (event?.name === "checkout.completed") {
         const target = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
-        window.location.replace(target);
+        const sessionId = window.__aiankiPaddleCheckoutSessionId;
+        void (async () => {
+          if (sessionId) {
+            try {
+              await fetch("/api/paddle/checkout/complete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId }),
+                keepalive: true,
+              });
+            } catch {
+              // Best effort: server-side reconciliation still relies on webhook or support.
+            }
+          }
+          window.location.replace(target);
+        })();
       }
     },
     checkout: {
@@ -100,6 +118,7 @@ export default function SettingsView() {
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
+  const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
   const hasSelfServeSubscription = Boolean(
     !hasManualAccess && portalManagementAvailable,
   );
@@ -113,6 +132,7 @@ export default function SettingsView() {
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
+  const trialEligible = Boolean(billing?.trialEligible) && trialDays > 0;
   const billingSuccess = searchParams.get("billing") === "success";
   const successUrl = getSettingsBillingSuccessUrl();
 
@@ -192,6 +212,7 @@ export default function SettingsView() {
       const customer = payload.paddleCustomerId
         ? { id: payload.paddleCustomerId }
         : { email: payload.customerEmail ?? undefined };
+      window.__aiankiPaddleCheckoutSessionId = payload.checkoutSessionId;
       open({
         items: [{ priceId: payload.priceId, quantity: 1 }],
         customer,
@@ -306,9 +327,10 @@ export default function SettingsView() {
               setShowUpgradeModal(true);
             }}
             className="btn-primary"
-            disabled={busyAction !== null}
+            disabled={busyAction !== null || checkoutPendingConfirmation}
           >
             {busyAction
+              || checkoutPendingConfirmation
               ? t("app.settings.opening")
               : primaryActionUsesPortal
                 ? t("app.settings.manageBilling")
@@ -356,7 +378,7 @@ export default function SettingsView() {
               <div>
                 <h3 className="text-base font-bold">{t("app.settings.choosePlan")}</h3>
                 <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                  {trialDays > 0
+                  {trialEligible
                     ? t("app.settings.continueToCheckout")
                     : t("app.settings.continueToCheckoutNoTrial")}
                 </p>
@@ -383,7 +405,7 @@ export default function SettingsView() {
                   >
                     {busyAction === "pro_monthly"
                       ? t("app.settings.opening")
-                      : trialDays > 0
+                      : trialEligible
                         ? t("app.settings.startPro")
                         : t("app.settings.startProNoTrial")}
                   </button>

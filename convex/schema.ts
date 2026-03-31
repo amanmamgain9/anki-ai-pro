@@ -10,6 +10,7 @@ export default defineSchema({
     paddleCustomerId: v.optional(v.string()),
     onboardingCompletedAt: v.optional(v.number()),
     trialEndsAt: v.optional(v.number()),
+    trialRedeemedAt: v.optional(v.number()),
     manualAccessTier: v.optional(v.string()),
     manualAccessEndsAt: v.optional(v.number()),
     manualAccessReason: v.optional(v.string()),
@@ -42,6 +43,7 @@ export default defineSchema({
     paddleCustomerId: v.optional(v.string()),
     status: v.string(),
     appPlan: v.optional(v.string()),
+    requiresPriceMappingReview: v.optional(v.boolean()),
     tier: v.optional(v.string()),
     tierSourcePriceId: v.optional(v.string()),
     priceId: v.optional(v.string()),
@@ -110,6 +112,7 @@ export default defineSchema({
     updatedAt: v.number(),
     paddleCustomerId: v.optional(v.string()),
     paddleSubscriptionId: v.optional(v.string()),
+    clientCompletedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
   })
     .index("by_sessionId", ["sessionId"])
