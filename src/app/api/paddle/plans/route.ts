@@ -62,6 +62,7 @@ export async function GET() {
         tier: string;
         interval: string;
         trialEligible: boolean;
+        priceId?: string | null;
         checkoutEnabled: boolean;
       }>;
     };
@@ -72,6 +73,7 @@ export async function GET() {
         }
         const config = (await convex.query(api.billing.getCheckoutPlanConfig, {
           plan: plan.plan as "pro_monthly",
+          trialEligible: plan.trialEligible,
         })) as { priceId: string | null; checkoutEnabled: boolean };
         if (!config.checkoutEnabled || !config.priceId) {
           return {
@@ -80,7 +82,10 @@ export async function GET() {
             trialEligible: false,
           };
         }
-        const trialVerified = await priceHasExpectedTrial(config.priceId, payload.trialDays);
+        const trialVerified = await priceHasExpectedTrial(
+          config.priceId,
+          plan.trialEligible ? payload.trialDays : 0,
+        );
         return {
           ...plan,
           checkoutEnabled: trialVerified,

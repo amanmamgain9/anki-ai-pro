@@ -8,6 +8,7 @@ type EntitlementIdentity = {
   subject?: string;
   provider?: string;
   providerSubject?: string;
+  email?: string;
 } & Record<string, unknown>;
 
 type EntitlementCtx = {
@@ -31,6 +32,7 @@ export async function getEntitledExternalUserId(ctx: EntitlementCtx) {
     externalId: subject,
     provider: getIdentityClaim(identity, "provider"),
     providerSubject: getIdentityClaim(identity, "providerSubject"),
+    email: getIdentityClaim(identity, "email"),
   });
   if (!user) return null;
 

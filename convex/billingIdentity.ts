@@ -167,6 +167,7 @@ export async function findCanonicalUserByIdentity(
     externalId?: string;
     provider?: string;
     providerSubject?: string;
+    email?: string;
   },
 ) {
   const exactMatch = await findCanonicalUserByExternalId(db, args.externalId);
@@ -184,7 +185,10 @@ export async function findCanonicalUserByIdentity(
     const user = await db.get(row.userId);
     if (user) candidates.push(user);
   }
-  return await pickCanonicalBillingUser(db, candidates);
+  const identityMatch = await pickCanonicalBillingUser(db, candidates);
+  if (identityMatch) return identityMatch;
+
+  return await findCanonicalUserByEmail(db, args.email);
 }
 
 export async function findCanonicalUserByEmail(

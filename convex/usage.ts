@@ -29,6 +29,7 @@ async function findUserForIdentity(db: UsageReadDb, identity: UserIdentity) {
     externalId: identity.subject,
     provider: getIdentityClaim(identity, "provider"),
     providerSubject: getIdentityClaim(identity, "providerSubject"),
+    email: typeof identity.email === "string" ? identity.email : undefined,
   });
 }
 

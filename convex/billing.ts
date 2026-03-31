@@ -27,6 +27,7 @@ import { ensureCanonicalAuthUser } from "./authUsers";
 import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAccess";
 import {
   pickEffectiveSubscription,
+  isSubscriptionEntitled,
   subscriptionCanSelfServeManage,
   subscriptionNeedsMerchantReview,
 } from "./subscriptionAccess";
@@ -105,6 +106,7 @@ async function findUserForIdentity(db: BillingReadDb, identity: UserIdentity) {
     externalId: identity.subject,
     provider: getIdentityClaim(identity, "provider"),
     providerSubject: getIdentityClaim(identity, "providerSubject"),
+    email: typeof identity.email === "string" ? identity.email : undefined,
   });
 }
 
@@ -1281,14 +1283,16 @@ export const getBillingPlansPublic = queryGeneric({
     const trialDays = resolveFreeProPlusTrialDays();
     const plans = await Promise.all(
       listPublicBillingPlanConfigs().map(async (config) => {
+        const trialEligible = config.trialEligible && trialDays > 0;
         const priceId = await resolveCheckoutPlanPriceId(ctx.db, config.plan, {
-          trialEligible: true,
+          trialEligible,
         });
         return {
           plan: config.plan,
           tier: config.tier,
           interval: config.interval,
-          trialEligible: config.trialEligible && trialDays > 0,
+          trialEligible,
+          priceId,
           checkoutEnabled: Boolean(priceId),
         };
       }),
@@ -1816,8 +1820,12 @@ async function applyPaddleWebhookEvent(
     }
     if (
       resolvedAppPlan &&
-      normalizedStatus !== "created" &&
-      normalizedStatus !== "unknown" &&
+      isSubscriptionEntitled(
+        normalizedStatus,
+        toMillis(args.currentPeriodEndsAt),
+        toMillis(args.nextBilledAt),
+        now,
+      ) &&
       resolveFreeProPlusTrialDays() > 0 &&
       typeof user.trialRedeemedAt !== "number"
     ) {
