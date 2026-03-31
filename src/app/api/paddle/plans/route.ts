@@ -1,16 +1,16 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
+import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { authOptions } from "@/lib/auth";
 import { listPublicBillingPlanConfigs } from "@/lib/billing-plans";
 import { priceHasExpectedTrial } from "@/lib/paddle";
-import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const trialDays = resolveFreeProPlusTrialDays();
   try {
     const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
     if (!convexUrl) {
@@ -21,6 +21,40 @@ export async function GET() {
     }
 
     const convex = new ConvexHttpClient(convexUrl);
+    const session = await getServerSession(authOptions);
+    if (session?.convexToken) {
+      convex.setAuth(session.convexToken);
+      await convex.mutation(api.billing.syncCurrentUser, {});
+      const offer = (await convex.query(api.billing.getMyCheckoutPlanConfig, {
+        plan: "pro_monthly",
+      })) as {
+        plan: string;
+        trialEligible: boolean;
+        trialDays: number;
+        priceId: string | null;
+        checkoutEnabled: boolean;
+      };
+      const trialVerified =
+        offer.checkoutEnabled && offer.priceId
+          ? await priceHasExpectedTrial(
+              offer.priceId,
+              offer.trialEligible ? offer.trialDays : 0,
+            )
+          : false;
+      return NextResponse.json({
+        trialDays: offer.trialDays,
+        plans: [
+          {
+            plan: offer.plan,
+            tier: "pro",
+            interval: "monthly",
+            trialEligible: offer.trialEligible,
+            checkoutEnabled: trialVerified,
+          },
+        ],
+      });
+    }
+
     const payload = (await convex.query(api.billing.getBillingPlansPublic, {})) as {
       trialDays: number;
       plans: Array<{
@@ -46,7 +80,7 @@ export async function GET() {
             trialEligible: false,
           };
         }
-        const trialVerified = await priceHasExpectedTrial(config.priceId, trialDays);
+        const trialVerified = await priceHasExpectedTrial(config.priceId, payload.trialDays);
         return {
           ...plan,
           checkoutEnabled: trialVerified,
@@ -59,6 +93,7 @@ export async function GET() {
       plans,
     });
   } catch {
+    const trialDays = 0;
     const plans = listPublicBillingPlanConfigs().map((config) => ({
       plan: config.plan,
       tier: config.tier,

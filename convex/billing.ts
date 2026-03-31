@@ -1291,6 +1291,42 @@ export const getCheckoutPlanConfig = queryGeneric({
   },
 });
 
+export const getMyCheckoutPlanConfig = queryGeneric({
+  args: {
+    plan: v.literal("pro_monthly"),
+  },
+  handler: async (ctx, { plan }: { plan: "pro_monthly" }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const trialDays = resolveFreeProPlusTrialDays();
+    if (!identity) {
+      const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
+        trialEligible: trialDays > 0,
+      });
+      return {
+        plan,
+        trialEligible: trialDays > 0,
+        trialDays,
+        priceId,
+        checkoutEnabled: Boolean(priceId),
+      };
+    }
+
+    const user = await findUserForIdentity(ctx.db, identity);
+    const trialEligible =
+      trialDays > 0 && !!user && typeof user.trialRedeemedAt !== "number";
+    const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
+      trialEligible,
+    });
+    return {
+      plan,
+      trialEligible,
+      trialDays,
+      priceId,
+      checkoutEnabled: Boolean(priceId),
+    };
+  },
+});
+
 export const adminSetManualAccess = mutationGeneric({
   args: {
     email: v.string(),
@@ -1387,6 +1423,9 @@ export const createCheckoutSession = mutationGeneric({
       now,
     );
     if (currentAccess.isActive) {
+      if (currentAccess.accessSource === "manual") {
+        throw new ConvexError("Complimentary access already exists");
+      }
       throw new ConvexError("Active access already exists");
     }
     const portalManageableSubscriptions = subscriptions.filter((row) =>

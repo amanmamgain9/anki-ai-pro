@@ -7,13 +7,13 @@ import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
 import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
 import { priceHasExpectedTrial } from "@/lib/paddle";
-import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
 
 type BillingState = {
   isActive?: boolean;
-  trialEligible?: boolean;
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
+  manualAccessTier?: string | null;
   checkoutPendingConfirmation?: boolean;
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
@@ -27,8 +27,14 @@ type BillingState = {
 function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
   if (billing?.isActive) {
     return {
-      code: "active_subscription_exists",
-      error: "Active access already exists for this account. Use Manage billing if you need to change it.",
+      code:
+        billing?.accessSource === "manual" || billing?.manualAccessTier
+          ? "manual_access_active"
+          : "active_subscription_exists",
+      error:
+        billing?.accessSource === "manual" || billing?.manualAccessTier
+          ? "This account currently has complimentary access. Contact support if you need to change billing for it."
+          : "Active access already exists for this account. Use Manage billing if you need to change it.",
     };
   }
 
@@ -131,16 +137,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const trialEligible = billing?.trialEligible !== false;
-    const planConfig = (await convex.query(api.billing.getCheckoutPlanConfig, {
+    const planConfig = (await convex.query(api.billing.getMyCheckoutPlanConfig, {
       plan,
-      trialEligible,
-    })) as { priceId: string | null; checkoutEnabled: boolean; trialEligible: boolean };
+    })) as {
+      priceId: string | null;
+      checkoutEnabled: boolean;
+      trialEligible: boolean;
+      trialDays: number;
+    };
     if (!planConfig.checkoutEnabled || !planConfig.priceId) {
       return NextResponse.json(
         {
           error:
-            trialEligible
+            planConfig.trialEligible
               ? `Checkout is not configured for ${plan}`
               : "Returning Pro checkout is temporarily unavailable because billing is misconfigured.",
         },
@@ -155,7 +164,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedTrialDays = planConfig.trialEligible ? resolveFreeProPlusTrialDays() : 0;
+    const expectedTrialDays = planConfig.trialEligible ? planConfig.trialDays : 0;
     if (!(await priceHasExpectedTrial(planConfig.priceId, expectedTrialDays))) {
       return NextResponse.json(
         {
@@ -193,6 +202,16 @@ export async function POST(request: Request) {
             error:
               "Active access already exists for this account. Use Manage billing if you need to change it.",
             code: "active_subscription_exists",
+          },
+          { status: 409 },
+        );
+      }
+      if (message.includes("complimentary access")) {
+        return NextResponse.json(
+          {
+            error:
+              "This account currently has complimentary access. Contact support if you need to change billing for it.",
+            code: "manual_access_active",
           },
           { status: 409 },
         );
