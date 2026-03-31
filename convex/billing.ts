@@ -464,6 +464,17 @@ async function listRetryableIgnoredBillingEvents(
   return filtered.sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
 }
 
+async function hasCheckoutSessionWebhookEvidence(
+  db: BillingReadDb,
+  checkoutSessionId: string,
+) {
+  const event = await db
+    .query("billingEvents")
+    .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", checkoutSessionId))
+    .first();
+  return Boolean(event);
+}
+
 function getCheckoutSessionReviewAnchor(
   row: Pick<Doc<"paddleCheckoutSessions">, "createdAt" | "clientCompletedAt">,
 ) {
@@ -475,22 +486,26 @@ function getCheckoutSessionReviewAnchor(
 async function listPendingWebhookCheckoutSessions(
   db: BillingReadDb,
   userId: Id<"users">,
-  now: number,
 ) {
   const rows = await db
     .query("paddleCheckoutSessions")
     .withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
     .order("desc")
     .collect();
-  return rows.filter(
-    (row) =>
-      typeof row.completedAt !== "number" &&
-      !Number.isNaN(getCheckoutSessionReviewAnchor(row)) &&
-      (
-        typeof row.clientCompletedAt === "number" ||
-        now - row.createdAt >= OPEN_CHECKOUT_SESSION_WINDOW_MS
-      ),
+  const rowsWithEvidence = await Promise.all(
+    rows.map(async (row) => ({
+      row,
+      hasWebhookEvidence: await hasCheckoutSessionWebhookEvidence(db, row.sessionId),
+    })),
   );
+  return rowsWithEvidence
+    .filter(
+      ({ row, hasWebhookEvidence }) =>
+        typeof row.completedAt !== "number" &&
+        !Number.isNaN(getCheckoutSessionReviewAnchor(row)) &&
+        (typeof row.clientCompletedAt === "number" || hasWebhookEvidence),
+    )
+    .map(({ row }) => row);
 }
 
 function splitPendingWebhookCheckoutSessions(
@@ -757,7 +772,7 @@ export const syncCurrentUser = mutationGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
-    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id, now);
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
     const {
       stale: pendingCheckoutSessions,
     } = splitPendingWebhookCheckoutSessions(allPendingCheckoutSessions, now);
@@ -1102,7 +1117,7 @@ export const getMyBilling = queryGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
-    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id, now);
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
     const {
       pending: checkoutPendingConfirmationSessions,
       stale: pendingCheckoutSessions,
@@ -1451,7 +1466,7 @@ export const createCheckoutSession = mutationGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
-    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id, now);
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
     const {
       pending: checkoutPendingConfirmationSessions,
       stale: pendingCheckoutSessions,
@@ -1577,7 +1592,7 @@ export const markCheckoutCompletedFromClient = mutationGeneric({
       externalId: user.externalId,
       customerId: user.paddleCustomerId,
     });
-    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id, now);
+    const allPendingCheckoutSessions = await listPendingWebhookCheckoutSessions(ctx.db, user._id);
     const { stale: pendingCheckoutSessions } = splitPendingWebhookCheckoutSessions(
       allPendingCheckoutSessions,
       now,
@@ -1786,15 +1801,6 @@ async function applyPaddleWebhookEvent(
 
   if (processingStatus === "processed" && user) {
     userId = user._id;
-    const normalizedStatusForUser = normalizeSubscriptionStatus(
-      args.eventType,
-      args.subscriptionStatus,
-    );
-    const trialPlanPriceId = resolvedAppPlan
-      ? await resolveCheckoutPlanPriceId(ctx.db, resolvedAppPlan, {
-          trialEligible: true,
-        })
-      : null;
     if (args.customerId) {
       await setUserPaddleCustomerId(ctx.db, user, args.customerId, now);
     } else {
@@ -1803,15 +1809,7 @@ async function applyPaddleWebhookEvent(
       });
     }
     if (
-      (
-        normalizedStatusForUser === "trialing" ||
-        (trialPlanPriceId !== null &&
-          (
-            checkoutSession?.priceId === trialPlanPriceId ||
-            resolvedPriceId === trialPlanPriceId ||
-            webhookPriceCandidates.includes(trialPlanPriceId)
-          ))
-      ) &&
+      resolvedAppPlan &&
       resolveFreeProPlusTrialDays() > 0 &&
       typeof user.trialRedeemedAt !== "number"
     ) {

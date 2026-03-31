@@ -84,6 +84,7 @@ export default defineSchema({
     rawBody: v.optional(v.string()),
   })
     .index("by_eventId", ["eventId"])
+    .index("by_checkoutSessionId", ["checkoutSessionId"])
     .index("by_status_externalId", ["status", "externalId"])
     .index("by_status_customerId", ["status", "paddleCustomerId"]),
 
