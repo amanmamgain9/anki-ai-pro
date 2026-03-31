@@ -49,6 +49,12 @@ export async function POST() {
         { status: 409 },
       );
     }
+    if (!billing.portalManagementAvailable) {
+      return NextResponse.json(
+        { error: "Billing for this account cannot be self-managed in the Paddle portal." },
+        { status: 409 },
+      );
+    }
     if (!billing.paddleCustomerId) {
       return NextResponse.json(
         { error: "No Paddle customer found for this account" },
@@ -60,9 +66,7 @@ export async function POST() {
     const subscriptionIds =
       Array.isArray(billing.paddleSubscriptionIds) && billing.paddleSubscriptionIds.length > 0
         ? billing.paddleSubscriptionIds
-        : billing.paddleSubscriptionId
-          ? [billing.paddleSubscriptionId]
-          : [];
+        : [];
     if (subscriptionIds.length === 0) {
       return NextResponse.json(
         { error: "No Paddle subscriptions found for this account" },
