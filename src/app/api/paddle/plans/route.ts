@@ -48,7 +48,7 @@ export async function GET() {
             plan: offer.plan,
             tier: "pro",
             interval: "monthly",
-            trialEligible: offer.trialEligible,
+            trialEligible: offer.trialEligible && trialVerified,
             checkoutEnabled: trialVerified,
           },
         ],

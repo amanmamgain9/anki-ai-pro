@@ -15,7 +15,6 @@ type CheckoutPlan = "pro_monthly";
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
-  trialEligible?: boolean;
   checkoutPendingConfirmation?: boolean;
   accessEndsAt?: number | null;
   // "inactive" is a locked state, not a usable free tier.
@@ -33,6 +32,7 @@ type BillingState = {
   merchantReviewCaseId?: string | null;
 };
 type PlanAvailability = Record<CheckoutPlan, boolean>;
+type PlanTrialEligibility = Record<CheckoutPlan, boolean>;
 type CheckoutPayload = {
   priceId?: string;
   customerEmail?: string | null;
@@ -44,6 +44,9 @@ type CheckoutPayload = {
 
 const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
   pro_monthly: true,
+};
+const DEFAULT_PLAN_TRIAL_ELIGIBILITY: PlanTrialEligibility = {
+  pro_monthly: false,
 };
 const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
@@ -102,6 +105,9 @@ export default function BillingStartView() {
   const [planAvailability, setPlanAvailability] = useState<PlanAvailability>(
     DEFAULT_PLAN_AVAILABILITY,
   );
+  const [planTrialEligibility, setPlanTrialEligibility] = useState<PlanTrialEligibility>(
+    DEFAULT_PLAN_TRIAL_ELIGIBILITY,
+  );
   const [paddleReady, setPaddleReady] = useState(false);
   const [trialDays, setTrialDays] = useState(3);
   const from = searchParams.get("from") || "/cards";
@@ -123,7 +129,7 @@ export default function BillingStartView() {
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
-  const trialEligible = Boolean(billing?.trialEligible) && trialDays > 0;
+  const trialEligible = planTrialEligibility.pro_monthly && trialDays > 0;
   const startButtonLabel =
     trialEligible ? t("app.settings.startPro") : t("app.settings.startProNoTrial");
   const billingNote =
@@ -141,18 +147,29 @@ export default function BillingStartView() {
         if (!response.ok) return;
         const payload = (await response.json()) as {
           trialDays?: number;
-          plans?: Array<{ plan?: string; checkoutEnabled?: boolean }>;
+          plans?: Array<{
+            plan?: string;
+            checkoutEnabled?: boolean;
+            trialEligible?: boolean;
+          }>;
         };
         if (typeof payload.trialDays === "number" && !cancelled) {
           setTrialDays(Math.max(0, Math.floor(payload.trialDays)));
         }
         if (!Array.isArray(payload.plans)) return;
         const nextAvailability: PlanAvailability = { ...DEFAULT_PLAN_AVAILABILITY };
+        const nextTrialEligibility: PlanTrialEligibility = {
+          ...DEFAULT_PLAN_TRIAL_ELIGIBILITY,
+        };
         for (const row of payload.plans) {
           if (!row.plan || !(row.plan in nextAvailability)) continue;
           nextAvailability[row.plan as CheckoutPlan] = Boolean(row.checkoutEnabled);
+          nextTrialEligibility[row.plan as CheckoutPlan] = Boolean(row.trialEligible);
         }
-        if (!cancelled) setPlanAvailability(nextAvailability);
+        if (!cancelled) {
+          setPlanAvailability(nextAvailability);
+          setPlanTrialEligibility(nextTrialEligibility);
+        }
       } catch {
         // Keep default availability; checkout endpoint still validates.
       }

@@ -1389,7 +1389,7 @@ export const getMyCheckoutPlanConfig = queryGeneric({
 export const adminSetManualAccess = mutationGeneric({
   args: {
     email: v.string(),
-    tier: v.union(v.literal("pro_plus"), v.null()),
+    tier: v.union(v.literal("pro"), v.literal("pro_plus"), v.null()),
     endsAt: v.optional(v.union(v.number(), v.null())),
     reason: v.optional(v.string()),
   },
@@ -1820,6 +1820,17 @@ async function applyPaddleWebhookEvent(
         ? undefined
         : existingTier ?? checkoutSessionTier ?? undefined;
   const managesAppPlan = Boolean(resolvedAppPlan);
+  const trialPlanPriceId = resolvedAppPlan
+    ? await resolveCheckoutPlanPriceId(ctx.db, resolvedAppPlan, {
+        trialEligible: true,
+      })
+    : null;
+  const trialPriceMatched = trialPlanPriceId
+    ? resolvedPriceId === trialPlanPriceId ||
+      checkoutSession?.priceId === trialPlanPriceId ||
+      args.priceId === trialPlanPriceId ||
+      args.priceIds?.includes(trialPlanPriceId) === true
+    : false;
   const normalizedStatus = normalizeSubscriptionStatus(
     args.eventType,
     args.subscriptionStatus,
@@ -1842,7 +1853,7 @@ async function applyPaddleWebhookEvent(
       });
     }
     if (
-      resolvedAppPlan &&
+      trialPriceMatched &&
       isSubscriptionEntitled(
         normalizedStatus,
         toMillis(args.currentPeriodEndsAt),
