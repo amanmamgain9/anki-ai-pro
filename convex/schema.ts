@@ -11,6 +11,7 @@ export default defineSchema({
     onboardingCompletedAt: v.optional(v.number()),
     trialEndsAt: v.optional(v.number()),
     trialRedeemedAt: v.optional(v.number()),
+    trialIneligibleAt: v.optional(v.number()),
     manualAccessTier: v.optional(v.string()),
     manualAccessEndsAt: v.optional(v.number()),
     manualAccessReason: v.optional(v.string()),

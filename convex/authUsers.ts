@@ -494,6 +494,19 @@ async function mergeUserIntoCanonical(
   if (mergedTrialRedeemedAt !== null) {
     canonicalPatch.trialRedeemedAt = mergedTrialRedeemedAt;
   }
+  const canonicalTrialIneligibleAt =
+    typeof canonical.trialIneligibleAt === "number" ? canonical.trialIneligibleAt : null;
+  const loserTrialIneligibleAt =
+    typeof loser.trialIneligibleAt === "number" ? loser.trialIneligibleAt : null;
+  const mergedTrialIneligibleAt =
+    canonicalTrialIneligibleAt === null
+      ? loserTrialIneligibleAt
+      : loserTrialIneligibleAt === null
+        ? canonicalTrialIneligibleAt
+        : Math.min(canonicalTrialIneligibleAt, loserTrialIneligibleAt);
+  if (mergedTrialIneligibleAt !== null) {
+    canonicalPatch.trialIneligibleAt = mergedTrialIneligibleAt;
+  }
   const manualAccessSource = selectPreferredManualAccess(canonical, loser, now);
   if (isStoredManualAccessTier(manualAccessSource.manualAccessTier)) {
     canonicalPatch.manualAccessTier = manualAccessSource.manualAccessTier;
@@ -507,6 +520,7 @@ async function mergeUserIntoCanonical(
     email: undefined,
     paddleCustomerId: undefined,
     trialRedeemedAt: undefined,
+    trialIneligibleAt: undefined,
     manualAccessTier: undefined,
     manualAccessEndsAt: undefined,
     manualAccessReason: undefined,

@@ -184,6 +184,57 @@ function isStoredBillingTier(value: string | undefined): value is StoredBillingT
   return value === "pro" || value === "pro_plus";
 }
 
+function isStoredManualAccessTier(value: string | undefined): value is "pro" | "pro_plus" {
+  return value === "pro" || value === "pro_plus";
+}
+
+function hasRecordedTrialIneligibility(
+  user:
+    | {
+        trialRedeemedAt?: number;
+        trialIneligibleAt?: number;
+        manualAccessTier?: string;
+        manualAccessEndsAt?: number | null;
+        manualAccessReason?: string;
+        manualAccessGrantedBy?: string;
+      }
+    | null
+    | undefined,
+) {
+  if (!user) return false;
+  if (
+    typeof user.trialRedeemedAt === "number" ||
+    typeof user.trialIneligibleAt === "number"
+  ) {
+    return true;
+  }
+  return (
+    isStoredManualAccessTier(user.manualAccessTier) ||
+    typeof user.manualAccessEndsAt === "number" ||
+    typeof user.manualAccessReason === "string" ||
+    typeof user.manualAccessGrantedBy === "string"
+  );
+}
+
+async function isUserTrialEligible(
+  db: BillingReadDb,
+  user:
+    | (Doc<"users"> & {
+        manualAccessTier?: string;
+        manualAccessEndsAt?: number | null;
+        manualAccessReason?: string;
+        manualAccessGrantedBy?: string;
+      })
+    | null
+    | undefined,
+  subscriptions?: Doc<"subscriptions">[],
+) {
+  if (!user || resolveFreeProPlusTrialDays() <= 0) return false;
+  if (hasRecordedTrialIneligibility(user)) return false;
+  const managedSubscriptions = subscriptions ?? (await listManagedSubscriptionsForUser(db, user._id));
+  return managedSubscriptions.length === 0;
+}
+
 async function requireSupportOperator(ctx: AuthCtx) {
   const identity = await requireIdentity(ctx);
   const email = sanitizeEmail(typeof identity.email === "string" ? identity.email : undefined);
@@ -982,6 +1033,7 @@ export const resetMyBillingForTesting = mutationGeneric({
     await ctx.db.patch(user._id, {
       paddleCustomerId: undefined,
       trialRedeemedAt: undefined,
+      trialIneligibleAt: undefined,
       manualAccessTier: undefined,
       manualAccessEndsAt: undefined,
       manualAccessReason: undefined,
@@ -1039,7 +1091,7 @@ export const getMySubscriptionSnapshotForTesting = queryGeneric({
 export const setMyManualAccessForTesting = mutationGeneric({
   args: {
     testSecret: v.string(),
-    tier: v.union(v.literal("pro_plus"), v.null()),
+    tier: v.union(v.literal("pro"), v.literal("pro_plus"), v.null()),
     endsAt: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, { testSecret, tier, endsAt }) => {
@@ -1057,6 +1109,7 @@ export const setMyManualAccessForTesting = mutationGeneric({
       manualAccessEndsAt: tier ? (endsAt ?? undefined) : undefined,
       manualAccessReason: tier ? "test_override" : undefined,
       manualAccessGrantedBy: tier ? "e2e" : undefined,
+      trialIneligibleAt: tier ? now : user.trialIneligibleAt,
       updatedAt: now,
       lastSeenAt: now,
     });
@@ -1232,8 +1285,7 @@ export const getMyBilling = queryGeneric({
     const tier = paidAccess.tier;
     const hasPremiumVoice = paidAccess.hasPremiumVoice;
     const premiumVoiceSource = paidAccess.premiumVoiceSource;
-    const trialEligible =
-      resolveFreeProPlusTrialDays() > 0 && typeof user.trialRedeemedAt !== "number";
+    const trialEligible = await isUserTrialEligible(ctx.db, user, subscriptions);
     const checkoutPendingConfirmation = checkoutPendingConfirmationSessions.length > 0;
     const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
     const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
@@ -1371,8 +1423,7 @@ export const getMyCheckoutPlanConfig = queryGeneric({
     }
 
     const user = await findUserForIdentity(ctx.db, identity);
-    const trialEligible =
-      trialDays > 0 && !!user && typeof user.trialRedeemedAt !== "number";
+    const trialEligible = await isUserTrialEligible(ctx.db, user);
     const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
       trialEligible,
     });
@@ -1428,6 +1479,7 @@ export const adminSetManualAccess = mutationGeneric({
       manualAccessReason:
         normalizedReason && normalizedReason.length > 0 ? normalizedReason : undefined,
       manualAccessGrantedBy: grantedBy,
+      trialIneligibleAt: now,
       updatedAt: now,
     });
 
@@ -1452,8 +1504,8 @@ export const createCheckoutSession = mutationGeneric({
     if (!user) {
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
-    const trialEligible =
-      resolveFreeProPlusTrialDays() > 0 && typeof user.trialRedeemedAt !== "number";
+    const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
+    const trialEligible = await isUserTrialEligible(ctx.db, user, subscriptions);
     const expectedPriceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
       trialEligible,
     });
@@ -1463,7 +1515,6 @@ export const createCheckoutSession = mutationGeneric({
     if (priceId !== expectedPriceId) {
       throw new ConvexError("Checkout price does not match the configured plan");
     }
-    const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
     const recognizedSubscriptions = (
       await Promise.all(
@@ -1849,6 +1900,21 @@ async function applyPaddleWebhookEvent(
       await setUserPaddleCustomerId(ctx.db, user, args.customerId, now);
     } else {
       await ctx.db.patch(user._id, {
+        updatedAt: now,
+      });
+    }
+    if (
+      resolvedAppPlan &&
+      isSubscriptionEntitled(
+        normalizedStatus,
+        toMillis(args.currentPeriodEndsAt),
+        toMillis(args.nextBilledAt),
+        now,
+      ) &&
+      typeof user.trialIneligibleAt !== "number"
+    ) {
+      await ctx.db.patch(user._id, {
+        trialIneligibleAt: now,
         updatedAt: now,
       });
     }
