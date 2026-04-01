@@ -591,6 +591,14 @@ async function createCanonicalUser(
   return user;
 }
 
+async function userHasAuthIdentityRows(
+  db: AuthUserDb,
+  userId: Id<"users">,
+) {
+  const rows = await listAuthIdentitiesByUserId(db, userId);
+  return rows.length > 0;
+}
+
 export async function ensureCanonicalAuthUser(
   db: AuthUserDb,
   input: CanonicalAuthUserInput,
@@ -613,10 +621,14 @@ export async function ensureCanonicalAuthUser(
   const hintUser = externalIdHint
     ? (await listUsersByExternalId(db, externalIdHint))[0] ?? null
     : null;
+  const emailUserHasAuthIdentity =
+    emailUser && (!authUser || emailUser._id !== authUser._id)
+      ? await userHasAuthIdentityRows(db, emailUser._id)
+      : false;
 
   let canonical =
-    emailUser ??
     authUser ??
+    emailUser ??
     hintUser ??
     (await createCanonicalUser(db, {
       provider,
@@ -631,10 +643,23 @@ export async function ensureCanonicalAuthUser(
   const losers = new Map<string, BillingUser>();
   if (authUser && authUser._id !== canonical._id) losers.set(String(authUser._id), authUser);
   if (hintUser && hintUser._id !== canonical._id) losers.set(String(hintUser._id), hintUser);
+  if (
+    emailUser &&
+    emailUser._id !== canonical._id &&
+    (!authUser || !emailUserHasAuthIdentity)
+  ) {
+    losers.set(String(emailUser._id), emailUser);
+  }
   if (email) {
     const sameEmailUsers = await listUsersByEmail(db, email);
     for (const row of sameEmailUsers) {
       if (row._id === canonical._id) continue;
+      if (authUser && row._id !== authUser._id) {
+        const rowHasAuthIdentity = await userHasAuthIdentityRows(db, row._id);
+        if (rowHasAuthIdentity) {
+          continue;
+        }
+      }
       losers.set(String(row._id), row);
     }
   }

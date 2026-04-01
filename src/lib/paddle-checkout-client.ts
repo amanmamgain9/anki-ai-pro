@@ -41,8 +41,18 @@ export function initializePaddleForBilling(successUrl: string) {
     token: PADDLE_CLIENT_TOKEN,
     eventCallback(event) {
       if (event?.name === "checkout.completed") {
-        const target = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
         const sessionId = window.__aiankiPaddleCheckoutSessionId;
+        const target = (() => {
+          const base = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
+          if (!sessionId) return base;
+          try {
+            const url = new URL(base, window.location.origin);
+            url.searchParams.set("checkoutSessionId", sessionId);
+            return url.toString();
+          } catch {
+            return base;
+          }
+        })();
         clearActiveCheckoutSession();
         void (async () => {
           if (sessionId) {
@@ -73,4 +83,3 @@ export function initializePaddleForBilling(successUrl: string) {
   window.__aiankiPaddleInitialized = true;
   return true;
 }
-

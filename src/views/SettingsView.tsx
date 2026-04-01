@@ -4,7 +4,7 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import Script from "next/script";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
@@ -39,8 +39,12 @@ type BillingState = {
   proPreviewUsedChars?: number | null;
   proPreviewRemainingChars?: number | null;
 };
-type PlanAvailability = Record<CheckoutPlan, boolean>;
-type PlanTrialEligibility = Record<CheckoutPlan, boolean>;
+type CheckoutPlanOffer = {
+  plan?: CheckoutPlan;
+  trialEligible?: boolean;
+  trialDays?: number;
+  checkoutEnabled?: boolean;
+};
 type CheckoutPayload = {
   priceId?: string;
   customerEmail?: string | null;
@@ -50,12 +54,6 @@ type CheckoutPayload = {
   error?: string;
 };
 
-const DEFAULT_PLAN_AVAILABILITY: PlanAvailability = {
-  pro_monthly: true,
-};
-const DEFAULT_PLAN_TRIAL_ELIGIBILITY: PlanTrialEligibility = {
-  pro_monthly: false,
-};
 const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
 
@@ -68,20 +66,17 @@ function getSettingsBillingSuccessUrl() {
 
 export default function SettingsView() {
   const { t } = useI18n();
+  const router = useRouter();
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
+  const checkoutOffer = useQuery(api.billing.getMyCheckoutPlanConfig, {
+    plan: "pro_monthly",
+  }) as CheckoutPlanOffer | undefined;
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [planAvailability, setPlanAvailability] = useState<PlanAvailability>(
-    DEFAULT_PLAN_AVAILABILITY,
-  );
-  const [planTrialEligibility, setPlanTrialEligibility] = useState<PlanTrialEligibility>(
-    DEFAULT_PLAN_TRIAL_ELIGIBILITY,
-  );
   const [paddleReady, setPaddleReady] = useState(false);
-  const [trialDays, setTrialDays] = useState(3);
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
@@ -100,49 +95,12 @@ export default function SettingsView() {
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
-  const trialEligible = planTrialEligibility.pro_monthly && trialDays > 0;
+  const trialDays = Math.max(0, Math.floor(checkoutOffer?.trialDays ?? 0));
+  const trialEligible = Boolean(checkoutOffer?.trialEligible) && trialDays > 0;
+  const checkoutEnabled = checkoutOffer?.checkoutEnabled ?? true;
   const billingSuccess = searchParams.get("billing") === "success";
+  const checkoutCompletionSessionId = searchParams.get("checkoutSessionId");
   const successUrl = getSettingsBillingSuccessUrl();
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch("/api/paddle/plans", { cache: "no-store" });
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          trialDays?: number;
-          plans?: Array<{
-            plan?: string;
-            checkoutEnabled?: boolean;
-            trialEligible?: boolean;
-          }>;
-        };
-        if (typeof payload.trialDays === "number" && !cancelled) {
-          setTrialDays(Math.max(0, Math.floor(payload.trialDays)));
-        }
-        if (!Array.isArray(payload.plans)) return;
-        const nextAvailability: PlanAvailability = { ...DEFAULT_PLAN_AVAILABILITY };
-        const nextTrialEligibility: PlanTrialEligibility = {
-          ...DEFAULT_PLAN_TRIAL_ELIGIBILITY,
-        };
-        for (const row of payload.plans) {
-          if (!row.plan || !(row.plan in nextAvailability)) continue;
-          nextAvailability[row.plan as CheckoutPlan] = Boolean(row.checkoutEnabled);
-          nextTrialEligibility[row.plan as CheckoutPlan] = Boolean(row.trialEligible);
-        }
-        if (!cancelled) {
-          setPlanAvailability(nextAvailability);
-          setPlanTrialEligibility(nextTrialEligibility);
-        }
-      } catch {
-        // Keep default availability; checkout endpoint still validates.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!PADDLE_CLIENT_TOKEN) return;
@@ -150,6 +108,30 @@ export default function SettingsView() {
       setPaddleReady(true);
     }
   }, [successUrl]);
+
+  useEffect(() => {
+    if (!billingSuccess || !checkoutCompletionSessionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await fetch("/api/paddle/checkout/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: checkoutCompletionSessionId }),
+          cache: "no-store",
+        });
+      } catch {
+        // Best effort. Webhook reconciliation may still complete.
+      } finally {
+        if (!cancelled) {
+          router.replace("/settings?billing=success");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [billingSuccess, checkoutCompletionSessionId, router]);
 
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
@@ -386,7 +368,7 @@ export default function SettingsView() {
                     type="button"
                     onClick={() => startCheckout("pro_monthly")}
                     className="btn-primary !px-3 !py-1.5 !text-xs"
-                    disabled={busyAction !== null || !planAvailability.pro_monthly}
+                    disabled={busyAction !== null || !checkoutEnabled}
                   >
                     {busyAction === "pro_monthly"
                       ? t("app.settings.opening")
@@ -395,7 +377,7 @@ export default function SettingsView() {
                         : t("app.settings.startProNoTrial")}
                   </button>
                 </div>
-                {!planAvailability.pro_monthly && (
+                {!checkoutEnabled && (
                   <p className="mt-2 text-[11px] text-[var(--color-text-tertiary)]">
                     {t("app.settings.checkoutUnavailable")}
                   </p>

@@ -24,9 +24,6 @@ export default async function proxy(req: NextRequest) {
   if (pathname === "/api/paddle/webhook") {
     return NextResponse.next();
   }
-  if (pathname === "/api/paddle/plans") {
-    return NextResponse.next();
-  }
 
   if (pathname.startsWith("/api/")) {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
