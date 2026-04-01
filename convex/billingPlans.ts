@@ -9,6 +9,8 @@ export type BillingPlan = "pro_monthly";
 // Pro+ remains an internal/manual entitlement tier, not a public checkout plan.
 export type BillingTier = "pro" | "pro_plus";
 type BillingInterval = "monthly";
+// Price IDs that have ever been sold should remain mapped in app config/DB.
+// They may be deactivated for new checkout, but old sold prices should not be removed.
 
 type AuthCtx = {
   auth: {

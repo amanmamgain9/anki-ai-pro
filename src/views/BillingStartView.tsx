@@ -8,7 +8,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
-import { getPublicPaddleClientToken, getPublicPaddleEnvironment } from "@/lib/paddle-client";
+import {
+  abandonCheckoutSession,
+  initializePaddleForBilling,
+  setActiveCheckoutSession,
+} from "@/lib/paddle-checkout-client";
+import { getPublicPaddleClientToken } from "@/lib/paddle-client";
 
 const api = anyApi;
 type CheckoutPlan = "pro_monthly";
@@ -50,7 +55,6 @@ const DEFAULT_PLAN_TRIAL_ELIGIBILITY: PlanTrialEligibility = {
 };
 const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
-const PADDLE_ENV = getPublicPaddleEnvironment();
 
 function sanitizeReturnPath(input: string | null | undefined) {
   if (!input) return "/cards";
@@ -66,61 +70,6 @@ function sanitizeReturnPath(input: string | null | undefined) {
     return next;
   } catch {
     return "/cards";
-  }
-}
-
-function initializePaddleForBilling(successUrl: string) {
-  window.__aiankiPaddleCheckoutSuccessUrl = successUrl;
-  if (!PADDLE_CLIENT_TOKEN) return false;
-  const paddle = window.Paddle;
-  if (!paddle || typeof paddle.Initialize !== "function") return false;
-  if (window.__aiankiPaddleInitialized) return true;
-  if (PADDLE_ENV === "sandbox" && paddle.Environment?.set) {
-    paddle.Environment.set("sandbox");
-  }
-  paddle.Initialize({
-    token: PADDLE_CLIENT_TOKEN,
-    eventCallback(event) {
-      if (event?.name === "checkout.completed") {
-        const target = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
-        const sessionId = window.__aiankiPaddleCheckoutSessionId;
-        void (async () => {
-          if (sessionId) {
-            try {
-              await fetch("/api/paddle/checkout/complete", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId }),
-                keepalive: true,
-              });
-            } catch {
-              // Best effort: server-side reconciliation still relies on webhook or support.
-            }
-          }
-          window.location.replace(target);
-        })();
-      }
-    },
-    checkout: {
-      settings: {
-        displayMode: "overlay",
-      },
-    },
-  });
-  window.__aiankiPaddleInitialized = true;
-  return true;
-}
-
-async function abandonCheckoutSession(sessionId: string) {
-  try {
-    await fetch("/api/paddle/checkout/abort", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-      keepalive: true,
-    });
-  } catch {
-    // Best effort rollback for client-side launch failures.
   }
 }
 
@@ -255,7 +204,7 @@ export default function BillingStartView() {
       const customer = payload.paddleCustomerId
         ? { id: payload.paddleCustomerId }
         : { email: payload.customerEmail ?? undefined };
-      window.__aiankiPaddleCheckoutSessionId = checkoutSessionId;
+      setActiveCheckoutSession(checkoutSessionId);
       try {
         open({
           items: [{ priceId: payload.priceId, quantity: 1 }],

@@ -200,20 +200,69 @@ function hasRecordedTrialIneligibility(
   );
 }
 
-function getUserTrialEligibilityState(
+function subscriptionConsumesTrialEligibility(
+  subscription:
+    | {
+        status?: string | null;
+        currentPeriodStartsAt?: number | null;
+        currentPeriodEndsAt?: number | null;
+        nextBilledAt?: number | null;
+        canceledAt?: number | null;
+      }
+    | null
+    | undefined,
+) {
+  if (!subscription) return false;
+  const normalizedStatus =
+    typeof subscription.status === "string"
+      ? subscription.status.trim().toLowerCase()
+      : null;
+  if (!normalizedStatus || normalizedStatus === "created" || normalizedStatus === "unknown") {
+    return false;
+  }
+  if (
+    typeof subscription.currentPeriodStartsAt === "number" ||
+    typeof subscription.currentPeriodEndsAt === "number" ||
+    typeof subscription.nextBilledAt === "number" ||
+    typeof subscription.canceledAt === "number"
+  ) {
+    return true;
+  }
+  return (
+    normalizedStatus === "active" ||
+    normalizedStatus === "trialing" ||
+    normalizedStatus === "canceled" ||
+    normalizedStatus === "past_due" ||
+    normalizedStatus === "paused" ||
+    normalizedStatus === "expired"
+  );
+}
+
+async function getUserTrialEligibilityState(
+  db: BillingReadDb,
   user:
     | {
+        _id: Id<"users">;
         trialRedeemedAt?: number;
         trialIneligibleAt?: number;
       }
     | null
     | undefined,
+  subscriptions?: Doc<"subscriptions">[],
 ) {
   const trialDays = resolveFreeProPlusTrialDays();
+  const historicalSubscriptionUse = !user
+    ? false
+    : (
+        subscriptions ?? (await listManagedSubscriptionsForUser(db, user._id))
+      ).some((row) => subscriptionConsumesTrialEligibility(row));
   return {
     trialDays,
     trialEligible:
-      Boolean(user) && trialDays > 0 && !hasRecordedTrialIneligibility(user),
+      Boolean(user) &&
+      trialDays > 0 &&
+      !hasRecordedTrialIneligibility(user) &&
+      !historicalSubscriptionUse,
   };
 }
 
@@ -1273,7 +1322,11 @@ export const getMyBilling = queryGeneric({
     const tier = paidAccess.tier;
     const hasPremiumVoice = paidAccess.hasPremiumVoice;
     const premiumVoiceSource = paidAccess.premiumVoiceSource;
-    const { trialEligible } = getUserTrialEligibilityState(user);
+    const { trialEligible } = await getUserTrialEligibilityState(
+      ctx.db,
+      user,
+      subscriptions,
+    );
     const checkoutPendingConfirmation = checkoutPendingConfirmationSessions.length > 0;
     const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
     const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
@@ -1412,7 +1465,12 @@ export const getMyCheckoutPlanConfig = queryGeneric({
     }
 
     const user = await findUserForIdentity(ctx.db, identity);
-    const { trialDays, trialEligible } = getUserTrialEligibilityState(user);
+    const subscriptions = user ? await listManagedSubscriptionsForUser(ctx.db, user._id) : [];
+    const { trialDays, trialEligible } = await getUserTrialEligibilityState(
+      ctx.db,
+      user,
+      subscriptions,
+    );
     const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
       trialEligible,
     });
@@ -1498,7 +1556,11 @@ export const createCheckoutSession = mutationGeneric({
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
-    const { trialEligible } = getUserTrialEligibilityState(user);
+    const { trialEligible } = await getUserTrialEligibilityState(
+      ctx.db,
+      user,
+      subscriptions,
+    );
     const expectedPriceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
       trialEligible,
     });

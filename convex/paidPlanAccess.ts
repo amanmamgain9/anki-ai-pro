@@ -59,13 +59,18 @@ export async function resolveRecognizedSubscriptionTier(
 ): Promise<StoredBillingTier | "inactive"> {
   // No recognized paid tier means no app access. This is not a free/basic plan.
   if (!subscription) return "inactive";
-  if (subscription.requiresPriceMappingReview === true) {
-    return "inactive";
+  const currentMappedTier =
+    (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? null;
+  if (currentMappedTier) {
+    return currentMappedTier;
   }
   if (isStoredBillingTier(subscription.tier)) {
+    // Historical sold prices must stay mapped even after deactivation.
+    // If Paddle starts sending a new price before mappings are updated,
+    // keep the last recognized app tier rather than dropping paid access.
     return subscription.tier;
   }
-  return (await resolveBillingTierByPriceId(db, subscription.priceId)) ?? "inactive";
+  return "inactive";
 }
 
 export async function isRecognizedSubscription(
