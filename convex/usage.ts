@@ -47,6 +47,35 @@ function resolveProPreviewQuotaChars() {
   return Math.max(0, Math.floor(parsed));
 }
 
+async function getFeatureUsageRows(
+  db: UsageReadDb,
+  userId: DataModel["users"]["document"]["_id"],
+  feature: string,
+  monthKey: string,
+) {
+  return await db
+    .query("featureUsageMonthly")
+    .withIndex("by_user_feature_month", (q) =>
+      q.eq("userId", userId).eq("feature", feature).eq("monthKey", monthKey),
+    )
+    .collect();
+}
+
+function splitFeatureUsageRows<
+  T extends { _id: string; usedUnits: number; updatedAt: number; createdAt: number },
+>(rows: T[]) {
+  const ordered = [...rows].sort((a, b) => {
+    if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+    return b.createdAt - a.createdAt;
+  });
+  const [primary, ...duplicates] = ordered;
+  return {
+    primary: primary ?? null,
+    duplicates,
+    usedUnits: ordered.reduce((sum, row) => sum + row.usedUnits, 0),
+  };
+}
+
 async function requireIdentity(ctx: AuthCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -138,25 +167,30 @@ export const consumePremiumTtsPreview = mutationGeneric({
     }
 
     const monthKey = getCurrentMonthKey(now);
-    const rowsForUser = await ctx.db
-      .query("featureUsageMonthly")
-      .withIndex("by_user_month", (q) => q.eq("userId", user._id))
-      .collect();
-    const existing =
-      rowsForUser.find(
-        (row) => row.feature === PREMIUM_TTS_PREVIEW_FEATURE && row.monthKey === monthKey,
-      ) ?? null;
-    const unlimitedExisting =
-      rowsForUser.find(
-        (row) => row.feature === PREMIUM_TTS_UNLIMITED_FEATURE && row.monthKey === monthKey,
-      ) ?? null;
+    const previewRows = await getFeatureUsageRows(
+      ctx.db,
+      user._id,
+      PREMIUM_TTS_PREVIEW_FEATURE,
+      monthKey,
+    );
+    const unlimitedRows = await getFeatureUsageRows(
+      ctx.db,
+      user._id,
+      PREMIUM_TTS_UNLIMITED_FEATURE,
+      monthKey,
+    );
+    const previewUsage = splitFeatureUsageRows(previewRows);
+    const unlimitedUsage = splitFeatureUsageRows(unlimitedRows);
 
     if (paidAccess.hasPremiumVoice) {
-      if (unlimitedExisting) {
-        await ctx.db.patch(unlimitedExisting._id, {
-          usedUnits: unlimitedExisting.usedUnits + normalizedUnits,
+      if (unlimitedUsage.primary) {
+        await ctx.db.patch(unlimitedUsage.primary._id, {
+          usedUnits: unlimitedUsage.usedUnits + normalizedUnits,
           updatedAt: now,
         });
+        for (const duplicate of unlimitedUsage.duplicates) {
+          await ctx.db.delete(duplicate._id as never);
+        }
       } else {
         await ctx.db.insert("featureUsageMonthly", {
           userId: user._id,
@@ -178,7 +212,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
     }
 
     const quota = resolveProPreviewQuotaChars();
-    const used = existing?.usedUnits ?? 0;
+    const used = previewUsage.usedUnits;
     const nextUsed = used + normalizedUnits;
     if (nextUsed > quota) {
       return {
@@ -192,12 +226,15 @@ export const consumePremiumTtsPreview = mutationGeneric({
       } as const;
     }
 
-    if (existing) {
-      await ctx.db.patch(existing._id, {
+    if (previewUsage.primary) {
+      await ctx.db.patch(previewUsage.primary._id, {
         usedUnits: nextUsed,
         quotaUnits: quota,
         updatedAt: now,
       });
+      for (const duplicate of previewUsage.duplicates) {
+        await ctx.db.delete(duplicate._id as never);
+      }
     } else {
       await ctx.db.insert("featureUsageMonthly", {
         userId: user._id,
@@ -256,16 +293,10 @@ export const refundPremiumTtsPreview = mutationGeneric({
       throw new ConvexError("Invalid refund authorization");
     }
 
-    const rowsForUser = await ctx.db
-      .query("featureUsageMonthly")
-      .withIndex("by_user_month", (q) => q.eq("userId", user._id))
-      .collect();
-    const existing =
-      rowsForUser.find(
-        (row) => row.feature === feature && row.monthKey === monthKey,
-      ) ?? null;
+    const usageRows = await getFeatureUsageRows(ctx.db, user._id, feature, monthKey);
+    const usage = splitFeatureUsageRows(usageRows);
 
-    if (!existing) {
+    if (!usage.primary) {
       return {
         refunded: false,
         monthKey,
@@ -273,11 +304,14 @@ export const refundPremiumTtsPreview = mutationGeneric({
       } as const;
     }
 
-    const nextUsed = Math.max(0, existing.usedUnits - normalizedUnits);
-    await ctx.db.patch(existing._id, {
+    const nextUsed = Math.max(0, usage.usedUnits - normalizedUnits);
+    await ctx.db.patch(usage.primary._id, {
       usedUnits: nextUsed,
       updatedAt: now,
     });
+    for (const duplicate of usage.duplicates) {
+      await ctx.db.delete(duplicate._id as never);
+    }
 
     return {
       refunded: true,

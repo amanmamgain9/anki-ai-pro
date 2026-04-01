@@ -577,11 +577,12 @@ function splitPendingWebhookCheckoutSessions(
   );
   const stale = sessions.filter(
     (row) =>
-      row.hasWebhookEvidence &&
+      (typeof row.clientCompletedAt === "number" || row.hasWebhookEvidence) &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const abandoned = sessions.filter(
     (row) =>
+      typeof row.clientCompletedAt !== "number" &&
       !row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
@@ -1291,15 +1292,16 @@ export const getMyBilling = queryGeneric({
     if (isActive && tier === "pro" && !hasPremiumVoice) {
       const quota = resolveProPreviewQuotaChars();
       const monthKey = getCurrentMonthKey(now);
-      const rowsForUser = await ctx.db
+      const previewRows = await ctx.db
         .query("featureUsageMonthly")
-        .withIndex("by_user_month", (q) => q.eq("userId", user._id))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_user_feature_month", (q: any) =>
+          q.eq("userId", user._id)
+            .eq("feature", PREMIUM_TTS_PREVIEW_FEATURE)
+            .eq("monthKey", monthKey),
+        )
         .collect();
-      const existing =
-        rowsForUser.find(
-          (row) => row.feature === PREMIUM_TTS_PREVIEW_FEATURE && row.monthKey === monthKey,
-        ) ?? null;
-      const used = existing?.usedUnits ?? 0;
+      const used = previewRows.reduce((sum, row) => sum + row.usedUnits, 0);
       proPreviewQuotaChars = quota;
       proPreviewUsedChars = used;
       proPreviewRemainingChars = Math.max(0, quota - used);
