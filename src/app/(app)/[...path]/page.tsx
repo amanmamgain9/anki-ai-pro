@@ -4,11 +4,17 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import AppPageClient from "@/components/AppPageClient";
 import { authOptions } from "@/lib/auth";
+import { sanitizeInternalReturnPath } from "@/lib/return-path";
 
 const api = anyApi;
 
 type BillingState = {
   isActive?: boolean;
+  accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
+  manualAccessTier?: string | null;
+  portalManagementAvailable?: boolean;
+  blockingSubscriptionIds?: string[] | null;
+  merchantReviewRequired?: boolean;
 };
 
 type OnboardingState = {
@@ -59,6 +65,21 @@ export default async function AppCatchAllPage({
   convex.setAuth(session.convexToken);
   await convex.mutation(api.billing.syncCurrentUser, {});
 
+  const billingSuccess = query.billing === "success";
+  const checkoutCompletionSessionId =
+    typeof query.checkoutSessionId === "string" && query.checkoutSessionId.length > 0
+      ? query.checkoutSessionId
+      : null;
+  if (billingSuccess && checkoutCompletionSessionId) {
+    try {
+      await convex.mutation(api.billing.markCheckoutCompletedFromClient, {
+        sessionId: checkoutCompletionSessionId,
+      });
+    } catch {
+      // Best effort. Webhook reconciliation may still complete the purchase.
+    }
+  }
+
   const [billing, onboarding] = await Promise.all([
     convex.query(api.billing.getMyBilling, {}) as Promise<BillingState>,
     convex.query(api.billing.getMyOnboardingState, {}) as Promise<OnboardingState>,
@@ -67,9 +88,38 @@ export default async function AppCatchAllPage({
   const isBillingStartRoute =
     currentPath === "/start-trial" || currentPath.startsWith("/start-trial?");
   const hasProAccess = Boolean(billing?.isActive);
+  const hasManualAccess =
+    billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
+  const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
+  const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
+  const requiresBillingManagement =
+    !hasManualAccess && hasBlockingSubscriptions && portalManagementAvailable;
+  const requiresSupport =
+    hasManualAccess ||
+    (Boolean(billing?.merchantReviewRequired) && !portalManagementAvailable) ||
+    (hasBlockingSubscriptions && !requiresBillingManagement);
+  const returnPath = sanitizeInternalReturnPath(
+    typeof query.from === "string" ? query.from : null,
+  );
+
+  if (checkoutCompletionSessionId) {
+    if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresBillingManagement && !requiresSupport) {
+      redirect(returnPath);
+    }
+    if (currentPath === "/settings" || currentPath.startsWith("/settings?")) {
+      redirect("/settings?billing=success");
+    }
+    if (isBillingStartRoute) {
+      redirect(`/start-trial?billing=success&from=${encodeURIComponent(returnPath)}`);
+    }
+  }
 
   if (!hasProAccess && !isBillingStartRoute) {
     redirect(`/start-trial?from=${encodeURIComponent(currentPath)}`);
+  }
+
+  if (isBillingStartRoute && hasProAccess && !requiresBillingManagement && !requiresSupport) {
+    redirect(returnPath);
   }
 
   if (

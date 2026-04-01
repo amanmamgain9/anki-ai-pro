@@ -4,7 +4,7 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import Script from "next/script";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
@@ -14,6 +14,7 @@ import {
   setActiveCheckoutSession,
 } from "@/lib/paddle-checkout-client";
 import { getPublicPaddleClientToken } from "@/lib/paddle-client";
+import { sanitizeInternalReturnPath } from "@/lib/return-path";
 
 const api = anyApi;
 type CheckoutPlan = "pro_monthly";
@@ -54,26 +55,8 @@ type CheckoutPayload = {
 const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
 
-function sanitizeReturnPath(input: string | null | undefined) {
-  if (!input) return "/cards";
-  try {
-    const url = new URL(input, "https://aiankipro.local");
-    if (url.origin !== "https://aiankipro.local") {
-      return "/cards";
-    }
-    const next = `${url.pathname}${url.search}${url.hash}`;
-    if (!next.startsWith("/") || next.startsWith("//")) {
-      return "/cards";
-    }
-    return next;
-  } catch {
-    return "/cards";
-  }
-}
-
 export default function BillingStartView() {
   const { t } = useI18n();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
@@ -83,9 +66,8 @@ export default function BillingStartView() {
   const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [paddleReady, setPaddleReady] = useState(false);
-  const from = sanitizeReturnPath(searchParams.get("from"));
+  const from = sanitizeInternalReturnPath(searchParams.get("from"));
   const billingSuccess = searchParams.get("billing") === "success";
-  const checkoutCompletionSessionId = searchParams.get("checkoutSessionId");
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
@@ -99,7 +81,6 @@ export default function BillingStartView() {
     hasManualAccess ||
     (merchantReviewRequired && !portalManagementAvailable) ||
     (hasBlockingSubscriptions && !requiresBillingManagement);
-  const hasProAccess = Boolean(billing?.isActive);
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
@@ -121,36 +102,6 @@ export default function BillingStartView() {
       setPaddleReady(true);
     }
   }, [successUrl]);
-
-  useEffect(() => {
-    if (!hasProAccess) return;
-    if (requiresBillingManagement || requiresSupport || billingSuccess) return;
-    router.replace(from);
-  }, [billingSuccess, from, hasProAccess, requiresBillingManagement, requiresSupport, router]);
-
-  useEffect(() => {
-    if (!billingSuccess || !checkoutCompletionSessionId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        await fetch("/api/paddle/checkout/complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: checkoutCompletionSessionId }),
-          cache: "no-store",
-        });
-      } catch {
-        // Best effort. Webhook reconciliation may still complete.
-      } finally {
-        if (!cancelled) {
-          router.replace(`/start-trial?billing=success&from=${encodeURIComponent(from)}`);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [billingSuccess, checkoutCompletionSessionId, from, router]);
 
   async function startCheckout(plan: CheckoutPlan) {
     setBillingError(null);

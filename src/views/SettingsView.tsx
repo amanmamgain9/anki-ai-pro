@@ -4,7 +4,7 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import Script from "next/script";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n/client";
@@ -66,7 +66,6 @@ function getSettingsBillingSuccessUrl() {
 
 export default function SettingsView() {
   const { t } = useI18n();
-  const router = useRouter();
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const billing = useQuery(api.billing.getMyBilling) as BillingState | undefined;
@@ -99,7 +98,6 @@ export default function SettingsView() {
   const trialEligible = Boolean(checkoutOffer?.trialEligible) && trialDays > 0;
   const checkoutEnabled = checkoutOffer?.checkoutEnabled ?? true;
   const billingSuccess = searchParams.get("billing") === "success";
-  const checkoutCompletionSessionId = searchParams.get("checkoutSessionId");
   const successUrl = getSettingsBillingSuccessUrl();
 
   useEffect(() => {
@@ -108,30 +106,6 @@ export default function SettingsView() {
       setPaddleReady(true);
     }
   }, [successUrl]);
-
-  useEffect(() => {
-    if (!billingSuccess || !checkoutCompletionSessionId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        await fetch("/api/paddle/checkout/complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: checkoutCompletionSessionId }),
-          cache: "no-store",
-        });
-      } catch {
-        // Best effort. Webhook reconciliation may still complete.
-      } finally {
-        if (!cancelled) {
-          router.replace("/settings?billing=success");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [billingSuccess, checkoutCompletionSessionId, router]);
 
   async function startCheckout(plan: CheckoutPlan) {
     setShowUpgradeModal(false);
