@@ -140,6 +140,7 @@ export default function StudyView() {
   const closeAfterReplyRef = useRef(false);
   const tutorDictationRef = useRef<any>(null);
   const voiceModeRef = useRef(false);
+  const suppressFlipUntilRef = useRef(0);
   const linearStudyState = useQuery(
     api.study.getStudyState,
     deckId
@@ -192,6 +193,7 @@ export default function StudyView() {
     setFlipped(false);
     setLinearIndex(0);
     setLinearResumeReady(!isLinearMode);
+    suppressFlipUntilRef.current = Date.now() + 300;
   }, [deckId, isLinearMode, mode, sourceChatId]);
 
   const statsAllDecks = useQuery(api.study.getSessionStats, {}) as
@@ -676,6 +678,7 @@ export default function StudyView() {
   const applyRating = useCallback(async (quality: number) => {
     if (!currentCard || animating) return;
     setAnimating(true);
+    suppressFlipUntilRef.current = Date.now() + 450;
     await recordReview({ cardId: currentCard._id as any, quality });
     setSessionDone((n) => n + 1);
     if (isLinearMode) {
@@ -743,8 +746,13 @@ export default function StudyView() {
 
   const handleFlip = useCallback(() => {
     interruptVoiceTurn("manual_flip");
+    if (Date.now() < suppressFlipUntilRef.current) return;
     if (!animating) setFlipped((f) => !f);
   }, [animating, interruptVoiceTurn]);
+
+  useEffect(() => {
+    suppressFlipUntilRef.current = Date.now() + 250;
+  }, [currentCard?._id]);
 
   // ── Deck picker (no deck selected) ───────────────
   if (!deckId) {
