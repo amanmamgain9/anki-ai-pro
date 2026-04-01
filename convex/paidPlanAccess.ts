@@ -45,6 +45,17 @@ function resolveManualAccessTier(
   return user.manualAccessTier;
 }
 
+function getTierRank(tier: StoredBillingTier | "inactive") {
+  switch (tier) {
+    case "pro_plus":
+      return 2;
+    case "pro":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
 export async function resolveRecognizedSubscriptionTier(
   db: BillingReadDb,
   subscription:
@@ -102,6 +113,7 @@ export async function resolvePaidPlanAccess(
         currentPeriodEndsAt?: number | null;
         nextBilledAt?: number | null;
         startedWithTrial?: boolean | null;
+        canceledDuringTrial?: boolean | null;
         appPlan?: string;
         tier?: string;
         tierSourcePriceId?: string;
@@ -120,6 +132,33 @@ export async function resolvePaidPlanAccess(
   now = Date.now(),
 ): Promise<ResolvedPaidPlanAccess> {
   const manualAccessTier = resolveManualAccessTier(user, now);
+  const access = resolveBillingAccess(subscription, now);
+  const tier = await resolveRecognizedSubscriptionTier(db, subscription);
+  const subscriptionEntitled = access.subscriptionEntitled && tier !== "inactive";
+  if (subscriptionEntitled) {
+    const effectiveTier =
+      manualAccessTier && getTierRank(manualAccessTier) > getTierRank(tier)
+        ? manualAccessTier
+        : tier;
+    const trialActive = access.trialActive;
+    const hasPremiumVoice = trialActive || effectiveTier === "pro_plus";
+
+    return {
+      isActive: true,
+      trialActive,
+      trialEndsAt: access.trialEndsAt,
+      accessSource: access.accessSource,
+      subscriptionEntitled: true,
+      tier: effectiveTier,
+      hasPremiumVoice,
+      premiumVoiceSource: trialActive
+        ? "trial"
+        : effectiveTier === "pro_plus"
+          ? "pro_plus"
+          : "pro_preview",
+    };
+  }
+
   if (manualAccessTier) {
     return {
       isActive: true,
@@ -133,31 +172,15 @@ export async function resolvePaidPlanAccess(
     };
   }
 
-  const access = resolveBillingAccess(subscription, now);
-
-  const tier = await resolveRecognizedSubscriptionTier(db, subscription);
-  const subscriptionEntitled = access.subscriptionEntitled && tier !== "inactive";
-
-  const trialActive = subscriptionEntitled ? access.trialActive : false;
-  const activeAccessSource = subscriptionEntitled ? access.accessSource : "none";
-  const hasPremiumVoice =
-    subscriptionEntitled && (trialActive || tier === "pro_plus");
-
   return {
-    isActive: subscriptionEntitled,
-    trialActive,
-    trialEndsAt: subscriptionEntitled ? access.trialEndsAt : null,
-    accessSource: activeAccessSource,
-    subscriptionEntitled,
+    isActive: false,
+    trialActive: false,
+    trialEndsAt: null,
+    accessSource: "none",
+    subscriptionEntitled: false,
     // Inactive users are redirected to /start-trial; there is no signed-in free tier.
-    tier: subscriptionEntitled ? tier : "inactive",
-    hasPremiumVoice,
-    premiumVoiceSource: trialActive
-      ? "trial"
-      : subscriptionEntitled
-        ? tier === "pro_plus"
-          ? "pro_plus"
-          : "pro_preview"
-        : "none",
+    tier: "inactive",
+    hasPremiumVoice: false,
+    premiumVoiceSource: "none",
   };
 }

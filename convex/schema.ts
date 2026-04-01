@@ -45,6 +45,7 @@ export default defineSchema({
     status: v.string(),
     appPlan: v.optional(v.string()),
     startedWithTrial: v.optional(v.boolean()),
+    canceledDuringTrial: v.optional(v.boolean()),
     requiresPriceMappingReview: v.optional(v.boolean()),
     tier: v.optional(v.string()),
     tierSourcePriceId: v.optional(v.string()),

@@ -259,6 +259,10 @@ function webhookFinalizesCheckoutSession(
   );
 }
 
+function normalizedStatusEquals(status: string | null | undefined, expected: string) {
+  return typeof status === "string" && status.trim().toLowerCase() === expected;
+}
+
 async function getUserTrialEligibilityState(
   db: BillingReadDb,
   user:
@@ -2083,6 +2087,7 @@ async function applyPaddleWebhookEvent(
       status: string;
       appPlan?: BillingPlan;
       startedWithTrial?: boolean;
+      canceledDuringTrial?: boolean;
       requiresPriceMappingReview?: boolean;
       tier?: StoredBillingTier;
       tierSourcePriceId?: string;
@@ -2107,9 +2112,20 @@ async function applyPaddleWebhookEvent(
     if (resolvedAppPlan) {
       patch.appPlan = resolvedAppPlan;
     }
-    if (trialPriceMatched || existingSubscription?.startedWithTrial === true) {
-      patch.startedWithTrial = true;
-    }
+    const existingSubscriptionWasTrialing = normalizedStatusEquals(
+      existingSubscription?.status,
+      "trialing",
+    );
+    patch.startedWithTrial =
+      normalizedStatus === "trialing"
+        ? trialPriceMatched || existingSubscription?.startedWithTrial === true
+        : false;
+    patch.canceledDuringTrial =
+      normalizedStatus === "canceled"
+        ? existingSubscriptionWasTrialing ||
+          (existingSubscription?.canceledDuringTrial === true &&
+            existingSubscription?.startedWithTrial === true)
+        : false;
     if (resolvedTier) {
       patch.tier = resolvedTier;
       patch.tierSourcePriceId = resolvedPriceId ?? (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined);
@@ -2215,7 +2231,12 @@ async function applyPaddleWebhookEvent(
         paddleCustomerId: args.customerId,
         status: normalizedStatus,
         ...(resolvedAppPlan ? { appPlan: resolvedAppPlan } : {}),
-        ...(trialPriceMatched ? { startedWithTrial: true } : {}),
+        ...(normalizedStatus === "trialing" && trialPriceMatched
+          ? { startedWithTrial: true }
+          : {}),
+        ...(normalizedStatus === "canceled" && trialPriceMatched
+          ? { canceledDuringTrial: true }
+          : {}),
         ...(resolvedTier
           ? {
               tier: resolvedTier,
