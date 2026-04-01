@@ -1,6 +1,6 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
-import { resolveBillingTierByPriceId } from "./billingPlans";
+import { resolveBillingTierByPlan, resolveBillingTierByPriceId } from "./billingPlans";
 import { resolveBillingAccess, type BillingAccessSource } from "./subscriptionAccess";
 
 type BillingReadDb = GenericDatabaseReader<DataModel>;
@@ -49,6 +49,7 @@ export async function resolveRecognizedSubscriptionTier(
   db: BillingReadDb,
   subscription:
     | {
+        appPlan?: string;
         tier?: string;
         tierSourcePriceId?: string;
         priceId?: string;
@@ -69,6 +70,10 @@ export async function resolveRecognizedSubscriptionTier(
     // If Paddle starts sending a new price before mappings are updated,
     // keep the last recognized app tier rather than dropping paid access.
     return subscription.tier;
+  }
+  const planTier = resolveBillingTierByPlan(subscription.appPlan);
+  if (planTier) {
+    return planTier;
   }
   return "inactive";
 }
@@ -96,6 +101,8 @@ export async function resolvePaidPlanAccess(
         currentPeriodStartsAt?: number | null;
         currentPeriodEndsAt?: number | null;
         nextBilledAt?: number | null;
+        startedWithTrial?: boolean | null;
+        appPlan?: string;
         tier?: string;
         tierSourcePriceId?: string;
         priceId?: string;

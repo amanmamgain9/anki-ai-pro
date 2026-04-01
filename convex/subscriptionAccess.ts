@@ -271,6 +271,7 @@ export function resolveBillingAccess<
     currentPeriodStartsAt?: number | null;
     currentPeriodEndsAt?: number | null;
     nextBilledAt?: number | null;
+    startedWithTrial?: boolean | null;
   },
 >(
   subscription: T | null | undefined,
@@ -286,12 +287,14 @@ export function resolveBillingAccess<
   const canceledTrialStillActive =
     normalizeStatus(status) === "canceled" &&
     subscriptionEntitled &&
-    isCanceledTrialStillActive(
-      subscription?.currentPeriodStartsAt,
-      subscription?.currentPeriodEndsAt,
-      subscription?.nextBilledAt,
-      now,
-    );
+    (subscription?.startedWithTrial === true ||
+      (subscription?.startedWithTrial !== false &&
+        isCanceledTrialStillActive(
+          subscription?.currentPeriodStartsAt,
+          subscription?.currentPeriodEndsAt,
+          subscription?.nextBilledAt,
+          now,
+        )));
   const subscriptionTrialActive =
     subscriptionEntitled &&
     (normalizeStatus(status) === "trialing" || canceledTrialStillActive);

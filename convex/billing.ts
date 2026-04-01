@@ -1953,8 +1953,13 @@ async function applyPaddleWebhookEvent(
   const resolvedTier =
     resolvedPriceId && processingStatus === "processed"
       ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
-      : explicitUnknownManagedPrice && existingTier
-        ? existingTier
+      : explicitUnknownManagedPrice &&
+          (existingTier ??
+            checkoutSessionTier ??
+            resolveBillingTierByPlan(resolvedAppPlan ?? undefined))
+        ? (existingTier ??
+            checkoutSessionTier ??
+            resolveBillingTierByPlan(resolvedAppPlan ?? undefined))
       : hasExplicitWebhookPrice
         ? undefined
         : existingTier ?? checkoutSessionTier ?? undefined;
@@ -2038,6 +2043,7 @@ async function applyPaddleWebhookEvent(
       userId?: Id<"users">;
       status: string;
       appPlan?: BillingPlan;
+      startedWithTrial?: boolean;
       requiresPriceMappingReview?: boolean;
       tier?: StoredBillingTier;
       tierSourcePriceId?: string;
@@ -2061,6 +2067,9 @@ async function applyPaddleWebhookEvent(
     };
     if (resolvedAppPlan) {
       patch.appPlan = resolvedAppPlan;
+    }
+    if (trialPriceMatched || existingSubscription?.startedWithTrial === true) {
+      patch.startedWithTrial = true;
     }
     if (resolvedTier) {
       patch.tier = resolvedTier;
@@ -2167,6 +2176,7 @@ async function applyPaddleWebhookEvent(
         paddleCustomerId: args.customerId,
         status: normalizedStatus,
         ...(resolvedAppPlan ? { appPlan: resolvedAppPlan } : {}),
+        ...(trialPriceMatched ? { startedWithTrial: true } : {}),
         ...(resolvedTier
           ? {
               tier: resolvedTier,

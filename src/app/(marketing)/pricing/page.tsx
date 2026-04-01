@@ -1,3 +1,5 @@
+import { ConvexHttpClient } from "convex/browser";
+import { anyApi } from "convex/server";
 import Link from "next/link";
 import DisplayMenu from "@/components/DisplayMenu";
 import BrandLogo from "@/components/BrandLogo";
@@ -8,9 +10,33 @@ import { interpolateMessage } from "@/i18n/format";
 import { getServerDictionary } from "@/i18n/server";
 import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
+const api = anyApi;
+
 export default async function PricingPage() {
   const { dict, locale } = await getServerDictionary();
-  const trialDays = resolveFreeProPlusTrialDays();
+  let trialDays = 0;
+  try {
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!convexUrl) {
+      throw new Error("Missing NEXT_PUBLIC_CONVEX_URL");
+    }
+    const convex = new ConvexHttpClient(convexUrl);
+    const payload = (await convex.query(api.billing.getBillingPlansPublic, {})) as {
+      trialDays: number;
+      plans: Array<{
+        plan: string;
+        trialEligible: boolean;
+        checkoutEnabled: boolean;
+      }>;
+    };
+    const publicOffer = payload.plans.find((row) => row.plan === "pro_monthly");
+    trialDays =
+      publicOffer?.checkoutEnabled && publicOffer.trialEligible
+        ? payload.trialDays
+        : 0;
+  } catch {
+    trialDays = resolveFreeProPlusTrialDays();
+  }
   const subtitle =
     trialDays > 0
       ? interpolateMessage(dict.marketing.pricing.subtitleWithTrial, { count: trialDays })
