@@ -17,29 +17,6 @@ function getStoredPeriodEndsAt(
   return currentPeriodEndsAt ?? nextBilledAt ?? null;
 }
 
-function resolveFreeProPlusTrialDays() {
-  const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return 3;
-  return Math.max(0, Math.floor(parsed));
-}
-
-function isCanceledTrialStillActive(
-  currentPeriodStartsAt: number | null | undefined,
-  currentPeriodEndsAt: number | null | undefined,
-  nextBilledAt: number | null | undefined,
-  now: number,
-) {
-  const trialDays = resolveFreeProPlusTrialDays();
-  if (trialDays <= 0) return false;
-  const startsAt =
-    typeof currentPeriodStartsAt === "number" ? currentPeriodStartsAt : null;
-  const endsAt = getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt);
-  if (startsAt === null || typeof endsAt !== "number" || now >= endsAt) return false;
-  const maxTrialWindowMs = trialDays * 86_400_000;
-  return endsAt - startsAt <= maxTrialWindowMs;
-}
-
 function getEntitledStatusRank(status: string | null | undefined) {
   switch (normalizeStatus(status)) {
     case "active":
@@ -268,7 +245,6 @@ export function pickEffectiveSubscription<
 export function resolveBillingAccess<
   T extends {
     status?: string | null;
-    currentPeriodStartsAt?: number | null;
     currentPeriodEndsAt?: number | null;
     nextBilledAt?: number | null;
     startedWithTrial?: boolean | null;
@@ -287,14 +263,7 @@ export function resolveBillingAccess<
   const canceledTrialStillActive =
     normalizeStatus(status) === "canceled" &&
     subscriptionEntitled &&
-    (subscription?.startedWithTrial === true ||
-      (subscription?.startedWithTrial !== false &&
-        isCanceledTrialStillActive(
-          subscription?.currentPeriodStartsAt,
-          subscription?.currentPeriodEndsAt,
-          subscription?.nextBilledAt,
-          now,
-        )));
+    subscription?.startedWithTrial === true;
   const subscriptionTrialActive =
     subscriptionEntitled &&
     (normalizeStatus(status) === "trialing" || canceledTrialStillActive);

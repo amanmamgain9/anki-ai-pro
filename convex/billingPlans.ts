@@ -220,6 +220,21 @@ export async function resolveBillingPlanByPriceId(
   return null;
 }
 
+export async function isTrialEligibleBillingPriceId(
+  db: any,
+  plan: BillingPlan,
+  priceId: string | undefined,
+) {
+  if (!priceId) return false;
+
+  const rows = await getRowsByPriceId(db, priceId);
+  if (rows.some((row) => row.plan === plan && row.trialEligible)) {
+    return true;
+  }
+
+  return resolvePriceIdFromEnv(plan, { trialEligible: true }) === priceId;
+}
+
 export function resolveBillingTierByPlan(
   plan: string | undefined,
 ): BillingTier | null {

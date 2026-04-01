@@ -9,6 +9,7 @@ import {
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import {
   type BillingPlan,
+  isTrialEligibleBillingPriceId,
   resolveBillingPlanByPriceId,
   listPublicBillingPlanConfigs,
   resolveBillingTierByPriceId,
@@ -30,6 +31,7 @@ import {
   isSubscriptionEntitled,
   subscriptionCanSelfServeManage,
   subscriptionNeedsMerchantReview,
+  subscriptionRequiresBillingManagement,
 } from "./subscriptionAccess";
 
 type AuthCtx = {
@@ -235,6 +237,25 @@ function subscriptionConsumesTrialEligibility(
     normalizedStatus === "past_due" ||
     normalizedStatus === "paused" ||
     normalizedStatus === "expired"
+  );
+}
+
+function webhookFinalizesCheckoutSession(
+  status: string | null | undefined,
+  currentPeriodEndsAt: number | null | undefined,
+  nextBilledAt: number | null | undefined,
+  requiresPriceMappingReview: boolean,
+  now: number,
+) {
+  return (
+    isSubscriptionEntitled(status, currentPeriodEndsAt, nextBilledAt, now) ||
+    subscriptionRequiresBillingManagement(
+      status,
+      currentPeriodEndsAt,
+      nextBilledAt,
+      requiresPriceMappingReview,
+      now,
+    )
   );
 }
 
@@ -1964,20 +1985,35 @@ async function applyPaddleWebhookEvent(
         ? undefined
         : existingTier ?? checkoutSessionTier ?? undefined;
   const managesAppPlan = Boolean(resolvedAppPlan);
-  const trialPlanPriceId = resolvedAppPlan
-    ? await resolveCheckoutPlanPriceId(ctx.db, resolvedAppPlan, {
-        trialEligible: true,
-      })
-    : null;
-  const trialPriceMatched = trialPlanPriceId
-    ? resolvedPriceId === trialPlanPriceId ||
-      checkoutSession?.priceId === trialPlanPriceId ||
-      args.priceId === trialPlanPriceId ||
-      args.priceIds?.includes(trialPlanPriceId) === true
-    : false;
   const normalizedStatus = normalizeSubscriptionStatus(
     args.eventType,
     args.subscriptionStatus,
+  );
+  const trialPriceMatched = Boolean(
+    resolvedAppPlan &&
+      (
+        await Promise.all(
+          [
+            resolvedPriceId,
+            checkoutSession?.priceId,
+            args.priceId,
+            ...(args.priceIds ?? []),
+          ]
+            .filter((value, index, values): value is string =>
+              typeof value === "string" && value.length > 0 && values.indexOf(value) === index,
+            )
+            .map((priceId) =>
+              isTrialEligibleBillingPriceId(ctx.db, resolvedAppPlan, priceId),
+            ),
+        )
+      ).some(Boolean),
+  );
+  const shouldCompleteCheckoutSession = webhookFinalizesCheckoutSession(
+    normalizedStatus,
+    toMillis(args.currentPeriodEndsAt),
+    toMillis(args.nextBilledAt),
+    explicitUnknownManagedPrice,
+    now,
   );
   if (
     processingStatus === "processed" &&
@@ -2034,7 +2070,10 @@ async function applyPaddleWebhookEvent(
       updatedAt: now,
       paddleCustomerId: args.customerId ?? checkoutSession.paddleCustomerId,
       paddleSubscriptionId: args.subscriptionId ?? checkoutSession.paddleSubscriptionId,
-      completedAt: args.subscriptionId ? now : checkoutSession.completedAt,
+      completedAt:
+        args.subscriptionId && shouldCompleteCheckoutSession
+          ? now
+          : checkoutSession.completedAt,
     });
   }
 
