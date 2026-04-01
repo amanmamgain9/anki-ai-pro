@@ -494,5 +494,10 @@ test("pricing page mentions monthly pricing and the 3-day trial", async ({ reque
   expect(response.status()).toBe(200);
   const html = await response.text();
   expect(html).toMatch(/monthly/i);
-  expect(html).toMatch(/3-day/i);
+  const configuredTrialDays = Number(process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3");
+  if (Number.isFinite(configuredTrialDays) && configuredTrialDays > 0) {
+    expect(html).toMatch(new RegExp(`${Math.floor(configuredTrialDays)}-day`, "i"));
+  } else {
+    expect(html).not.toMatch(/trial/i);
+  }
 });

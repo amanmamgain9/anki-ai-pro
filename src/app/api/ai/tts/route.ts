@@ -20,6 +20,7 @@ type ConsumeResult = {
   reason?: string;
   remaining?: number;
   monthKey?: string;
+  feature?: "premium_tts" | "premium_tts_unlimited";
 };
 
 type SyncUserResult = {
@@ -45,12 +46,13 @@ function getTtsRefundProofSecret() {
 
 function createRefundSignature(
   userId: string,
+  feature: "premium_tts" | "premium_tts_unlimited",
   monthKey: string,
   units: number,
   proofIssuedAt: number,
 ) {
   return createHmac("sha256", getTtsRefundProofSecret())
-    .update(`${userId}:${monthKey}:${units}:${proofIssuedAt}`)
+    .update(`${userId}:${feature}:${monthKey}:${units}:${proofIssuedAt}`)
     .digest("hex");
 }
 
@@ -135,20 +137,23 @@ export async function POST(request: Request) {
     let consumedPreview:
       | {
           units: number;
+          feature: "premium_tts" | "premium_tts_unlimited";
           monthKey: string;
           proofIssuedAt: number;
           refundSignature: string;
         }
       | null =
-      typeof consume.monthKey === "string"
+      typeof consume.monthKey === "string" && typeof consume.feature === "string"
         ? (() => {
             const proofIssuedAt = Date.now();
             return {
               units,
+              feature: consume.feature,
               monthKey: consume.monthKey,
               proofIssuedAt,
               refundSignature: createRefundSignature(
                 synced.userId,
+                consume.feature,
                 consume.monthKey,
                 units,
                 proofIssuedAt,

@@ -172,6 +172,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
         tier,
         unlimited: true,
         monthKey,
+        feature: PREMIUM_TTS_UNLIMITED_FEATURE,
         source: "subscription",
       } as const;
     }
@@ -214,6 +215,7 @@ export const consumePremiumTtsPreview = mutationGeneric({
       tier,
       unlimited: false,
       monthKey,
+      feature: PREMIUM_TTS_PREVIEW_FEATURE,
       quota,
       used: nextUsed,
       remaining: Math.max(0, quota - nextUsed),
@@ -225,10 +227,14 @@ export const refundPremiumTtsPreview = mutationGeneric({
   args: {
     units: v.number(),
     monthKey: v.string(),
+    feature: v.union(
+      v.literal(PREMIUM_TTS_PREVIEW_FEATURE),
+      v.literal(PREMIUM_TTS_UNLIMITED_FEATURE),
+    ),
     proofIssuedAt: v.number(),
     refundSignature: v.string(),
   },
-  handler: async (ctx, { units, monthKey, proofIssuedAt, refundSignature }) => {
+  handler: async (ctx, { units, monthKey, feature, proofIssuedAt, refundSignature }) => {
     const normalizedUnits = Math.max(1, Math.floor(units));
     const now = Date.now();
     const identity = await requireIdentity(ctx);
@@ -244,7 +250,7 @@ export const refundPremiumTtsPreview = mutationGeneric({
       throw new ConvexError("Expired refund authorization");
     }
     const expectedSignature = await signRefundProof(
-      `${user._id}:${monthKey}:${normalizedUnits}:${proofIssuedAt}`,
+      `${user._id}:${feature}:${monthKey}:${normalizedUnits}:${proofIssuedAt}`,
     );
     if (refundSignature !== expectedSignature) {
       throw new ConvexError("Invalid refund authorization");
@@ -256,7 +262,7 @@ export const refundPremiumTtsPreview = mutationGeneric({
       .collect();
     const existing =
       rowsForUser.find(
-        (row) => row.feature === PREMIUM_TTS_PREVIEW_FEATURE && row.monthKey === monthKey,
+        (row) => row.feature === feature && row.monthKey === monthKey,
       ) ?? null;
 
     if (!existing) {

@@ -88,6 +88,7 @@ export async function resolvePaidPlanAccess(
   subscription:
     | {
         status?: string | null;
+        currentPeriodStartsAt?: number | null;
         currentPeriodEndsAt?: number | null;
         nextBilledAt?: number | null;
         tier?: string;
