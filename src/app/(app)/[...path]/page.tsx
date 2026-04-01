@@ -1,30 +1,84 @@
-"use client";
+import { ConvexHttpClient } from "convex/browser";
+import { anyApi } from "convex/server";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import AppPageClient from "@/components/AppPageClient";
+import { authOptions } from "@/lib/auth";
 
-import { useAppRouter } from "@/lib/app-router";
-import CardsView from "@/views/CardsView";
-import NewCardView from "@/views/NewCardView";
-import DecksView from "@/views/DecksView";
-import NewDeckView from "@/views/NewDeckView";
-import StudyView from "@/views/StudyView";
-import BulkUploadView from "@/views/BulkUploadView";
-import SettingsView from "@/views/SettingsView";
-import GenerateCardsView from "@/views/GenerateCardsView";
-import BillingStartView from "@/views/BillingStartView";
+const api = anyApi;
 
-export default function AppCatchAll() {
-  const { pathname } = useAppRouter();
+type BillingState = {
+  isActive?: boolean;
+};
 
-  if (pathname === "/cards/bulk" || pathname.startsWith("/cards/bulk?")) return <BulkUploadView />;
-  if (pathname === "/cards/generate" || pathname.startsWith("/cards/generate?")) return <GenerateCardsView />;
-  if (pathname === "/cards/new" || pathname.startsWith("/cards/new?")) return <NewCardView />;
-  if (pathname === "/decks/new" || pathname.startsWith("/decks/new?")) return <NewDeckView />;
-  if (pathname === "/study" || pathname.startsWith("/study?")) {
-    const deckKey = new URLSearchParams(window.location.search).get("deck") || "picker";
-    return <StudyView key={deckKey} />;
+type OnboardingState = {
+  hasCompletedOnboarding?: boolean;
+};
+
+function buildAppPath(
+  pathSegments: string[] | undefined,
+  searchParams: Record<string, string | string[] | undefined>,
+) {
+  const pathname = `/${(pathSegments ?? []).join("/")}`;
+  const normalizedPath = pathname === "/" ? "/cards" : pathname;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (typeof value === "string") {
+      query.set(key, value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) query.append(key, item);
+    }
   }
-  if (pathname === "/decks" || pathname.startsWith("/decks?")) return <DecksView />;
-  if (pathname === "/start-trial" || pathname.startsWith("/start-trial?")) return <BillingStartView />;
-  if (pathname === "/settings") return <SettingsView />;
+  const search = query.toString();
+  return search ? `${normalizedPath}?${search}` : normalizedPath;
+}
 
-  return <CardsView />;
+export default async function AppCatchAllPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ path?: string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [{ path }, query] = await Promise.all([params, searchParams]);
+  const currentPath = buildAppPath(path, query);
+  const session = await getServerSession(authOptions);
+
+  if (!session?.convexToken) {
+    redirect(`/sign-in?callbackUrl=${encodeURIComponent(currentPath)}`);
+  }
+
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!convexUrl) {
+    throw new Error("Missing NEXT_PUBLIC_CONVEX_URL");
+  }
+
+  const convex = new ConvexHttpClient(convexUrl);
+  convex.setAuth(session.convexToken);
+  await convex.mutation(api.billing.syncCurrentUser, {});
+
+  const [billing, onboarding] = await Promise.all([
+    convex.query(api.billing.getMyBilling, {}) as Promise<BillingState>,
+    convex.query(api.billing.getMyOnboardingState, {}) as Promise<OnboardingState>,
+  ]);
+
+  const isBillingStartRoute =
+    currentPath === "/start-trial" || currentPath.startsWith("/start-trial?");
+  const hasProAccess = Boolean(billing?.isActive);
+
+  if (!hasProAccess && !isBillingStartRoute) {
+    redirect(`/start-trial?from=${encodeURIComponent(currentPath)}`);
+  }
+
+  if (
+    hasProAccess &&
+    !onboarding?.hasCompletedOnboarding &&
+    (currentPath === "/cards" || currentPath.startsWith("/cards?"))
+  ) {
+    redirect("/cards/generate?onboarding=1");
+  }
+
+  return <AppPageClient initialPath={currentPath} showUpgradeCta={!hasProAccess} />;
 }
