@@ -6,7 +6,6 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { parseBillingPlan } from "@/lib/billing-plans";
 import { createPaddleCheckoutToken } from "@/lib/paddle-checkout-token";
-import { priceHasExpectedTrial } from "@/lib/paddle";
 
 const api = anyApi;
 
@@ -161,19 +160,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Missing user email for first-time checkout" },
         { status: 400 },
-      );
-    }
-
-    const expectedTrialDays = planConfig.trialEligible ? planConfig.trialDays : 0;
-    if (!(await priceHasExpectedTrial(planConfig.priceId, expectedTrialDays))) {
-      return NextResponse.json(
-        {
-          error:
-            planConfig.trialEligible
-              ? "The Pro trial is temporarily unavailable because billing is misconfigured. Please try again later."
-              : "Returning Pro checkout is temporarily unavailable because billing is misconfigured. Please try again later.",
-        },
-        { status: 503 },
       );
     }
 

@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { listPublicBillingPlanConfigs } from "@/lib/billing-plans";
-import { priceHasExpectedTrial } from "@/lib/paddle";
 
 const api = anyApi;
 
@@ -34,13 +33,6 @@ export async function GET() {
         priceId: string | null;
         checkoutEnabled: boolean;
       };
-      const trialVerified =
-        offer.checkoutEnabled && offer.priceId
-          ? await priceHasExpectedTrial(
-              offer.priceId,
-              offer.trialEligible ? offer.trialDays : 0,
-            )
-          : false;
       return NextResponse.json({
         trialDays: offer.trialDays,
         plans: [
@@ -48,8 +40,8 @@ export async function GET() {
             plan: offer.plan,
             tier: "pro",
             interval: "monthly",
-            trialEligible: offer.trialEligible && trialVerified,
-            checkoutEnabled: trialVerified,
+            trialEligible: offer.trialEligible,
+            checkoutEnabled: offer.checkoutEnabled,
           },
         ],
       });
@@ -66,36 +58,9 @@ export async function GET() {
         checkoutEnabled: boolean;
       }>;
     };
-    const plans = await Promise.all(
-      payload.plans.map(async (plan) => {
-        if (!plan.checkoutEnabled) {
-          return plan;
-        }
-        const config = (await convex.query(api.billing.getCheckoutPlanConfig, {
-          plan: plan.plan as "pro_monthly",
-          trialEligible: plan.trialEligible,
-        })) as { priceId: string | null; checkoutEnabled: boolean };
-        if (!config.checkoutEnabled || !config.priceId) {
-          return {
-            ...plan,
-            checkoutEnabled: false,
-            trialEligible: false,
-          };
-        }
-        const trialVerified = await priceHasExpectedTrial(
-          config.priceId,
-          plan.trialEligible ? payload.trialDays : 0,
-        );
-        return {
-          ...plan,
-          checkoutEnabled: trialVerified,
-          trialEligible: plan.trialEligible && trialVerified,
-        };
-      }),
-    );
     return NextResponse.json({
       trialDays: payload.trialDays,
-      plans,
+      plans: payload.plans,
     });
   } catch {
     const trialDays = 0;

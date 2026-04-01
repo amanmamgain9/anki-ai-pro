@@ -184,35 +184,19 @@ function isStoredBillingTier(value: string | undefined): value is StoredBillingT
   return value === "pro" || value === "pro_plus";
 }
 
-function isStoredManualAccessTier(value: string | undefined): value is "pro" | "pro_plus" {
-  return value === "pro" || value === "pro_plus";
-}
-
 function hasRecordedTrialIneligibility(
   user:
     | {
         trialRedeemedAt?: number;
         trialIneligibleAt?: number;
-        manualAccessTier?: string;
-        manualAccessEndsAt?: number | null;
-        manualAccessReason?: string;
-        manualAccessGrantedBy?: string;
       }
     | null
     | undefined,
 ) {
   if (!user) return false;
-  if (
+  return (
     typeof user.trialRedeemedAt === "number" ||
     typeof user.trialIneligibleAt === "number"
-  ) {
-    return true;
-  }
-  return (
-    isStoredManualAccessTier(user.manualAccessTier) ||
-    typeof user.manualAccessEndsAt === "number" ||
-    typeof user.manualAccessReason === "string" ||
-    typeof user.manualAccessGrantedBy === "string"
   );
 }
 
@@ -581,11 +565,11 @@ async function listPendingWebhookCheckoutSessions(
         !Number.isNaN(getCheckoutSessionReviewAnchor(row)) &&
         (typeof row.clientCompletedAt === "number" || hasWebhookEvidence),
     )
-    .map(({ row }) => row);
+    .map(({ row, hasWebhookEvidence }) => ({ ...row, hasWebhookEvidence }));
 }
 
 function splitPendingWebhookCheckoutSessions(
-  sessions: Doc<"paddleCheckoutSessions">[],
+  sessions: Array<Doc<"paddleCheckoutSessions"> & { hasWebhookEvidence: boolean }>,
   now: number,
 ) {
   const pending = sessions.filter(
@@ -595,9 +579,15 @@ function splitPendingWebhookCheckoutSessions(
   );
   const stale = sessions.filter(
     (row) =>
+      row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
-  return { pending, stale };
+  const abandoned = sessions.filter(
+    (row) =>
+      !row.hasWebhookEvidence &&
+      now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
+  );
+  return { pending, stale, abandoned };
 }
 
 function listRetryableIgnoredBillingIssueCodes(
@@ -1109,7 +1099,6 @@ export const setMyManualAccessForTesting = mutationGeneric({
       manualAccessEndsAt: tier ? (endsAt ?? undefined) : undefined,
       manualAccessReason: tier ? "test_override" : undefined,
       manualAccessGrantedBy: tier ? "e2e" : undefined,
-      trialIneligibleAt: tier ? now : user.trialIneligibleAt,
       updatedAt: now,
       lastSeenAt: now,
     });
@@ -1458,11 +1447,16 @@ export const adminSetManualAccess = mutationGeneric({
     const normalizedReason = reason?.trim();
     const now = Date.now();
     if (tier === null) {
+      const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
       await ctx.db.patch(user._id, {
         manualAccessTier: undefined,
         manualAccessEndsAt: undefined,
         manualAccessReason: undefined,
         manualAccessGrantedBy: undefined,
+        trialIneligibleAt:
+          typeof user.trialRedeemedAt !== "number" && subscriptions.length === 0
+            ? undefined
+            : user.trialIneligibleAt,
         updatedAt: now,
       });
       return {
@@ -1479,7 +1473,6 @@ export const adminSetManualAccess = mutationGeneric({
       manualAccessReason:
         normalizedReason && normalizedReason.length > 0 ? normalizedReason : undefined,
       manualAccessGrantedBy: grantedBy,
-      trialIneligibleAt: now,
       updatedAt: now,
     });
 
