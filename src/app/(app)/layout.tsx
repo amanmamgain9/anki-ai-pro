@@ -67,6 +67,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [initialPath, router, status]);
 
   useEffect(() => {
+    if (status === "loading") {
+      return;
+    }
     if (status !== "authenticated") {
       bootstrapKeyRef.current = null;
       setBilling(null);
@@ -160,7 +163,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     router.replace(`/start-trial?from=${encodeURIComponent(initialPath)}`);
   }, [billing, bootstrapStatus, hasProAccess, initialPath, isBillingStartRoute, router, status]);
 
-  if (status === "loading" || (status === "authenticated" && (bootstrapStatus === "idle" || bootstrapStatus === "loading"))) {
+  if (
+    (status === "loading" && bootstrapStatus !== "ready") ||
+    (status === "authenticated" &&
+      (bootstrapStatus === "idle" || bootstrapStatus === "loading"))
+  ) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">
