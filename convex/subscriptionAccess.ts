@@ -158,16 +158,8 @@ export function subscriptionCanSelfServeManage<
   ) {
     return false;
   }
-  const normalized = normalizeStatus(row.status);
-  const storedPeriodEndsAt = getStoredPeriodEndsAt(
-    row.currentPeriodEndsAt,
-    row.nextBilledAt,
-  );
-  if (normalized === "active" || normalized === "trialing") {
-    return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
-  }
-  if (normalized === "canceled") {
-    return typeof storedPeriodEndsAt === "number" && now < storedPeriodEndsAt;
+  if (row.requiresPriceMappingReview === true) {
+    return false;
   }
   return true;
 }

@@ -94,6 +94,19 @@ function initializePaddleForBilling(successUrl: string) {
   return true;
 }
 
+async function abandonCheckoutSession(sessionId: string) {
+  try {
+    await fetch("/api/paddle/checkout/abort", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+      keepalive: true,
+    });
+  } catch {
+    // Best effort rollback for client-side launch failures.
+  }
+}
+
 export default function BillingStartView() {
   const { t } = useI18n();
   const router = useRouter();
@@ -194,6 +207,7 @@ export default function BillingStartView() {
   async function startCheckout(plan: CheckoutPlan) {
     setBillingError(null);
     setBusyAction(plan);
+    let checkoutSessionId: string | null = null;
     try {
       if (!PADDLE_CLIENT_TOKEN) {
         throw new Error(t("app.settings.missingClientConfig"));
@@ -215,22 +229,29 @@ export default function BillingStartView() {
       ) {
         throw new Error(payload.error ?? "Failed to create Paddle checkout");
       }
+      checkoutSessionId = payload.checkoutSessionId;
       const open = window.Paddle?.Checkout?.open;
       if (typeof open !== "function") {
+        await abandonCheckoutSession(checkoutSessionId);
         throw new Error(t("app.settings.checkoutDidNotLoad"));
       }
       const customer = payload.paddleCustomerId
         ? { id: payload.paddleCustomerId }
         : { email: payload.customerEmail ?? undefined };
-      window.__aiankiPaddleCheckoutSessionId = payload.checkoutSessionId;
-      open({
-        items: [{ priceId: payload.priceId, quantity: 1 }],
-        customer,
-        customData: {
-          checkoutSessionId: payload.checkoutSessionId,
-          ...(payload.checkoutToken ? { checkoutToken: payload.checkoutToken } : {}),
-        },
-      });
+      window.__aiankiPaddleCheckoutSessionId = checkoutSessionId;
+      try {
+        open({
+          items: [{ priceId: payload.priceId, quantity: 1 }],
+          customer,
+          customData: {
+            checkoutSessionId,
+            ...(payload.checkoutToken ? { checkoutToken: payload.checkoutToken } : {}),
+          },
+        });
+      } catch (error) {
+        await abandonCheckoutSession(checkoutSessionId);
+        throw error;
+      }
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : "Checkout failed");
     } finally {

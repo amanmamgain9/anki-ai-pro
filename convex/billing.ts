@@ -200,23 +200,21 @@ function hasRecordedTrialIneligibility(
   );
 }
 
-async function isUserTrialEligible(
-  db: BillingReadDb,
+function getUserTrialEligibilityState(
   user:
-    | (Doc<"users"> & {
-        manualAccessTier?: string;
-        manualAccessEndsAt?: number | null;
-        manualAccessReason?: string;
-        manualAccessGrantedBy?: string;
-      })
+    | {
+        trialRedeemedAt?: number;
+        trialIneligibleAt?: number;
+      }
     | null
     | undefined,
-  subscriptions?: Doc<"subscriptions">[],
 ) {
-  if (!user || resolveFreeProPlusTrialDays() <= 0) return false;
-  if (hasRecordedTrialIneligibility(user)) return false;
-  const managedSubscriptions = subscriptions ?? (await listManagedSubscriptionsForUser(db, user._id));
-  return managedSubscriptions.length === 0;
+  const trialDays = resolveFreeProPlusTrialDays();
+  return {
+    trialDays,
+    trialEligible:
+      Boolean(user) && trialDays > 0 && !hasRecordedTrialIneligibility(user),
+  };
 }
 
 async function requireSupportOperator(ctx: AuthCtx) {
@@ -1274,7 +1272,7 @@ export const getMyBilling = queryGeneric({
     const tier = paidAccess.tier;
     const hasPremiumVoice = paidAccess.hasPremiumVoice;
     const premiumVoiceSource = paidAccess.premiumVoiceSource;
-    const trialEligible = await isUserTrialEligible(ctx.db, user, subscriptions);
+    const { trialEligible } = getUserTrialEligibilityState(user);
     const checkoutPendingConfirmation = checkoutPendingConfirmationSessions.length > 0;
     const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
     const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
@@ -1397,22 +1395,22 @@ export const getMyCheckoutPlanConfig = queryGeneric({
   },
   handler: async (ctx, { plan }: { plan: "pro_monthly" }) => {
     const identity = await ctx.auth.getUserIdentity();
-    const trialDays = resolveFreeProPlusTrialDays();
+    const anonymousTrialDays = resolveFreeProPlusTrialDays();
     if (!identity) {
       const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
-        trialEligible: trialDays > 0,
+        trialEligible: anonymousTrialDays > 0,
       });
       return {
         plan,
-        trialEligible: trialDays > 0,
-        trialDays,
+        trialEligible: anonymousTrialDays > 0,
+        trialDays: anonymousTrialDays,
         priceId,
         checkoutEnabled: Boolean(priceId),
       };
     }
 
     const user = await findUserForIdentity(ctx.db, identity);
-    const trialEligible = await isUserTrialEligible(ctx.db, user);
+    const { trialDays, trialEligible } = getUserTrialEligibilityState(user);
     const priceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
       trialEligible,
     });
@@ -1498,7 +1496,7 @@ export const createCheckoutSession = mutationGeneric({
       throw new ConvexError("User not found. Run syncCurrentUser first.");
     }
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
-    const trialEligible = await isUserTrialEligible(ctx.db, user, subscriptions);
+    const { trialEligible } = getUserTrialEligibilityState(user);
     const expectedPriceId = await resolveCheckoutPlanPriceId(ctx.db, plan, {
       trialEligible,
     });
@@ -1687,6 +1685,39 @@ export const markCheckoutCompletedFromClient = mutationGeneric({
     );
 
     return { sessionId, clientCompletedAt: checkoutSession.clientCompletedAt ?? now };
+  },
+});
+
+export const abandonCheckoutSession = mutationGeneric({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, { sessionId }) => {
+    const identity = await requireIdentity(ctx);
+    const user = await findUserForIdentity(ctx.db, identity);
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const checkoutSession = await ctx.db
+      .query("paddleCheckoutSessions")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .first();
+    if (!checkoutSession || checkoutSession.userId !== user._id) {
+      throw new ConvexError("Checkout session not found");
+    }
+    if (typeof checkoutSession.completedAt === "number") {
+      return { removed: false, reason: "completed" as const };
+    }
+    if (typeof checkoutSession.clientCompletedAt === "number") {
+      return { removed: false, reason: "client_completed" as const };
+    }
+    if (await hasCheckoutSessionWebhookEvidence(ctx.db, checkoutSession.sessionId)) {
+      return { removed: false, reason: "webhook_evidence" as const };
+    }
+
+    await ctx.db.delete(checkoutSession._id);
+    return { removed: true, reason: "abandoned" as const };
   },
 });
 
