@@ -124,8 +124,9 @@ export default function BillingStartView() {
 
   useEffect(() => {
     if (!hasProAccess) return;
+    if (requiresBillingManagement || requiresSupport || billingSuccess) return;
     router.replace(from);
-  }, [from, hasProAccess, router]);
+  }, [billingSuccess, from, hasProAccess, requiresBillingManagement, requiresSupport, router]);
 
   useEffect(() => {
     if (!billingSuccess || !checkoutCompletionSessionId) return;

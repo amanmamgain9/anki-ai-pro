@@ -172,6 +172,7 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
+      const normalizedMessage = message.toLowerCase();
       if (message.includes("Checkout already in progress")) {
         return NextResponse.json(
           {
@@ -192,7 +193,7 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
-      if (message.includes("complimentary access")) {
+      if (normalizedMessage.includes("complimentary access")) {
         return NextResponse.json(
           {
             error:

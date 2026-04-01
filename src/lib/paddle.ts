@@ -1,4 +1,4 @@
-import { Environment, Paddle } from "@paddle/paddle-node-sdk";
+import { Environment, Paddle, Webhooks } from "@paddle/paddle-node-sdk";
 import { getBillingPlanConfig, type BillingPlan } from "@/lib/billing-plans";
 
 function resolvePaddleEnvironment(value: string | undefined): Environment {
@@ -15,6 +15,10 @@ export function getPaddleClient() {
   return new Paddle(apiKey, {
     environment: resolvePaddleEnvironment(process.env.PADDLE_ENV),
   });
+}
+
+export function getPaddleWebhookVerifier() {
+  return new Webhooks();
 }
 
 export function getPaddlePriceId(

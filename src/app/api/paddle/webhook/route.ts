@@ -1,7 +1,11 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { NextResponse } from "next/server";
-import { getPaddleClient, getPaddleForwardSecret, getPaddleWebhookSecret } from "@/lib/paddle";
+import {
+  getPaddleForwardSecret,
+  getPaddleWebhookSecret,
+  getPaddleWebhookVerifier,
+} from "@/lib/paddle";
 import { buildPaddleWebhookMutationArgs } from "@/lib/paddle-webhook";
 
 const api = anyApi;
@@ -27,9 +31,8 @@ export async function POST(request: Request) {
   };
 
   try {
-    const paddle = getPaddleClient();
     const webhookSecret = getPaddleWebhookSecret();
-    event = await paddle.webhooks.unmarshal(rawBody, webhookSecret, signature);
+    event = await getPaddleWebhookVerifier().unmarshal(rawBody, webhookSecret, signature);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid webhook";
     return NextResponse.json({ error: message }, { status: 400 });
