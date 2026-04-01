@@ -59,8 +59,6 @@ function getRecoverableStatusRank(status: string | null | undefined) {
       return 3;
     case "paused":
       return 2;
-    case "created":
-      return 1;
     case "active":
     case "trialing":
     case "canceled":
@@ -122,7 +120,7 @@ export function subscriptionRequiresBillingManagement(
   if (normalized === "active" || normalized === "trialing") {
     return typeof storedPeriodEndsAt === "number" ? now < storedPeriodEndsAt : true;
   }
-  if (normalized === "past_due" || normalized === "paused" || normalized === "created") {
+  if (normalized === "past_due" || normalized === "paused") {
     return true;
   }
   return false;

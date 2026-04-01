@@ -52,6 +52,23 @@ const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
 const PADDLE_ENV = getPublicPaddleEnvironment();
 
+function sanitizeReturnPath(input: string | null | undefined) {
+  if (!input) return "/cards";
+  try {
+    const url = new URL(input, "https://aiankipro.local");
+    if (url.origin !== "https://aiankipro.local") {
+      return "/cards";
+    }
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    if (!next.startsWith("/") || next.startsWith("//")) {
+      return "/cards";
+    }
+    return next;
+  } catch {
+    return "/cards";
+  }
+}
+
 function initializePaddleForBilling(successUrl: string) {
   window.__aiankiPaddleCheckoutSuccessUrl = successUrl;
   if (!PADDLE_CLIENT_TOKEN) return false;
@@ -123,7 +140,7 @@ export default function BillingStartView() {
   );
   const [paddleReady, setPaddleReady] = useState(false);
   const [trialDays, setTrialDays] = useState(3);
-  const from = searchParams.get("from") || "/cards";
+  const from = sanitizeReturnPath(searchParams.get("from"));
   const billingSuccess = searchParams.get("billing") === "success";
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
