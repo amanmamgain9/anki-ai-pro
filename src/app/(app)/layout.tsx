@@ -1,5 +1,7 @@
 "use client";
 
+import { anyApi } from "convex/server";
+import { useQuery } from "convex/react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -9,6 +11,8 @@ import LocaleSwitcher from "@/components/LocaleSwitcher";
 import GenerateChatsSidebar from "@/components/GenerateChatsSidebar";
 import { AppRouterProvider, AppLink, useAppRouter } from "@/lib/app-router";
 import { useI18n } from "@/i18n/client";
+
+const api = anyApi;
 
 const navItems = [
   { href: "/study", labelKey: "app.nav.study", icon: StudyIcon },
@@ -52,9 +56,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
+  const liveBilling = useQuery(
+    api.billing.getMyBilling,
+    status === "authenticated" ? {} : "skip",
+  ) as BillingState | undefined;
+  const liveOnboarding = useQuery(
+    api.billing.getMyOnboardingState,
+    status === "authenticated" ? {} : "skip",
+  ) as OnboardingState | undefined;
   const isBillingStartRoute =
     initialPath === "/start-trial" || initialPath?.startsWith("/start-trial?");
-  const hasProAccess = Boolean(billing?.isActive);
+  const effectiveBilling = liveBilling ?? billing;
+  const effectiveOnboarding = liveOnboarding ?? onboarding;
+  const hasProAccess = Boolean(effectiveBilling?.isActive);
   const showUpgradeCta = !hasProAccess;
 
   useEffect(() => {
@@ -81,7 +95,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       session?.user?.email ??
       session?.user?.name ??
       "authenticated";
-    const bootstrapKey = `${sessionKey}:${initialPath ?? ""}`;
+    const bootstrapKey = sessionKey;
     if (bootstrapKeyRef.current === bootstrapKey) {
       return;
     }
@@ -123,13 +137,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [bootstrapAttempt, initialPath, session?.user?.email, session?.user?.name, status]);
+  }, [bootstrapAttempt, session?.user?.email, session?.user?.name, status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
     if (bootstrapStatus !== "ready") return;
     const accessEndsAt =
-      typeof billing?.accessEndsAt === "number" ? billing.accessEndsAt : null;
+      typeof effectiveBilling?.accessEndsAt === "number" ? effectiveBilling.accessEndsAt : null;
     if (!accessEndsAt || accessEndsAt <= Date.now()) return;
 
     const timeoutMs = Math.max(0, accessEndsAt - Date.now() + 1000);
@@ -141,32 +155,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [billing?.accessEndsAt, bootstrapStatus, status]);
+  }, [bootstrapStatus, effectiveBilling?.accessEndsAt, status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
     if (!initialPath) return;
-    if (bootstrapStatus !== "ready") return;
-    if (!onboarding) return;
-    if (onboarding.hasCompletedOnboarding) return;
+    if (bootstrapStatus !== "ready" && !effectiveOnboarding) return;
+    if (!effectiveOnboarding) return;
+    if (effectiveOnboarding.hasCompletedOnboarding) return;
     if (initialPath !== "/cards" && !initialPath.startsWith("/cards?")) return;
     router.replace("/cards/generate?onboarding=1");
-  }, [bootstrapStatus, initialPath, onboarding, router, status]);
+  }, [bootstrapStatus, effectiveOnboarding, initialPath, router, status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
     if (!initialPath) return;
-    if (bootstrapStatus !== "ready") return;
-    if (!billing) return;
+    if (bootstrapStatus !== "ready" && !effectiveBilling) return;
+    if (!effectiveBilling) return;
     if (isBillingStartRoute) return;
     if (hasProAccess) return;
     router.replace(`/start-trial?from=${encodeURIComponent(initialPath)}`);
-  }, [billing, bootstrapStatus, hasProAccess, initialPath, isBillingStartRoute, router, status]);
+  }, [effectiveBilling, bootstrapStatus, hasProAccess, initialPath, isBillingStartRoute, router, status]);
 
   if (
-    (status === "loading" && bootstrapStatus !== "ready") ||
+    (status === "loading" && bootstrapStatus !== "ready" && !effectiveBilling) ||
     (status === "authenticated" &&
-      (bootstrapStatus === "idle" || bootstrapStatus === "loading"))
+      (bootstrapStatus === "idle" || bootstrapStatus === "loading") &&
+      !effectiveBilling)
   ) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-4">
@@ -177,7 +192,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (status === "authenticated" && bootstrapStatus === "error") {
+  if (status === "authenticated" && bootstrapStatus === "error" && !effectiveBilling) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4">
         <p className="text-sm text-[var(--color-text-secondary)]">
