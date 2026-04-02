@@ -28,7 +28,6 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   paddleSubscriptionIds?: string[] | null;
-  portalManagementAvailable?: boolean;
   blockingSubscriptionIds?: string[] | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
@@ -72,24 +71,18 @@ export default function SettingsView() {
   const checkoutOffer = useQuery(api.billing.getMyCheckoutPlanConfig, {
     plan: "pro_monthly",
   }) as CheckoutPlanOffer | undefined;
-  const [busyAction, setBusyAction] = useState<CheckoutPlan | "portal" | null>(null);
+  const [busyAction, setBusyAction] = useState<CheckoutPlan | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [paddleReady, setPaddleReady] = useState(false);
   const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
-  const hasSelfServeSubscription = Boolean(
-    !hasManualAccess && portalManagementAvailable,
-  );
-  const requiresBillingManagement = hasBlockingSubscriptions;
-  const primaryActionUsesPortal = hasSelfServeSubscription && (Boolean(billing?.isActive) || requiresBillingManagement);
   const primaryActionNeedsSupport = Boolean(
     hasManualAccess ||
-      (merchantReviewRequired && !portalManagementAvailable) ||
-      ((Boolean(billing?.isActive) || requiresBillingManagement) && !primaryActionUsesPortal),
+      merchantReviewRequired ||
+      (!billing?.isActive && hasBlockingSubscriptions),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -169,25 +162,6 @@ export default function SettingsView() {
     }
   }
 
-  async function openPortal() {
-    setBillingError(null);
-    setBusyAction("portal");
-    try {
-      const response = await fetch("/api/paddle/portal", {
-        method: "POST",
-      });
-      const payload = (await response.json()) as { portalUrl?: string; error?: string };
-      if (!response.ok || !payload.portalUrl) {
-        throw new Error(payload.error ?? "Failed to open customer portal");
-      }
-      window.location.href = payload.portalUrl;
-    } catch (error) {
-      setBillingError(error instanceof Error ? error.message : "Portal failed");
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div>
@@ -244,7 +218,7 @@ export default function SettingsView() {
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.settings.manualAccessNote")}
           </p>
-        ) : merchantReviewRequired && !portalManagementAvailable ? (
+        ) : merchantReviewRequired ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.billingStart.merchantReviewNote")}
           </p>
@@ -257,10 +231,6 @@ export default function SettingsView() {
           <button
             type="button"
             onClick={() => {
-              if (primaryActionUsesPortal) {
-                void openPortal();
-                return;
-              }
               if (primaryActionNeedsSupport) {
                 window.location.href = "/contact";
                 return;
@@ -273,26 +243,14 @@ export default function SettingsView() {
             {busyAction
               || checkoutPendingConfirmation
               ? t("app.settings.opening")
-              : primaryActionUsesPortal
-                ? t("app.settings.manageBilling")
-                : primaryActionNeedsSupport
+              : primaryActionNeedsSupport
                   ? t("app.settings.contactSupport")
                 : billing?.isActive
                   ? t("app.settings.changePlan")
                   : t("app.upgradeCta")}
           </button>
-          {portalManagementAvailable && !primaryActionUsesPortal ? (
-            <button
-              type="button"
-              onClick={openPortal}
-              className="btn-secondary"
-              disabled={busyAction !== null}
-            >
-              {busyAction === "portal" ? t("app.settings.opening") : t("app.settings.manageBilling")}
-            </button>
-          ) : null}
         </div>
-        {billingSuccess && (
+        {billingSuccess && (Boolean(billing?.isActive) || checkoutPendingConfirmation) && (
           <p className="mt-3 text-sm text-[var(--color-accent)]">
             {t("app.settings.checkoutSuccess")}
           </p>

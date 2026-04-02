@@ -13,7 +13,6 @@ type BillingState = {
   isActive?: boolean;
   accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
   manualAccessTier?: string | null;
-  portalManagementAvailable?: boolean;
   blockingSubscriptionIds?: string[] | null;
   merchantReviewRequired?: boolean;
 };
@@ -75,12 +74,14 @@ export default async function AppCatchAllPage({
     typeof query.transactionId === "string" && query.transactionId.length > 0
       ? query.transactionId
       : null;
+  let checkoutCompletionVerified = false;
   if (billingSuccess && checkoutCompletionSessionId && checkoutCompletionTransactionId) {
     try {
       await verifyAndRecordCheckoutCompletion(session, {
         sessionId: checkoutCompletionSessionId,
         transactionId: checkoutCompletionTransactionId,
       });
+      checkoutCompletionVerified = true;
     } catch {
       // Best effort. Webhook reconciliation may still complete the purchase.
     }
@@ -97,26 +98,28 @@ export default async function AppCatchAllPage({
   const hasManualAccess =
     billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const portalManagementAvailable = Boolean(billing?.portalManagementAvailable);
-  const requiresBillingManagement =
-    !hasManualAccess && hasBlockingSubscriptions && portalManagementAvailable;
   const requiresSupport =
     hasManualAccess ||
-    (Boolean(billing?.merchantReviewRequired) && !portalManagementAvailable) ||
-    (hasBlockingSubscriptions && !requiresBillingManagement);
+    Boolean(billing?.merchantReviewRequired) ||
+    (!hasProAccess && hasBlockingSubscriptions);
   const returnPath = sanitizeInternalReturnPath(
     typeof query.from === "string" ? query.from : null,
   );
 
   if (checkoutCompletionSessionId || checkoutCompletionTransactionId) {
-    if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresBillingManagement && !requiresSupport) {
+    const shouldShowCheckoutSuccess = checkoutCompletionVerified || hasProAccess;
+    if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresSupport) {
       redirect(returnPath);
     }
     if (currentPath === "/settings" || currentPath.startsWith("/settings?")) {
-      redirect("/settings?billing=success");
+      redirect(shouldShowCheckoutSuccess ? "/settings?billing=success" : "/settings");
     }
     if (isBillingStartRoute) {
-      redirect(`/start-trial?billing=success&from=${encodeURIComponent(returnPath)}`);
+      redirect(
+        shouldShowCheckoutSuccess
+          ? `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}`
+          : `/start-trial?from=${encodeURIComponent(returnPath)}`,
+      );
     }
   }
 
@@ -124,7 +127,7 @@ export default async function AppCatchAllPage({
     redirect(`/start-trial?from=${encodeURIComponent(currentPath)}`);
   }
 
-  if (isBillingStartRoute && hasProAccess && !requiresBillingManagement && !requiresSupport) {
+  if (isBillingStartRoute && hasProAccess && !requiresSupport) {
     redirect(returnPath);
   }
 

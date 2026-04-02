@@ -18,7 +18,6 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   blockingSubscriptionIds?: string[] | null;
-  portalManagementAvailable?: boolean;
   merchantReviewRequired?: boolean;
   merchantReviewCaseId?: string | null;
 };
@@ -33,11 +32,11 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
       error:
         billing?.accessSource === "manual" || billing?.manualAccessTier
           ? "This account currently has complimentary access. Contact support if you need to change billing for it."
-          : "Active access already exists for this account. Use Manage billing if you need to change it.",
+          : "Active access already exists for this account.",
     };
   }
 
-  if (billing?.merchantReviewRequired && !billing.portalManagementAvailable) {
+  if (billing?.merchantReviewRequired) {
     return {
       code: "subscription_requires_support",
       error:
@@ -45,23 +44,11 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
     };
   }
 
-  if (
-    Array.isArray(billing?.blockingSubscriptionIds) &&
-    billing.blockingSubscriptionIds.length > 0 &&
-    !billing?.portalManagementAvailable
-  ) {
+  if (Array.isArray(billing?.blockingSubscriptionIds) && billing.blockingSubscriptionIds.length > 0) {
     return {
       code: "subscription_requires_support",
       error:
         "This account has multiple billing records that need manual review before checkout can continue. Open support from the app so we can reconnect the right subscription safely.",
-    };
-  }
-
-  if (Array.isArray(billing?.blockingSubscriptionIds) && billing.blockingSubscriptionIds.length > 0) {
-    return {
-      code: "subscription_requires_portal",
-      error:
-        "An existing subscription already exists for this account. Use Manage billing to update or recover it.",
     };
   }
 
@@ -187,7 +174,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error:
-              "Active access already exists for this account. Use Manage billing if you need to change it.",
+              "Active access already exists for this account.",
             code: "active_subscription_exists",
           },
           { status: 409 },
@@ -199,16 +186,6 @@ export async function POST(request: Request) {
             error:
               "This account currently has complimentary access. Contact support if you need to change billing for it.",
             code: "manual_access_active",
-          },
-          { status: 409 },
-        );
-      }
-      if (message.includes("Subscription requires billing management")) {
-        return NextResponse.json(
-          {
-            error:
-              "An existing subscription already exists for this account. Use Manage billing to update or recover it.",
-            code: "subscription_requires_portal",
           },
           { status: 409 },
         );

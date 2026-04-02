@@ -106,18 +106,22 @@ export function subscriptionRequiresBillingManagement(
   currentPeriodEndsAt: number | null | undefined,
   nextBilledAt: number | null | undefined,
   requiresPriceMappingReview = false,
-  now = Date.now(),
+  _now = Date.now(),
 ) {
+  void currentPeriodEndsAt;
+  void nextBilledAt;
+  void _now;
   if (requiresPriceMappingReview) return true;
   const normalized = normalizeStatus(status);
-  const storedPeriodEndsAt = getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt);
   if (!normalized) return false;
   if (normalized === "expired") return false;
-  if (normalized === "canceled") {
-    return typeof storedPeriodEndsAt === "number" ? now < storedPeriodEndsAt : false;
-  }
-  if (normalized === "active" || normalized === "trialing") {
-    return typeof storedPeriodEndsAt === "number" ? now < storedPeriodEndsAt : true;
+  if (
+    normalized === "active" ||
+    normalized === "trialing" ||
+    normalized === "canceled" ||
+    normalized === "created"
+  ) {
+    return false;
   }
   if (normalized === "past_due" || normalized === "paused") {
     return true;
