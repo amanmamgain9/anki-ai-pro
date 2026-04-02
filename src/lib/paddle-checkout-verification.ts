@@ -69,11 +69,49 @@ export async function verifyAndRecordCheckoutCompletion(
     throw new Error("Transaction does not match checkout price");
   }
 
+  if (!transaction.subscriptionId) {
+    throw new Error("Transaction does not include a subscription");
+  }
+
+  const subscription = await getPaddleClient().subscriptions.get(transaction.subscriptionId);
+  if (subscription.customerId !== transaction.customerId) {
+    throw new Error("Subscription customer does not match transaction customer");
+  }
+  const subscriptionPriceIds = Array.from(
+    new Set(
+      subscription.items
+        .map((item) => item.price?.id)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+  const primaryItem =
+    subscription.items.find((item) => item.price?.id === checkoutSession.priceId) ??
+    subscription.items[0];
+  const startedWithTrial =
+    subscription.status === "trialing" ||
+    subscription.items.some(
+      (item) => item.status === "trialing" || item.trialDates !== null,
+    );
+
   await convex.mutation(api.billing.markCheckoutCompletedFromVerification, {
     sessionId,
     transactionId,
     paddleCustomerId: transaction.customerId ?? undefined,
-    paddleSubscriptionId: transaction.subscriptionId ?? undefined,
+    paddleSubscriptionId: transaction.subscriptionId,
+    subscriptionStatus: subscription.status,
+    subscriptionUpdatedAt: subscription.updatedAt,
+    priceId:
+      typeof primaryItem?.price?.id === "string" ? primaryItem.price.id : undefined,
+    priceIds: subscriptionPriceIds,
+    productId:
+      typeof primaryItem?.product?.id === "string" ? primaryItem.product.id : undefined,
+    currentPeriodStartsAt:
+      subscription.currentBillingPeriod?.startsAt ?? subscription.startedAt ?? null,
+    currentPeriodEndsAt: subscription.currentBillingPeriod?.endsAt ?? null,
+    nextBilledAt: subscription.nextBilledAt ?? null,
+    canceledAt: subscription.canceledAt ?? null,
+    startedWithTrial,
+    canceledDuringTrial: subscription.status === "canceled" && startedWithTrial,
   });
 
   return {

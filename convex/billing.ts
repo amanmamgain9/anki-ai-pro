@@ -63,6 +63,22 @@ type PaddleWebhookArgs = {
   rawBody?: string;
 };
 
+type VerifiedSubscriptionSnapshot = {
+  subscriptionId: string;
+  customerId?: string;
+  subscriptionUpdatedAt?: string;
+  subscriptionStatus?: string;
+  priceId?: string;
+  priceIds?: string[];
+  productId?: string;
+  currentPeriodStartsAt?: string | null;
+  currentPeriodEndsAt?: string | null;
+  nextBilledAt?: string | null;
+  canceledAt?: string | null;
+  startedWithTrial?: boolean;
+  canceledDuringTrial?: boolean;
+};
+
 type BillingEventProcessingStatus =
   | "processed"
   | "ignored_missing_user"
@@ -1738,8 +1754,38 @@ export const markCheckoutCompletedFromVerification = mutationGeneric({
     transactionId: v.string(),
     paddleCustomerId: v.optional(v.string()),
     paddleSubscriptionId: v.optional(v.string()),
+    subscriptionStatus: v.optional(v.string()),
+    subscriptionUpdatedAt: v.optional(v.string()),
+    priceId: v.optional(v.string()),
+    priceIds: v.optional(v.array(v.string())),
+    productId: v.optional(v.string()),
+    currentPeriodStartsAt: v.optional(v.union(v.string(), v.null())),
+    currentPeriodEndsAt: v.optional(v.union(v.string(), v.null())),
+    nextBilledAt: v.optional(v.union(v.string(), v.null())),
+    canceledAt: v.optional(v.union(v.string(), v.null())),
+    startedWithTrial: v.optional(v.boolean()),
+    canceledDuringTrial: v.optional(v.boolean()),
   },
-  handler: async (ctx, { sessionId, transactionId, paddleCustomerId, paddleSubscriptionId }) => {
+  handler: async (
+    ctx,
+    {
+      sessionId,
+      transactionId,
+      paddleCustomerId,
+      paddleSubscriptionId,
+      subscriptionStatus,
+      subscriptionUpdatedAt,
+      priceId,
+      priceIds,
+      productId,
+      currentPeriodStartsAt,
+      currentPeriodEndsAt,
+      nextBilledAt,
+      canceledAt,
+      startedWithTrial,
+      canceledDuringTrial,
+    },
+  ) => {
     const identity = await requireIdentity(ctx);
     const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
@@ -1764,6 +1810,29 @@ export const markCheckoutCompletedFromVerification = mutationGeneric({
       paddleSubscriptionId: checkoutSession.paddleSubscriptionId ?? paddleSubscriptionId,
       updatedAt: now,
     });
+
+    if (paddleSubscriptionId) {
+      await applyVerifiedSubscriptionSnapshot(ctx, {
+        user,
+        checkoutSession,
+        snapshot: {
+          subscriptionId: paddleSubscriptionId,
+          customerId: paddleCustomerId,
+          subscriptionStatus,
+          subscriptionUpdatedAt,
+          priceId,
+          priceIds,
+          productId,
+          currentPeriodStartsAt,
+          currentPeriodEndsAt,
+          nextBilledAt,
+          canceledAt,
+          startedWithTrial,
+          canceledDuringTrial,
+        },
+        now,
+      });
+    }
 
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
@@ -1876,6 +1945,265 @@ async function resolveWebhookBillingPriceId(
     }
   }
   return undefined;
+}
+
+async function applyVerifiedSubscriptionSnapshot(
+  ctx: { db: BillingWriteDb },
+  {
+    user,
+    checkoutSession,
+    snapshot,
+    now,
+  }: {
+    user: Doc<"users">;
+    checkoutSession: Doc<"paddleCheckoutSessions">;
+    snapshot: VerifiedSubscriptionSnapshot;
+    now: number;
+  },
+) {
+  const existingSubscription = await findCanonicalSubscriptionByPaddleSubscriptionId(
+    ctx.db,
+    snapshot.subscriptionId,
+  );
+  const existingAppPlan = await inferAppOwnedPlan(ctx.db, existingSubscription);
+  const checkoutSessionPlan = isStoredBillingPlan(checkoutSession.plan)
+    ? checkoutSession.plan
+    : null;
+  const resolvedPriceId = await resolveWebhookBillingPriceId(ctx.db, {
+    priceId: snapshot.priceId,
+    priceIds: snapshot.priceIds,
+  });
+  const verificationPriceCandidates = listWebhookPriceCandidates({
+    priceId: snapshot.priceId,
+    priceIds: snapshot.priceIds,
+  });
+  const hasExplicitVerificationPrice = verificationPriceCandidates.length > 0;
+  const checkoutSessionPriceMatched = Boolean(
+    !hasExplicitVerificationPrice && checkoutSession.priceId,
+  );
+  const resolvedAppPlan =
+    checkoutSessionPlan ??
+    existingAppPlan ??
+    (resolvedPriceId ? await resolveBillingPlanByPriceId(ctx.db, resolvedPriceId) : null);
+  if (!resolvedAppPlan) {
+    throw new ConvexError("Verified subscription does not match an app plan");
+  }
+
+  const existingTier = isStoredBillingTier(existingSubscription?.tier)
+    ? existingSubscription.tier
+    : undefined;
+  const checkoutSessionTier = checkoutSessionPriceMatched
+    ? resolveBillingTierByPlan(checkoutSession.plan)
+    : null;
+  const explicitUnknownManagedPrice = Boolean(
+    hasExplicitVerificationPrice && resolvedAppPlan && !resolvedPriceId,
+  );
+  const resolvedTier =
+    resolvedPriceId
+      ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)
+      : explicitUnknownManagedPrice &&
+          (existingTier ??
+            checkoutSessionTier ??
+            resolveBillingTierByPlan(resolvedAppPlan ?? undefined))
+        ? (existingTier ??
+            checkoutSessionTier ??
+            resolveBillingTierByPlan(resolvedAppPlan ?? undefined))
+        : hasExplicitVerificationPrice
+          ? undefined
+          : existingTier ?? checkoutSessionTier ?? undefined;
+  const normalizedStatus =
+    typeof snapshot.subscriptionStatus === "string" &&
+    snapshot.subscriptionStatus.trim().length > 0
+      ? snapshot.subscriptionStatus.trim().toLowerCase()
+      : "unknown";
+  const entitled = isSubscriptionEntitled(
+    normalizedStatus,
+    toMillis(snapshot.currentPeriodEndsAt),
+    toMillis(snapshot.nextBilledAt),
+    now,
+  );
+  const shouldCompleteCheckoutSession = webhookFinalizesCheckoutSession(
+    normalizedStatus,
+    toMillis(snapshot.currentPeriodEndsAt),
+    toMillis(snapshot.nextBilledAt),
+    explicitUnknownManagedPrice,
+    now,
+  );
+
+  if (snapshot.customerId) {
+    await setUserPaddleCustomerId(ctx.db, user, snapshot.customerId, now);
+  } else {
+    await ctx.db.patch(user._id, {
+      updatedAt: now,
+    });
+  }
+
+  if (entitled && typeof user.trialIneligibleAt !== "number") {
+    await ctx.db.patch(user._id, {
+      trialIneligibleAt: now,
+      updatedAt: now,
+    });
+  }
+
+  if (
+    snapshot.startedWithTrial &&
+    entitled &&
+    resolveFreeProPlusTrialDays() > 0 &&
+    typeof user.trialRedeemedAt !== "number"
+  ) {
+    await ctx.db.patch(user._id, {
+      trialRedeemedAt: now,
+      updatedAt: now,
+    });
+  }
+
+  await ctx.db.patch(checkoutSession._id, {
+    updatedAt: now,
+    paddleCustomerId: snapshot.customerId ?? checkoutSession.paddleCustomerId,
+    paddleSubscriptionId: snapshot.subscriptionId ?? checkoutSession.paddleSubscriptionId,
+    completedAt: shouldCompleteCheckoutSession ? now : checkoutSession.completedAt,
+  });
+
+  const patch: {
+    userId?: Id<"users">;
+    status: string;
+    appPlan?: BillingPlan;
+    startedWithTrial?: boolean;
+    canceledDuringTrial?: boolean;
+    requiresPriceMappingReview?: boolean;
+    tier?: StoredBillingTier;
+    tierSourcePriceId?: string;
+    updatedAt: number;
+    lastEventType: string;
+    paddleCustomerId?: string;
+    priceId?: string;
+    productId?: string;
+    currentPeriodStartsAt?: number;
+    currentPeriodEndsAt?: number;
+    nextBilledAt?: number;
+    canceledAt?: number;
+    lastEventOccurredAt?: number;
+    lastSubscriptionUpdatedAt?: number;
+  } = {
+    status: normalizedStatus,
+    appPlan: resolvedAppPlan,
+    requiresPriceMappingReview: explicitUnknownManagedPrice ? true : undefined,
+    updatedAt: now,
+    lastEventType: "transaction.verified",
+    lastEventOccurredAt: now,
+  };
+
+  if (snapshot.startedWithTrial || existingSubscription?.startedWithTrial === true) {
+    patch.startedWithTrial = true;
+  }
+  if (snapshot.canceledDuringTrial || existingSubscription?.canceledDuringTrial === true) {
+    patch.canceledDuringTrial = true;
+  }
+  if (resolvedTier) {
+    patch.tier = resolvedTier;
+    patch.tierSourcePriceId =
+      resolvedPriceId ?? (checkoutSessionPriceMatched ? checkoutSession.priceId : undefined);
+    if (explicitUnknownManagedPrice && !patch.tierSourcePriceId) {
+      patch.tierSourcePriceId =
+        existingSubscription?.tierSourcePriceId ?? existingSubscription?.priceId;
+    }
+  } else if (!hasExplicitVerificationPrice && isStoredBillingTier(existingSubscription?.tier)) {
+    patch.tier = existingSubscription.tier;
+    patch.tierSourcePriceId =
+      existingSubscription.tierSourcePriceId ?? existingSubscription.priceId;
+  } else if (!hasExplicitVerificationPrice && checkoutSessionTier) {
+    patch.tier = checkoutSessionTier;
+    patch.tierSourcePriceId = checkoutSession.priceId;
+  }
+  if (snapshot.subscriptionUpdatedAt !== undefined) {
+    const lastSubscriptionUpdatedAt = toMillis(snapshot.subscriptionUpdatedAt);
+    if (lastSubscriptionUpdatedAt !== undefined) {
+      patch.lastSubscriptionUpdatedAt = lastSubscriptionUpdatedAt;
+    }
+  }
+  if (existingSubscription && existingSubscription.userId !== user._id) {
+    patch.userId = user._id;
+  }
+  if (snapshot.customerId) patch.paddleCustomerId = snapshot.customerId;
+  if (resolvedPriceId) {
+    patch.priceId = resolvedPriceId;
+  } else if (hasExplicitVerificationPrice) {
+    patch.priceId = verificationPriceCandidates[0];
+  } else if (checkoutSessionPriceMatched && checkoutSession.priceId) {
+    patch.priceId = checkoutSession.priceId;
+  }
+  if (snapshot.productId) patch.productId = snapshot.productId;
+  if (snapshot.currentPeriodStartsAt !== undefined) {
+    if (snapshot.currentPeriodStartsAt === null) {
+      patch.currentPeriodStartsAt = undefined;
+    } else {
+      const currentPeriodStartsAt = toMillis(snapshot.currentPeriodStartsAt);
+      if (currentPeriodStartsAt !== undefined) {
+        patch.currentPeriodStartsAt = currentPeriodStartsAt;
+      }
+    }
+  }
+  if (snapshot.currentPeriodEndsAt !== undefined) {
+    if (snapshot.currentPeriodEndsAt === null) {
+      patch.currentPeriodEndsAt = undefined;
+    } else {
+      const currentPeriodEndsAt = toMillis(snapshot.currentPeriodEndsAt);
+      if (currentPeriodEndsAt !== undefined) {
+        patch.currentPeriodEndsAt = currentPeriodEndsAt;
+      }
+    }
+  }
+  if (snapshot.nextBilledAt !== undefined) {
+    if (snapshot.nextBilledAt === null) {
+      patch.nextBilledAt = undefined;
+    } else {
+      const nextBilledAt = toMillis(snapshot.nextBilledAt);
+      if (nextBilledAt !== undefined) {
+        patch.nextBilledAt = nextBilledAt;
+      }
+    }
+  }
+  if (snapshot.canceledAt !== undefined) {
+    if (snapshot.canceledAt === null) {
+      patch.canceledAt = undefined;
+    } else {
+      const canceledAt = toMillis(snapshot.canceledAt);
+      if (canceledAt !== undefined) {
+        patch.canceledAt = canceledAt;
+      }
+    }
+  }
+
+  if (existingSubscription) {
+    await ctx.db.patch(existingSubscription._id, patch);
+  } else {
+    await ctx.db.insert("subscriptions", {
+      userId: user._id,
+      paddleSubscriptionId: snapshot.subscriptionId,
+      paddleCustomerId: snapshot.customerId,
+      status: normalizedStatus,
+      appPlan: resolvedAppPlan,
+      ...(patch.startedWithTrial === true ? { startedWithTrial: true } : {}),
+      ...(patch.canceledDuringTrial === true ? { canceledDuringTrial: true } : {}),
+      ...(patch.tier
+        ? {
+            tier: patch.tier,
+            tierSourcePriceId: patch.tierSourcePriceId,
+          }
+        : {}),
+      priceId: patch.priceId,
+      productId: patch.productId,
+      currentPeriodStartsAt: patch.currentPeriodStartsAt,
+      currentPeriodEndsAt: patch.currentPeriodEndsAt,
+      nextBilledAt: patch.nextBilledAt,
+      canceledAt: patch.canceledAt,
+      createdAt: now,
+      updatedAt: now,
+      lastEventType: "transaction.verified",
+      lastEventOccurredAt: now,
+      lastSubscriptionUpdatedAt: patch.lastSubscriptionUpdatedAt,
+    });
+  }
 }
 
 async function applyPaddleWebhookEvent(

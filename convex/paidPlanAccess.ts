@@ -10,6 +10,7 @@ import { resolveBillingAccess, type BillingAccessSource } from "./subscriptionAc
 
 type BillingReadDb = GenericDatabaseReader<DataModel>;
 type StoredBillingTier = "pro" | "pro_plus";
+const VERIFIED_CHECKOUT_ACCESS_TTL_MS = 30 * 60 * 1000;
 
 export type ResolvedPaidPlanAccess = {
   isActive: boolean;
@@ -86,6 +87,7 @@ async function resolveVerifiedCheckoutAccess(
     if (
       typeof row.verifiedCompletedAt !== "number" ||
       !Number.isFinite(row.verifiedCompletedAt) ||
+      now - row.verifiedCompletedAt > VERIFIED_CHECKOUT_ACCESS_TTL_MS ||
       typeof row.completedAt === "number"
     ) {
       continue;
