@@ -1801,15 +1801,6 @@ export const markCheckoutCompletedFromVerification = mutationGeneric({
     }
 
     const now = Date.now();
-    await ctx.db.patch(checkoutSession._id, {
-      clientCompletedAt: checkoutSession.clientCompletedAt ?? now,
-      verifiedCompletedAt: checkoutSession.verifiedCompletedAt ?? now,
-      verifiedTransactionId: checkoutSession.verifiedTransactionId ?? transactionId,
-      paddleCustomerId:
-        checkoutSession.paddleCustomerId ?? paddleCustomerId ?? user.paddleCustomerId,
-      paddleSubscriptionId: checkoutSession.paddleSubscriptionId ?? paddleSubscriptionId,
-      updatedAt: now,
-    });
 
     if (paddleSubscriptionId) {
       await applyVerifiedSubscriptionSnapshot(ctx, {
@@ -1833,6 +1824,16 @@ export const markCheckoutCompletedFromVerification = mutationGeneric({
         now,
       });
     }
+
+    await ctx.db.patch(checkoutSession._id, {
+      clientCompletedAt: checkoutSession.clientCompletedAt ?? now,
+      verifiedCompletedAt: checkoutSession.verifiedCompletedAt ?? now,
+      verifiedTransactionId: checkoutSession.verifiedTransactionId ?? transactionId,
+      paddleCustomerId:
+        checkoutSession.paddleCustomerId ?? paddleCustomerId ?? user.paddleCustomerId,
+      paddleSubscriptionId: checkoutSession.paddleSubscriptionId ?? paddleSubscriptionId,
+      updatedAt: now,
+    });
 
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
@@ -1965,6 +1966,37 @@ async function applyVerifiedSubscriptionSnapshot(
     ctx.db,
     snapshot.subscriptionId,
   );
+  const incomingVersionTime = toMillis(snapshot.subscriptionUpdatedAt) ?? now;
+  const currentVersionTime =
+    existingSubscription?.lastSubscriptionUpdatedAt ??
+    existingSubscription?.lastEventOccurredAt;
+  if (
+    currentVersionTime !== undefined &&
+    (incomingVersionTime < currentVersionTime ||
+      (incomingVersionTime === currentVersionTime &&
+        existingSubscription?.lastEventType &&
+        existingSubscription.lastEventType !== "transaction.verified"))
+  ) {
+    const currentShouldComplete = existingSubscription
+      ? webhookFinalizesCheckoutSession(
+          existingSubscription.status,
+          existingSubscription.currentPeriodEndsAt,
+          existingSubscription.nextBilledAt,
+          existingSubscription.requiresPriceMappingReview === true,
+          now,
+        )
+      : false;
+    await ctx.db.patch(checkoutSession._id, {
+      updatedAt: now,
+      paddleCustomerId:
+        existingSubscription?.paddleCustomerId ??
+        snapshot.customerId ??
+        checkoutSession.paddleCustomerId,
+      paddleSubscriptionId: snapshot.subscriptionId ?? checkoutSession.paddleSubscriptionId,
+      completedAt: currentShouldComplete ? now : checkoutSession.completedAt,
+    });
+    return;
+  }
   const existingAppPlan = await inferAppOwnedPlan(ctx.db, existingSubscription);
   const checkoutSessionPlan = isStoredBillingPlan(checkoutSession.plan)
     ? checkoutSession.plan

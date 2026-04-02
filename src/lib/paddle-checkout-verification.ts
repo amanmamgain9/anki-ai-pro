@@ -5,6 +5,10 @@ import { getPaddleClient } from "@/lib/paddle";
 
 const api = anyApi;
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getStringCustomDataValue(
   customData: Record<string, unknown> | null | undefined,
   key: string,
@@ -41,7 +45,8 @@ export async function verifyAndRecordCheckoutCompletion(
     throw new Error("Checkout session not found");
   }
 
-  const transaction = await getPaddleClient().transactions.get(transactionId);
+  const paddle = getPaddleClient();
+  const transaction = await paddle.transactions.get(transactionId);
   if (transaction.status !== "paid" && transaction.status !== "completed") {
     throw new Error("Transaction is not completed");
   }
@@ -73,9 +78,40 @@ export async function verifyAndRecordCheckoutCompletion(
     throw new Error("Transaction does not include a subscription");
   }
 
-  const subscription = await getPaddleClient().subscriptions.get(transaction.subscriptionId);
+  let subscription;
+  let lastSubscriptionError: unknown = null;
+  for (const delayMs of [0, 250, 750]) {
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
+    try {
+      subscription = await paddle.subscriptions.get(transaction.subscriptionId);
+      break;
+    } catch (error) {
+      lastSubscriptionError = error;
+    }
+  }
+  if (!subscription) {
+    throw lastSubscriptionError instanceof Error
+      ? lastSubscriptionError
+      : new Error("Could not load subscription after verified checkout");
+  }
   if (subscription.customerId !== transaction.customerId) {
     throw new Error("Subscription customer does not match transaction customer");
+  }
+  if (subscription.items.length === 0) {
+    throw new Error("Subscription does not include any items");
+  }
+  if (
+    (subscription.status === "active" ||
+      subscription.status === "trialing" ||
+      subscription.status === "past_due" ||
+      subscription.status === "paused" ||
+      subscription.status === "canceled") &&
+    !subscription.currentBillingPeriod &&
+    !subscription.nextBilledAt
+  ) {
+    throw new Error("Subscription billing period is not available yet");
   }
   const subscriptionPriceIds = Array.from(
     new Set(
