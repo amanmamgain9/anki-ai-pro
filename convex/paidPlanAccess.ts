@@ -10,7 +10,6 @@ import { resolveBillingAccess, type BillingAccessSource } from "./subscriptionAc
 
 type BillingReadDb = GenericDatabaseReader<DataModel>;
 type StoredBillingTier = "pro" | "pro_plus";
-const VERIFIED_CHECKOUT_ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type ResolvedPaidPlanAccess = {
   isActive: boolean;
@@ -75,6 +74,7 @@ async function resolveVerifiedCheckoutAccess(
   userId: DataModel["users"]["document"]["_id"] | undefined,
   now: number,
 ) {
+  void now;
   if (!userId) return null;
   const sessions = await db
     .query("paddleCheckoutSessions")
@@ -86,7 +86,6 @@ async function resolveVerifiedCheckoutAccess(
     if (
       typeof row.verifiedCompletedAt !== "number" ||
       !Number.isFinite(row.verifiedCompletedAt) ||
-      now - row.verifiedCompletedAt > VERIFIED_CHECKOUT_ACCESS_TTL_MS ||
       typeof row.completedAt === "number"
     ) {
       continue;

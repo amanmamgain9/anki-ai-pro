@@ -655,12 +655,16 @@ function splitPendingWebhookCheckoutSessions(
 ) {
   const pending = sessions.filter(
     (row) =>
-      typeof row.verifiedCompletedAt === "number" &&
+      typeof row.verifiedCompletedAt === "number" && !row.hasWebhookEvidence,
+  );
+  const webhookPending = sessions.filter(
+    (row) =>
+      row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) < CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const stale = sessions.filter(
     (row) =>
-      (typeof row.verifiedCompletedAt === "number" || row.hasWebhookEvidence) &&
+      row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const abandoned = sessions.filter(
@@ -669,7 +673,7 @@ function splitPendingWebhookCheckoutSessions(
       !row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
-  return { pending, stale, abandoned };
+  return { pending: [...pending, ...webhookPending], stale, abandoned };
 }
 
 function listRetryableIgnoredBillingIssueCodes(
@@ -1224,7 +1228,6 @@ export const getMyBilling = queryGeneric({
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
         paddleSubscriptionIds: [] as string[],
-        portalManagementAvailable: false,
         blockingSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
@@ -1339,10 +1342,6 @@ export const getMyBilling = queryGeneric({
           .map((row) => row.paddleSubscriptionId),
       ),
     );
-    const portalManagementAvailable = Boolean(
-      billingManagementCustomerId && paddleSubscriptionIds.length > 0,
-    );
-
     const status = subscription?.status ?? null;
     const paidAccess = await resolvePaidPlanAccess(
       ctx.db,
@@ -1421,7 +1420,6 @@ export const getMyBilling = queryGeneric({
       paddleCustomerId: billingManagementCustomerId,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddleSubscriptionIds,
-      portalManagementAvailable,
       blockingSubscriptionIds,
       paddlePriceId: subscription?.priceId ?? null,
       paddleTier: isStoredBillingTier(subscription?.tier) ? subscription.tier : null,

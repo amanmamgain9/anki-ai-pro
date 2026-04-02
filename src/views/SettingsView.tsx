@@ -231,7 +231,7 @@ export default function SettingsView() {
           <button
             type="button"
             onClick={() => {
-              if (primaryActionNeedsSupport) {
+              if (primaryActionNeedsSupport || billing?.isActive) {
                 window.location.href = "/contact";
                 return;
               }
@@ -243,10 +243,8 @@ export default function SettingsView() {
             {busyAction
               || checkoutPendingConfirmation
               ? t("app.settings.opening")
-              : primaryActionNeedsSupport
+              : primaryActionNeedsSupport || billing?.isActive
                   ? t("app.settings.contactSupport")
-                : billing?.isActive
-                  ? t("app.settings.changePlan")
                   : t("app.upgradeCta")}
           </button>
         </div>

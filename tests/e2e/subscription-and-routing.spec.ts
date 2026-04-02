@@ -252,7 +252,7 @@ test("checkout blocks creating a second subscription when one is already active"
   expect(checkout.status()).toBe(409);
   const payload = (await checkout.json()) as { error?: string; code?: string };
   expect(payload.code).toBe("active_subscription_exists");
-  expect(payload.error ?? "").toContain("Manage billing");
+  expect(payload.error ?? "").toContain("Active access already exists");
 });
 
 test("billing remains active when a newer inactive row exists for a different subscription", async ({
