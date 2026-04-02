@@ -2620,9 +2620,6 @@ async function applyPaddleWebhookEvent(
         ...(normalizedStatus === "trialing" && trialPriceMatched
           ? { startedWithTrial: true }
           : {}),
-        ...(normalizedStatus === "canceled" && trialPriceMatched
-          ? { canceledDuringTrial: true }
-          : {}),
         ...(resolvedTier
           ? {
               tier: resolvedTier,
