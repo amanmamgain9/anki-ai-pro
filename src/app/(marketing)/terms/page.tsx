@@ -7,8 +7,8 @@ import MarketingAuthActions from "@/components/MarketingAuthActions";
 import MarketingHeaderLinks from "@/components/MarketingHeaderLinks";
 import { interpolateMessage } from "@/i18n/format";
 import { getServerDictionary } from "@/i18n/server";
+import { getPublicProMonthlyTrialDays } from "@/lib/public-billing-offer";
 import { SUPPORT_EMAIL } from "@/lib/support";
-import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 export const metadata: Metadata = {
   title: "Terms of Service | Anki Cards",
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 
 export default async function TermsPage() {
   const { dict, locale } = await getServerDictionary();
-  const trialDays = resolveFreeProPlusTrialDays();
+  const trialDays = await getPublicProMonthlyTrialDays();
   const sections = dict.marketing.termsPage.sections;
   const billingSection = sections[2] as {
     title: string;

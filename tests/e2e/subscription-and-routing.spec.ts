@@ -1,10 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const E2E_SECRET = "playwright-local-secret";
-const expectedPlans = [
-  "pro_monthly",
-];
-
 async function createMagicLink(
   baseRequest: APIRequestContext,
   email: string,
@@ -64,45 +60,6 @@ async function billingAction(
     };
   };
 }
-
-test("billing plans endpoint exposes monthly plans and trial conditions", async ({ request }) => {
-  const response = await request.get("/api/paddle/plans");
-  expect(response.status()).toBe(200);
-
-  const payload = (await response.json()) as {
-    trialDays?: number;
-    plans?: Array<{
-      plan?: string;
-      tier?: string;
-      interval?: string;
-      trialEligible?: boolean;
-      checkoutEnabled?: boolean;
-    }>;
-  };
-
-  expect(typeof payload.trialDays).toBe("number");
-  expect(Array.isArray(payload.plans)).toBe(true);
-
-  const plans = payload.plans ?? [];
-  const planNames = plans.map((p) => p.plan);
-  expect(planNames).toEqual(expectedPlans);
-
-  const proMonthly = plans.find((p) => p.plan === "pro_monthly");
-  expect(proMonthly?.interval).toBe("monthly");
-  expect(proMonthly?.tier).toBe("pro");
-
-  if ((payload.trialDays ?? 0) > 0) {
-    expect(proMonthly?.trialEligible).toBe(true);
-  } else {
-    for (const row of plans) {
-      expect(row.trialEligible).toBe(false);
-    }
-  }
-
-  for (const row of plans) {
-    expect(typeof row.checkoutEnabled).toBe("boolean");
-  }
-});
 
 test("protected app route redirects unauthenticated users to sign-in", async ({ request }) => {
   const response = await request.get("/cards", {

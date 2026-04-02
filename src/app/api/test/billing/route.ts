@@ -195,12 +195,15 @@ export async function POST(request: Request) {
         ? occurredAt
         : offsetIso(parsed.subscriptionUpdatedAtOffsetDays);
     const checkoutSessionId = `pcs_test_${randomUUID()}`;
+    const shouldCreateCheckoutSession = parsed.eventType !== "subscription.created";
     if (!preState.billing?.paddleSubscriptionId) {
-      await convex.mutation(api.billing.createCheckoutSession, {
-        sessionId: checkoutSessionId,
-        plan: parsed.plan,
-        priceId,
-      });
+      if (shouldCreateCheckoutSession) {
+        await convex.mutation(api.billing.createCheckoutSession, {
+          sessionId: checkoutSessionId,
+          plan: parsed.plan,
+          priceId,
+        });
+      }
     }
 
     const webhookArgs = buildPaddleWebhookMutationArgs(
