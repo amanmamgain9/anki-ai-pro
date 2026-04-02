@@ -17,6 +17,7 @@ type BillingState = {
   subscriptionStatus?: string | null;
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
+  billingPortalAvailable?: boolean;
   blockingSubscriptionIds?: string[] | null;
   merchantReviewRequired?: boolean;
   merchantReviewCaseId?: string | null;
@@ -28,11 +29,15 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
       code:
         billing?.accessSource === "manual" || billing?.manualAccessTier
           ? "manual_access_active"
-          : "active_subscription_exists",
+          : billing?.billingPortalAvailable
+            ? "billing_portal_required"
+            : "active_subscription_exists",
       error:
         billing?.accessSource === "manual" || billing?.manualAccessTier
           ? "This account currently has complimentary access. Contact support if you need to change billing for it."
-          : "Active access already exists for this account.",
+          : billing?.billingPortalAvailable
+            ? "This account already has an active subscription. Open Manage billing to update payment details or cancel it."
+            : "Active access already exists for this account.",
     };
   }
 
@@ -46,9 +51,11 @@ function shouldBlockNewCheckout(billing: BillingState | null | undefined) {
 
   if (Array.isArray(billing?.blockingSubscriptionIds) && billing.blockingSubscriptionIds.length > 0) {
     return {
-      code: "subscription_requires_support",
+      code: billing?.billingPortalAvailable ? "billing_portal_required" : "subscription_requires_support",
       error:
-        "This account has multiple billing records that need manual review before checkout can continue. Open support from the app so we can reconnect the right subscription safely.",
+        billing?.billingPortalAvailable
+          ? "This account already has a subscription that needs billing changes. Open Manage billing before starting a new checkout."
+          : "This account has multiple billing records that need manual review before checkout can continue. Open support from the app so we can reconnect the right subscription safely.",
     };
   }
 

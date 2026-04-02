@@ -14,10 +14,12 @@ import {
   setActiveCheckoutSession,
 } from "@/lib/paddle-checkout-client";
 import { getPublicPaddleClientToken } from "@/lib/paddle-client";
+import { openBillingPortal } from "@/lib/paddle-portal-client";
 
 const api = anyApi;
 type CheckoutPlan =
   | "pro_monthly";
+type BusyAction = CheckoutPlan | "portal";
 type BillingState = {
   isActive?: boolean;
   checkoutPendingConfirmation?: boolean;
@@ -28,6 +30,8 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   paddleSubscriptionIds?: string[] | null;
+  billingPortalAvailable?: boolean;
+  billingPortalSubscriptionIds?: string[] | null;
   blockingSubscriptionIds?: string[] | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
@@ -71,7 +75,7 @@ export default function SettingsView() {
   const checkoutOffer = useQuery(api.billing.getMyCheckoutPlanConfig, {
     plan: "pro_monthly",
   }) as CheckoutPlanOffer | undefined;
-  const [busyAction, setBusyAction] = useState<CheckoutPlan | null>(null);
+  const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [paddleReady, setPaddleReady] = useState(false);
@@ -79,10 +83,16 @@ export default function SettingsView() {
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
+  const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
+  const requiresBillingPortal = Boolean(
+    !hasManualAccess &&
+      billingPortalAvailable &&
+      (billing?.isActive || merchantReviewRequired || hasBlockingSubscriptions),
+  );
   const primaryActionNeedsSupport = Boolean(
     hasManualAccess ||
-      merchantReviewRequired ||
-      (!billing?.isActive && hasBlockingSubscriptions),
+      (!requiresBillingPortal &&
+        (merchantReviewRequired || (!billing?.isActive && hasBlockingSubscriptions))),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -162,6 +172,26 @@ export default function SettingsView() {
     }
   }
 
+  async function handlePrimaryBillingAction() {
+    if (requiresBillingPortal) {
+      setBillingError(null);
+      setBusyAction("portal");
+      try {
+        await openBillingPortal();
+      } catch (error) {
+        setBillingError(error instanceof Error ? error.message : "Billing portal failed");
+      } finally {
+        setBusyAction(null);
+      }
+      return;
+    }
+    if (primaryActionNeedsSupport) {
+      window.location.href = "/contact";
+      return;
+    }
+    setShowUpgradeModal(true);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -218,6 +248,10 @@ export default function SettingsView() {
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.settings.manualAccessNote")}
           </p>
+        ) : requiresBillingPortal ? (
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            {t("app.billingStart.portalNote")}
+          </p>
         ) : merchantReviewRequired ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.billingStart.merchantReviewNote")}
@@ -230,20 +264,15 @@ export default function SettingsView() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => {
-              if (primaryActionNeedsSupport || billing?.isActive) {
-                window.location.href = "/contact";
-                return;
-              }
-              setShowUpgradeModal(true);
-            }}
+            onClick={handlePrimaryBillingAction}
             className="btn-primary"
             disabled={busyAction !== null || checkoutPendingConfirmation}
           >
-            {busyAction
-              || checkoutPendingConfirmation
+            {busyAction !== null || checkoutPendingConfirmation
               ? t("app.settings.opening")
-              : primaryActionNeedsSupport || billing?.isActive
+              : requiresBillingPortal
+                ? t("app.settings.manageBilling")
+                : primaryActionNeedsSupport
                   ? t("app.settings.contactSupport")
                   : t("app.upgradeCta")}
           </button>

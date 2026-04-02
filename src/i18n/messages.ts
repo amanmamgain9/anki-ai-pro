@@ -344,10 +344,10 @@ export const dictionaries = {
           {
             title: "3. Billing and Subscriptions",
             body: [
-              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer a monthly Pro plan. Pro checkout can start a {count}-day trial, collects payment details up front, and begins billing only if the trial is not canceled before it ends. Plans renew automatically until canceled. Billing changes and cancellations are currently handled through support.",
+              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer a monthly Pro plan. Pro checkout can start a {count}-day trial, collects payment details up front, and begins billing only if the trial is not canceled before it ends. Plans renew automatically until canceled. Billing changes and cancellations can be managed through Paddle-hosted billing pages linked from the app.",
             ],
             bodyNoTrial: [
-              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer a monthly Pro plan. Plans renew automatically until canceled. Billing changes and cancellations are currently handled through support.",
+              "Paid subscriptions are processed by Paddle. For purchases completed through Paddle, Paddle acts as Merchant of Record and handles checkout, payment processing, and applicable billing and refund handling. We currently offer a monthly Pro plan. Plans renew automatically until canceled. Billing changes and cancellations can be managed through Paddle-hosted billing pages linked from the app.",
             ],
           },
           {

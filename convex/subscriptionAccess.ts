@@ -146,8 +146,9 @@ export function subscriptionRequiresBillingManagement(
   return false;
 }
 
-// Support-managed billing: this helper only means we have enough linked billing
-// identifiers to recover the subscription safely in support flows.
+// This helper means we have enough linked billing identifiers to open the
+// Paddle billing portal or recover the subscription safely if portal access
+// is not available.
 export function subscriptionHasRecoverableBillingLinkage<
   T extends {
     status?: string | null;

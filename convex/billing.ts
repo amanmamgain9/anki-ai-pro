@@ -1332,6 +1332,8 @@ export const getMyBilling = queryGeneric({
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
         paddleSubscriptionIds: [] as string[],
+        billingPortalAvailable: false,
+        billingPortalSubscriptionIds: [] as string[],
         blockingSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
@@ -1363,6 +1365,8 @@ export const getMyBilling = queryGeneric({
         paddleCustomerId: null as string | null,
         paddleSubscriptionId: null as string | null,
         paddleSubscriptionIds: [] as string[],
+        billingPortalAvailable: false,
+        billingPortalSubscriptionIds: [] as string[],
         blockingSubscriptionIds: [] as string[],
         paddlePriceId: null as string | null,
       };
@@ -1436,6 +1440,22 @@ export const getMyBilling = queryGeneric({
           .map((row) => row.paddleSubscriptionId),
       ),
     );
+    const billingPortalSubscriptionIds = Array.from(
+      new Set(
+        subscriptions
+          .filter((row) => {
+            if (!row.paddleSubscriptionId) return false;
+            if (!billingManagementCustomerId) return false;
+            if (row.requiresPriceMappingReview === true) return false;
+            return !row.paddleCustomerId || row.paddleCustomerId === billingManagementCustomerId;
+          })
+          .map((row) => row.paddleSubscriptionId),
+      ),
+    );
+    const billingPortalAvailable =
+      typeof billingManagementCustomerId === "string" &&
+      billingManagementCustomerId.length > 0 &&
+      billingPortalSubscriptionIds.length > 0;
     const blockingSubscriptionIds = Array.from(
       new Set(
         [...recoverableSubscriptions, ...merchantReviewSubscriptions, ...pendingIgnoredEvents]
@@ -1524,6 +1544,8 @@ export const getMyBilling = queryGeneric({
       paddleCustomerId: billingManagementCustomerId,
       paddleSubscriptionId: subscription?.paddleSubscriptionId ?? null,
       paddleSubscriptionIds,
+      billingPortalAvailable,
+      billingPortalSubscriptionIds,
       blockingSubscriptionIds,
       paddlePriceId: subscription?.priceId ?? null,
       paddleTier: isStoredBillingTier(subscription?.tier) ? subscription.tier : null,

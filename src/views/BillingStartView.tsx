@@ -14,10 +14,12 @@ import {
   setActiveCheckoutSession,
 } from "@/lib/paddle-checkout-client";
 import { getPublicPaddleClientToken } from "@/lib/paddle-client";
+import { openBillingPortal } from "@/lib/paddle-portal-client";
 import { sanitizeInternalReturnPath } from "@/lib/return-path";
 
 const api = anyApi;
 type CheckoutPlan = "pro_monthly";
+type BusyAction = CheckoutPlan | "portal";
 type BillingState = {
   isActive?: boolean;
   trialActive?: boolean;
@@ -30,6 +32,8 @@ type BillingState = {
   paddleCustomerId?: string | null;
   paddleSubscriptionId?: string | null;
   paddleSubscriptionIds?: string[] | null;
+  billingPortalAvailable?: boolean;
+  billingPortalSubscriptionIds?: string[] | null;
   blockingSubscriptionIds?: string[] | null;
   trialEndsAt?: number | null;
   manualAccessTier?: string | null;
@@ -62,7 +66,7 @@ export default function BillingStartView() {
   const checkoutOffer = useQuery(api.billing.getMyCheckoutPlanConfig, {
     plan: "pro_monthly",
   }) as CheckoutPlanOffer | undefined;
-  const [busyAction, setBusyAction] = useState<CheckoutPlan | null>(null);
+  const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [paddleReady, setPaddleReady] = useState(false);
   const from = sanitizeInternalReturnPath(searchParams.get("from"));
@@ -71,10 +75,16 @@ export default function BillingStartView() {
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
+  const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
+  const requiresBillingPortal = Boolean(
+    !hasManualAccess &&
+      billingPortalAvailable &&
+      (billing?.isActive || merchantReviewRequired || hasBlockingSubscriptions),
+  );
   const requiresSupport =
     hasManualAccess ||
-    merchantReviewRequired ||
-    (!billing?.isActive && hasBlockingSubscriptions);
+    (!requiresBillingPortal &&
+      (merchantReviewRequired || (!billing?.isActive && hasBlockingSubscriptions)));
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
@@ -153,6 +163,26 @@ export default function BillingStartView() {
     }
   }
 
+  async function handlePrimaryBillingAction() {
+    if (requiresBillingPortal) {
+      setBillingError(null);
+      setBusyAction("portal");
+      try {
+        await openBillingPortal();
+      } catch (error) {
+        setBillingError(error instanceof Error ? error.message : "Billing portal failed");
+      } finally {
+        setBusyAction(null);
+      }
+      return;
+    }
+    if (requiresSupport || checkoutUnavailable) {
+      window.location.href = "/contact";
+      return;
+    }
+    await startCheckout("pro_monthly");
+  }
+
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-8rem)] max-w-3xl items-center justify-center px-4 py-8">
       <div className="card-surface w-full max-w-2xl p-6 sm:p-8">
@@ -160,15 +190,17 @@ export default function BillingStartView() {
           aiankipro
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight">
-          {requiresSupport
+          {requiresBillingPortal || requiresSupport
             ? t("app.billingStart.titleManage")
             : trialEligible
               ? t("app.billingStart.titleStart")
               : t("app.billingStart.titleStartNoTrial")}
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          {requiresSupport
-            ? t("app.billingStart.subtitleSupport")
+          {requiresBillingPortal
+            ? t("app.billingStart.subtitleManage")
+            : requiresSupport
+              ? t("app.billingStart.subtitleSupport")
             : trialEligible
               ? t("app.billingStart.subtitleStart", { count: trialDays })
               : t("app.billingStart.subtitleStartNoTrial")}
@@ -203,26 +235,24 @@ export default function BillingStartView() {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          {requiresSupport || checkoutUnavailable ? (
-            <Link href="/contact" className="btn-primary text-center">
-              {t("app.settings.contactSupport")}
-            </Link>
-          ) : (
-            <button
-              type="button"
-              onClick={() => startCheckout("pro_monthly")}
-              className="btn-primary"
-              disabled={
-                busyAction !== null ||
-                checkoutPendingConfirmation ||
-                !checkoutEnabled
-              }
-            >
-              {busyAction === "pro_monthly" || checkoutPendingConfirmation
-                ? t("app.settings.opening")
-                : startButtonLabel}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handlePrimaryBillingAction}
+            className="btn-primary"
+            disabled={
+              busyAction !== null ||
+              checkoutPendingConfirmation ||
+              (!requiresBillingPortal && !requiresSupport && !checkoutEnabled)
+            }
+          >
+            {busyAction !== null || checkoutPendingConfirmation
+              ? t("app.settings.opening")
+              : requiresBillingPortal
+                ? t("app.settings.manageBilling")
+                : requiresSupport || checkoutUnavailable
+                  ? t("app.settings.contactSupport")
+                  : startButtonLabel}
+          </button>
           <button
             type="button"
             onClick={() => signOut({ callbackUrl: "/" })}
@@ -236,6 +266,10 @@ export default function BillingStartView() {
         {checkoutPendingConfirmation ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
             {t("app.settings.checkoutSuccess")}
+          </p>
+        ) : requiresBillingPortal ? (
+          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {t("app.billingStart.portalNote")}
           </p>
         ) : checkoutUnavailable ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
