@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import AppPageClient from "@/components/AppPageClient";
 import { authOptions } from "@/lib/auth";
+import { verifyAndRecordCheckoutCompletion } from "@/lib/paddle-checkout-verification";
 import { sanitizeInternalReturnPath } from "@/lib/return-path";
 
 const api = anyApi;
@@ -70,10 +71,15 @@ export default async function AppCatchAllPage({
     typeof query.checkoutSessionId === "string" && query.checkoutSessionId.length > 0
       ? query.checkoutSessionId
       : null;
-  if (billingSuccess && checkoutCompletionSessionId) {
+  const checkoutCompletionTransactionId =
+    typeof query.transactionId === "string" && query.transactionId.length > 0
+      ? query.transactionId
+      : null;
+  if (billingSuccess && checkoutCompletionSessionId && checkoutCompletionTransactionId) {
     try {
-      await convex.mutation(api.billing.markCheckoutCompletedFromClient, {
+      await verifyAndRecordCheckoutCompletion(session, {
         sessionId: checkoutCompletionSessionId,
+        transactionId: checkoutCompletionTransactionId,
       });
     } catch {
       // Best effort. Webhook reconciliation may still complete the purchase.
@@ -102,7 +108,7 @@ export default async function AppCatchAllPage({
     typeof query.from === "string" ? query.from : null,
   );
 
-  if (checkoutCompletionSessionId) {
+  if (checkoutCompletionSessionId || checkoutCompletionTransactionId) {
     if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresBillingManagement && !requiresSupport) {
       redirect(returnPath);
     }

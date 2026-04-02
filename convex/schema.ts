@@ -117,6 +117,8 @@ export default defineSchema({
     paddleCustomerId: v.optional(v.string()),
     paddleSubscriptionId: v.optional(v.string()),
     clientCompletedAt: v.optional(v.number()),
+    verifiedCompletedAt: v.optional(v.number()),
+    verifiedTransactionId: v.optional(v.string()),
     completedAt: v.optional(v.number()),
   })
     .index("by_sessionId", ["sessionId"])

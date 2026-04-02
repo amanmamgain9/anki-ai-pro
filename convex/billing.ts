@@ -596,23 +596,32 @@ async function listRetryableIgnoredBillingEvents(
   return filtered.sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
 }
 
-async function hasCheckoutSessionWebhookEvidence(
+function getCheckoutSessionReviewAnchor(
+  row: Pick<Doc<"paddleCheckoutSessions">, "createdAt" | "verifiedCompletedAt">,
+) {
+  return typeof row.verifiedCompletedAt === "number" && !Number.isNaN(row.verifiedCompletedAt)
+    ? row.verifiedCompletedAt
+    : row.createdAt;
+}
+
+async function hasStrongCheckoutSessionWebhookEvidence(
   db: BillingReadDb,
   checkoutSessionId: string,
 ) {
-  const event = await db
+  const rows = await db
     .query("billingEvents")
     .withIndex("by_checkoutSessionId", (q) => q.eq("checkoutSessionId", checkoutSessionId))
-    .first();
-  return Boolean(event);
-}
-
-function getCheckoutSessionReviewAnchor(
-  row: Pick<Doc<"paddleCheckoutSessions">, "createdAt" | "clientCompletedAt">,
-) {
-  return typeof row.clientCompletedAt === "number" && !Number.isNaN(row.clientCompletedAt)
-    ? row.clientCompletedAt
-    : row.createdAt;
+    .collect();
+  return rows.some((row) =>
+    row.status === "processed" &&
+    webhookFinalizesCheckoutSession(
+      normalizeSubscriptionStatus(row.eventType, row.subscriptionStatus),
+      toMillis(row.currentPeriodEndsAt ?? undefined),
+      toMillis(row.nextBilledAt ?? undefined),
+      false,
+      Date.now(),
+    ),
+  );
 }
 
 async function listPendingWebhookCheckoutSessions(
@@ -627,7 +636,7 @@ async function listPendingWebhookCheckoutSessions(
   const rowsWithEvidence = await Promise.all(
     rows.map(async (row) => ({
       row,
-      hasWebhookEvidence: await hasCheckoutSessionWebhookEvidence(db, row.sessionId),
+      hasWebhookEvidence: await hasStrongCheckoutSessionWebhookEvidence(db, row.sessionId),
     })),
   );
   return rowsWithEvidence
@@ -635,7 +644,7 @@ async function listPendingWebhookCheckoutSessions(
       ({ row, hasWebhookEvidence }) =>
         typeof row.completedAt !== "number" &&
         !Number.isNaN(getCheckoutSessionReviewAnchor(row)) &&
-        (typeof row.clientCompletedAt === "number" || hasWebhookEvidence),
+        (typeof row.verifiedCompletedAt === "number" || hasWebhookEvidence),
     )
     .map(({ row, hasWebhookEvidence }) => ({ ...row, hasWebhookEvidence }));
 }
@@ -646,17 +655,17 @@ function splitPendingWebhookCheckoutSessions(
 ) {
   const pending = sessions.filter(
     (row) =>
-      typeof row.clientCompletedAt === "number" &&
+      typeof row.verifiedCompletedAt === "number" &&
       now - getCheckoutSessionReviewAnchor(row) < CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const stale = sessions.filter(
     (row) =>
-      (typeof row.clientCompletedAt === "number" || row.hasWebhookEvidence) &&
+      (typeof row.verifiedCompletedAt === "number" || row.hasWebhookEvidence) &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const abandoned = sessions.filter(
     (row) =>
-      typeof row.clientCompletedAt !== "number" &&
+      typeof row.verifiedCompletedAt !== "number" &&
       !row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
@@ -687,7 +696,7 @@ function listRetryableIgnoredBillingIssueCodes(
 }
 
 function listPendingCheckoutIssueCodes(
-  sessions: Array<Pick<Doc<"paddleCheckoutSessions">, "clientCompletedAt">>,
+  sessions: Array<Pick<Doc<"paddleCheckoutSessions">, "verifiedCompletedAt">>,
 ) {
   return sessions.length > 0 ? ["checkout_pending_webhook"] : [];
 }
@@ -1720,11 +1729,43 @@ export const createCheckoutSession = mutationGeneric({
   },
 });
 
-export const markCheckoutCompletedFromClient = mutationGeneric({
+export const getCheckoutSessionVerificationContext = queryGeneric({
   args: {
     sessionId: v.string(),
   },
   handler: async (ctx, { sessionId }) => {
+    const identity = await requireIdentity(ctx);
+    const user = await findUserForIdentity(ctx.db, identity);
+    if (!user) {
+      return null;
+    }
+
+    const checkoutSession = await ctx.db
+      .query("paddleCheckoutSessions")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .first();
+    if (!checkoutSession || checkoutSession.userId !== user._id) {
+      return null;
+    }
+
+    return {
+      sessionId: checkoutSession.sessionId,
+      plan: checkoutSession.plan,
+      priceId: checkoutSession.priceId,
+      externalId: checkoutSession.externalId,
+      paddleCustomerId: checkoutSession.paddleCustomerId ?? null,
+    };
+  },
+});
+
+export const markCheckoutCompletedFromVerification = mutationGeneric({
+  args: {
+    sessionId: v.string(),
+    transactionId: v.string(),
+    paddleCustomerId: v.optional(v.string()),
+    paddleSubscriptionId: v.optional(v.string()),
+  },
+  handler: async (ctx, { sessionId, transactionId, paddleCustomerId, paddleSubscriptionId }) => {
     const identity = await requireIdentity(ctx);
     const user = await findUserForIdentity(ctx.db, identity);
     if (!user) {
@@ -1742,7 +1783,11 @@ export const markCheckoutCompletedFromClient = mutationGeneric({
     const now = Date.now();
     await ctx.db.patch(checkoutSession._id, {
       clientCompletedAt: checkoutSession.clientCompletedAt ?? now,
-      paddleCustomerId: checkoutSession.paddleCustomerId ?? user.paddleCustomerId,
+      verifiedCompletedAt: checkoutSession.verifiedCompletedAt ?? now,
+      verifiedTransactionId: checkoutSession.verifiedTransactionId ?? transactionId,
+      paddleCustomerId:
+        checkoutSession.paddleCustomerId ?? paddleCustomerId ?? user.paddleCustomerId,
+      paddleSubscriptionId: checkoutSession.paddleSubscriptionId ?? paddleSubscriptionId,
       updatedAt: now,
     });
 
@@ -1773,7 +1818,11 @@ export const markCheckoutCompletedFromClient = mutationGeneric({
       now,
     );
 
-    return { sessionId, clientCompletedAt: checkoutSession.clientCompletedAt ?? now };
+    return {
+      sessionId,
+      verifiedCompletedAt: checkoutSession.verifiedCompletedAt ?? now,
+      verifiedTransactionId: checkoutSession.verifiedTransactionId ?? transactionId,
+    };
   },
 });
 
@@ -1798,10 +1847,10 @@ export const abandonCheckoutSession = mutationGeneric({
     if (typeof checkoutSession.completedAt === "number") {
       return { removed: false, reason: "completed" as const };
     }
-    if (typeof checkoutSession.clientCompletedAt === "number") {
-      return { removed: false, reason: "client_completed" as const };
+    if (typeof checkoutSession.verifiedCompletedAt === "number") {
+      return { removed: false, reason: "verified_completed" as const };
     }
-    if (await hasCheckoutSessionWebhookEvidence(ctx.db, checkoutSession.sessionId)) {
+    if (await hasStrongCheckoutSessionWebhookEvidence(ctx.db, checkoutSession.sessionId)) {
       return { removed: false, reason: "webhook_evidence" as const };
     }
 
@@ -1975,6 +2024,9 @@ async function applyPaddleWebhookEvent(
   const explicitUnknownManagedPrice = Boolean(
     hasExplicitWebhookPrice && resolvedAppPlan && !resolvedPriceId,
   );
+  // Policy: if Paddle sends a new/unmapped price for a subscription we can still
+  // prove belongs to one of our app plans, preserve the last known app tier and
+  // mark mapping review instead of failing closed and cutting off paid access.
   const resolvedTier =
     resolvedPriceId && processingStatus === "processed"
       ? await resolveBillingTierByPriceId(ctx.db, resolvedPriceId)

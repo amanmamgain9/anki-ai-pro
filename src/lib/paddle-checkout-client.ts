@@ -42,12 +42,18 @@ export function initializePaddleForBilling(successUrl: string) {
     eventCallback(event) {
       if (event?.name === "checkout.completed") {
         const sessionId = window.__aiankiPaddleCheckoutSessionId;
+        const transactionId = event.data?.transaction_id;
         const target = (() => {
           const base = window.__aiankiPaddleCheckoutSuccessUrl ?? successUrl;
-          if (!sessionId) return base;
+          if (!sessionId && !transactionId) return base;
           try {
             const url = new URL(base, window.location.origin);
-            url.searchParams.set("checkoutSessionId", sessionId);
+            if (sessionId) {
+              url.searchParams.set("checkoutSessionId", sessionId);
+            }
+            if (transactionId) {
+              url.searchParams.set("transactionId", transactionId);
+            }
             return url.toString();
           } catch {
             return base;
@@ -55,9 +61,9 @@ export function initializePaddleForBilling(successUrl: string) {
         })();
         clearActiveCheckoutSession();
         void (async () => {
-          if (sessionId) {
+          if (sessionId && transactionId) {
             try {
-              await postJson("/api/paddle/checkout/complete", { sessionId });
+              await postJson("/api/paddle/checkout/complete", { sessionId, transactionId });
             } catch {
               // Best effort: server-side reconciliation still relies on webhook or support.
             }

@@ -11,6 +11,9 @@ export type BillingTier = "pro" | "pro_plus";
 type BillingInterval = "monthly";
 // Price IDs that have ever been sold should remain mapped in app config/DB.
 // They may be deactivated for new checkout, but old sold prices should not be removed.
+// Billing policy: for app-owned subscriptions, unknown Paddle prices fail safe.
+// If checkout/app-plan evidence proves the subscription is ours, we preserve access
+// and flag mapping review instead of cutting off a paid user during price rotation.
 
 type AuthCtx = {
   auth: {

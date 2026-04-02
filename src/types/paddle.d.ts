@@ -8,7 +8,12 @@ declare global {
     Paddle?: {
       Initialize?: (options: {
         token: string;
-        eventCallback?: (event: { name?: string }) => void;
+        eventCallback?: (event: {
+          name?: string;
+          data?: {
+            transaction_id?: string;
+          };
+        }) => void;
         checkout?: {
           settings?: {
             displayMode?: "overlay" | "inline";

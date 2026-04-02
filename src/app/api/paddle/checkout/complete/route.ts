@@ -1,10 +1,7 @@
-import { ConvexHttpClient } from "convex/browser";
-import { anyApi } from "convex/server";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
-
-const api = anyApi;
+import { verifyAndRecordCheckoutCompletion } from "@/lib/paddle-checkout-verification";
 
 export const runtime = "nodejs";
 
@@ -21,25 +18,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as { sessionId?: unknown };
+    const body = (await request.json()) as { sessionId?: unknown; transactionId?: unknown };
     const sessionId =
       typeof body.sessionId === "string" && body.sessionId.length > 0 ? body.sessionId : null;
+    const transactionId =
+      typeof body.transactionId === "string" && body.transactionId.length > 0
+        ? body.transactionId
+        : null;
     if (!sessionId) {
       return NextResponse.json({ error: "Missing checkout session id" }, { status: 400 });
     }
-
-    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-    if (!convexUrl) {
-      return NextResponse.json(
-        { error: "Missing NEXT_PUBLIC_CONVEX_URL" },
-        { status: 500 },
-      );
+    if (!transactionId) {
+      return NextResponse.json({ error: "Missing transaction id" }, { status: 400 });
     }
 
-    const convex = new ConvexHttpClient(convexUrl);
-    convex.setAuth(session.convexToken);
-    await convex.mutation(api.billing.markCheckoutCompletedFromClient, {
+    await verifyAndRecordCheckoutCompletion(session, {
       sessionId,
+      transactionId,
     });
 
     return NextResponse.json({ ok: true });

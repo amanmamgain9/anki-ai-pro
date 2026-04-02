@@ -1,10 +1,16 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
-import { resolveBillingTierByPlan, resolveBillingTierByPriceId } from "./billingPlans";
+import {
+  type BillingPlan,
+  isTrialEligibleBillingPriceId,
+  resolveBillingTierByPlan,
+  resolveBillingTierByPriceId,
+} from "./billingPlans";
 import { resolveBillingAccess, type BillingAccessSource } from "./subscriptionAccess";
 
 type BillingReadDb = GenericDatabaseReader<DataModel>;
 type StoredBillingTier = "pro" | "pro_plus";
+const VERIFIED_CHECKOUT_ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type ResolvedPaidPlanAccess = {
   isActive: boolean;
@@ -25,6 +31,7 @@ function isStoredBillingTier(value: string | undefined): value is StoredBillingT
 function resolveManualAccessTier(
   user:
     | {
+        _id?: DataModel["users"]["document"]["_id"];
         manualAccessTier?: string;
         manualAccessEndsAt?: number | null;
       }
@@ -54,6 +61,62 @@ function getTierRank(tier: StoredBillingTier | "inactive") {
     default:
       return 0;
   }
+}
+
+function resolveFreeProPlusTrialDays() {
+  const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.max(0, Math.floor(parsed));
+}
+
+async function resolveVerifiedCheckoutAccess(
+  db: BillingReadDb,
+  userId: DataModel["users"]["document"]["_id"] | undefined,
+  now: number,
+) {
+  if (!userId) return null;
+  const sessions = await db
+    .query("paddleCheckoutSessions")
+    .withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+    .order("desc")
+    .collect();
+
+  for (const row of sessions) {
+    if (
+      typeof row.verifiedCompletedAt !== "number" ||
+      !Number.isFinite(row.verifiedCompletedAt) ||
+      now - row.verifiedCompletedAt > VERIFIED_CHECKOUT_ACCESS_TTL_MS ||
+      typeof row.completedAt === "number"
+    ) {
+      continue;
+    }
+    const plan = row.plan as BillingPlan;
+    const tier = resolveBillingTierByPlan(plan);
+    if (!tier) continue;
+    const trialActive =
+      resolveFreeProPlusTrialDays() > 0 &&
+      (await isTrialEligibleBillingPriceId(db, plan, row.priceId));
+    return {
+      isActive: true,
+      trialActive,
+      trialEndsAt: trialActive
+        ? row.verifiedCompletedAt + resolveFreeProPlusTrialDays() * 86_400_000
+        : null,
+      accessSource: trialActive
+        ? ("subscription_trial" as const)
+        : ("subscription" as const),
+      subscriptionEntitled: true,
+      tier,
+      hasPremiumVoice: trialActive || tier === "pro_plus",
+      premiumVoiceSource: trialActive
+        ? ("trial" as const)
+        : tier === "pro_plus"
+          ? ("pro_plus" as const)
+          : ("pro_preview" as const),
+    };
+  }
+  return null;
 }
 
 export async function resolveRecognizedSubscriptionTier(
@@ -124,6 +187,7 @@ export async function resolvePaidPlanAccess(
     | undefined,
   user:
     | {
+        _id?: DataModel["users"]["document"]["_id"];
         manualAccessTier?: string;
         manualAccessEndsAt?: number | null;
       }
@@ -160,6 +224,28 @@ export async function resolvePaidPlanAccess(
   }
 
   if (manualAccessTier) {
+    const verifiedCheckoutAccess = await resolveVerifiedCheckoutAccess(
+      db,
+      user?._id,
+      now,
+    );
+    if (verifiedCheckoutAccess) {
+      const effectiveTier =
+        getTierRank(manualAccessTier) > getTierRank(verifiedCheckoutAccess.tier)
+          ? manualAccessTier
+          : verifiedCheckoutAccess.tier;
+      return {
+        ...verifiedCheckoutAccess,
+        tier: effectiveTier,
+        hasPremiumVoice:
+          verifiedCheckoutAccess.trialActive || effectiveTier === "pro_plus",
+        premiumVoiceSource: verifiedCheckoutAccess.trialActive
+          ? "trial"
+          : effectiveTier === "pro_plus"
+            ? "pro_plus"
+            : "pro_preview",
+      };
+    }
     return {
       isActive: true,
       trialActive: false,
@@ -170,6 +256,11 @@ export async function resolvePaidPlanAccess(
       hasPremiumVoice: manualAccessTier === "pro_plus",
       premiumVoiceSource: manualAccessTier === "pro_plus" ? "pro_plus" : "pro_preview",
     };
+  }
+
+  const verifiedCheckoutAccess = await resolveVerifiedCheckoutAccess(db, user?._id, now);
+  if (verifiedCheckoutAccess) {
+    return verifiedCheckoutAccess;
   }
 
   return {
