@@ -578,7 +578,7 @@ function StudyPage({
     applyRating,
     sendTutorMessage,
     ratingLabelByQuality,
-    usePremiumTts: Boolean(billing?.hasPremiumVoice || billing?.isActive),
+    usePremiumTts: Boolean(billing?.hasPremiumVoice),
   });
 
   const setMode = useCallback(

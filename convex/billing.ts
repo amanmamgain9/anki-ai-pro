@@ -2605,20 +2605,22 @@ async function applyPaddleWebhookEvent(
         toMillis(args.currentPeriodEndsAt),
         toMillis(args.nextBilledAt),
       );
-    patch.startedWithTrial =
-      normalizedStatus === "trialing"
-        ? trialPriceMatched || existingSubscription?.startedWithTrial === true
-        : normalizedStatus === "canceled"
-          ? canceledTrialInferredFromCurrentWindow ||
-            existingSubscription?.startedWithTrial === true
-        : false;
-    patch.canceledDuringTrial =
-      normalizedStatus === "canceled"
-        ? canceledTrialInferredFromCurrentWindow ||
+    if (
+      existingSubscription?.startedWithTrial === true ||
+      (normalizedStatus === "trialing" && trialPriceMatched) ||
+      (normalizedStatus === "canceled" && canceledTrialInferredFromCurrentWindow)
+    ) {
+      patch.startedWithTrial = true;
+    }
+    if (
+      existingSubscription?.canceledDuringTrial === true ||
+      (normalizedStatus === "canceled" &&
+        (canceledTrialInferredFromCurrentWindow ||
           existingSubscriptionWasTrialing ||
-          (existingSubscription?.canceledDuringTrial === true &&
-            existingSubscription?.startedWithTrial === true)
-        : false;
+          existingSubscription?.startedWithTrial === true))
+    ) {
+      patch.canceledDuringTrial = true;
+    }
     if (resolvedTier) {
       patch.tier = resolvedTier;
       patch.tierSourcePriceId = resolvedPriceId ?? (checkoutSessionPriceMatched ? checkoutSession?.priceId : undefined);
