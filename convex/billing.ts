@@ -256,6 +256,25 @@ function subscriptionConsumesTrialEligibility(
   );
 }
 
+function isShortTrialWindow(
+  currentPeriodStartsAt: number | null | undefined,
+  currentPeriodEndsAt: number | null | undefined,
+  nextBilledAt: number | null | undefined,
+) {
+  const trialDays = resolveFreeProPlusTrialDays();
+  if (trialDays <= 0) return false;
+  const startsAt =
+    typeof currentPeriodStartsAt === "number" ? currentPeriodStartsAt : null;
+  const endsAt =
+    typeof currentPeriodEndsAt === "number"
+      ? currentPeriodEndsAt
+      : typeof nextBilledAt === "number"
+        ? nextBilledAt
+        : null;
+  if (startsAt === null || endsAt === null || endsAt <= startsAt) return false;
+  return endsAt - startsAt <= trialDays * 86_400_000;
+}
+
 function webhookFinalizesCheckoutSession(
   status: string | null | undefined,
   currentPeriodEndsAt: number | null | undefined,
@@ -721,6 +740,31 @@ function listPendingCheckoutIssueCodes(
   return sessions.length > 0 ? ["checkout_pending_webhook"] : [];
 }
 
+function listRecoverableSubscriptionIssueCodes(
+  subscriptions: Array<
+    Pick<Doc<"subscriptions">, "status" | "requiresPriceMappingReview">
+  >,
+) {
+  const issueCodes = new Set<string>();
+  for (const row of subscriptions) {
+    const normalizedStatus = row.status?.trim().toLowerCase() ?? null;
+    if (row.requiresPriceMappingReview) {
+      issueCodes.add("price_mapping_review");
+      continue;
+    }
+    if (normalizedStatus === "past_due") {
+      issueCodes.add("subscription_past_due");
+      continue;
+    }
+    if (normalizedStatus === "paused") {
+      issueCodes.add("subscription_paused");
+      continue;
+    }
+    issueCodes.add("recoverable_subscription");
+  }
+  return [...issueCodes];
+}
+
 function listMerchantReviewIssueCodes(
   subscriptions: Array<
     Pick<
@@ -803,10 +847,18 @@ function buildMerchantReviewContext(
           ]),
         ).values(),
       )
-    : merchantReviewSubscriptions;
+    : Array.from(
+        new Map(
+          [...merchantReviewSubscriptions, ...recoverableSubscriptions].map((row) => [
+            row._id,
+            row,
+          ]),
+        ).values(),
+      );
   const issueCodes = Array.from(
     new Set([
       ...listMerchantReviewIssueCodes(merchantReviewSubscriptions, now),
+      ...listRecoverableSubscriptionIssueCodes(recoverableSubscriptions),
       ...listRetryableIgnoredBillingIssueCodes(pendingIgnoredEvents),
       ...listPendingCheckoutIssueCodes(pendingCheckoutSessions),
       ...(hasRecoverableCustomerConflict ? ["multiple_recoverable_customer_ids"] : []),
@@ -912,6 +964,23 @@ async function reconcileBillingRecoveryCases(
     createdAt: now,
     updatedAt: now,
     lastDetectedAt: now,
+  });
+}
+
+function listUnresolvedCreatedSubscriptions(
+  subscriptions: Doc<"subscriptions">[],
+  now: number,
+) {
+  const createdCutoff = now - CHECKOUT_WEBHOOK_GRACE_MS;
+  return subscriptions.filter((row) => {
+    const normalizedStatus = row.status?.trim().toLowerCase() ?? null;
+    if (normalizedStatus !== "created") return false;
+    const versionTime =
+      row.lastSubscriptionUpdatedAt ??
+      row.lastEventOccurredAt ??
+      row.updatedAt ??
+      row.createdAt;
+    return versionTime >= createdCutoff;
   });
 }
 
@@ -1641,6 +1710,10 @@ export const createCheckoutSession = mutationGeneric({
       }
       throw new ConvexError("Active access already exists");
     }
+    const unresolvedCreatedSubscriptions = listUnresolvedCreatedSubscriptions(
+      subscriptions,
+      now,
+    );
     const recoverableSubscriptions = subscriptions.filter((row) =>
       subscriptionHasRecoverableBillingLinkage(row, now),
     );
@@ -1661,6 +1734,9 @@ export const createCheckoutSession = mutationGeneric({
       now,
     );
     if (checkoutPendingConfirmationSessions.length > 0) {
+      throw new ConvexError("Checkout confirmation pending");
+    }
+    if (unresolvedCreatedSubscriptions.length > 0) {
       throw new ConvexError("Checkout confirmation pending");
     }
     if (recoverableSubscriptions.length > 0) {
@@ -2502,13 +2578,25 @@ async function applyPaddleWebhookEvent(
       existingSubscription?.status,
       "trialing",
     );
+    const canceledTrialInferredFromCurrentWindow =
+      normalizedStatus === "canceled" &&
+      trialPriceMatched &&
+      isShortTrialWindow(
+        toMillis(args.currentPeriodStartsAt),
+        toMillis(args.currentPeriodEndsAt),
+        toMillis(args.nextBilledAt),
+      );
     patch.startedWithTrial =
       normalizedStatus === "trialing"
         ? trialPriceMatched || existingSubscription?.startedWithTrial === true
+        : normalizedStatus === "canceled"
+          ? canceledTrialInferredFromCurrentWindow ||
+            existingSubscription?.startedWithTrial === true
         : false;
     patch.canceledDuringTrial =
       normalizedStatus === "canceled"
-        ? existingSubscriptionWasTrialing ||
+        ? canceledTrialInferredFromCurrentWindow ||
+          existingSubscriptionWasTrialing ||
           (existingSubscription?.canceledDuringTrial === true &&
             existingSubscription?.startedWithTrial === true)
         : false;
@@ -2619,6 +2707,9 @@ async function applyPaddleWebhookEvent(
         ...(resolvedAppPlan ? { appPlan: resolvedAppPlan } : {}),
         ...(normalizedStatus === "trialing" && trialPriceMatched
           ? { startedWithTrial: true }
+          : {}),
+        ...(normalizedStatus === "canceled" && canceledTrialInferredFromCurrentWindow
+          ? { startedWithTrial: true, canceledDuringTrial: true }
           : {}),
         ...(resolvedTier
           ? {
