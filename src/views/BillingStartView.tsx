@@ -81,6 +81,7 @@ export default function BillingStartView() {
   const trialDays = Math.max(0, Math.floor(checkoutOffer?.trialDays ?? 0));
   const trialEligible = Boolean(checkoutOffer?.trialEligible) && trialDays > 0;
   const checkoutEnabled = checkoutOffer?.checkoutEnabled ?? true;
+  const checkoutUnavailable = !requiresSupport && !checkoutEnabled;
   const startButtonLabel =
     trialEligible ? t("app.settings.startPro") : t("app.settings.startProNoTrial");
   const billingNote =
@@ -202,7 +203,7 @@ export default function BillingStartView() {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          {requiresSupport ? (
+          {requiresSupport || checkoutUnavailable ? (
             <Link href="/contact" className="btn-primary text-center">
               {t("app.settings.contactSupport")}
             </Link>
@@ -235,6 +236,10 @@ export default function BillingStartView() {
         {checkoutPendingConfirmation ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
             {t("app.settings.checkoutSuccess")}
+          </p>
+        ) : checkoutUnavailable ? (
+          <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">
+            {t("app.settings.checkoutUnavailable")}. {t("app.billingStart.supportNote")}
           </p>
         ) : merchantReviewRequired ? (
           <p className="mt-4 text-xs leading-5 text-[var(--color-text-secondary)]">

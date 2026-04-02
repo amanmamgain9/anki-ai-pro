@@ -17,6 +17,18 @@ function getStringCustomDataValue(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function subscriptionVerificationCanFinalizeCheckout(status: string | null | undefined) {
+  const normalized = typeof status === "string" ? status.trim().toLowerCase() : null;
+  if (!normalized) return false;
+  return (
+    normalized === "active" ||
+    normalized === "trialing" ||
+    normalized === "canceled" ||
+    normalized === "past_due" ||
+    normalized === "paused"
+  );
+}
+
 export async function verifyAndRecordCheckoutCompletion(
   session: Session,
   {
@@ -80,7 +92,7 @@ export async function verifyAndRecordCheckoutCompletion(
 
   let subscription;
   let lastSubscriptionError: unknown = null;
-  for (const delayMs of [0, 250, 750]) {
+  for (const delayMs of [0, 500, 1500, 3000]) {
     if (delayMs > 0) {
       await sleep(delayMs);
     }
@@ -112,6 +124,9 @@ export async function verifyAndRecordCheckoutCompletion(
     !subscription.nextBilledAt
   ) {
     throw new Error("Subscription billing period is not available yet");
+  }
+  if (!subscriptionVerificationCanFinalizeCheckout(subscription.status)) {
+    throw new Error("Subscription confirmation is still pending");
   }
   const subscriptionPriceIds = Array.from(
     new Set(

@@ -688,9 +688,11 @@ function splitPendingWebhookCheckoutSessions(
   sessions: Array<Doc<"paddleCheckoutSessions"> & { hasWebhookEvidence: boolean }>,
   now: number,
 ) {
-  const pending = sessions.filter(
+  const verifiedPending = sessions.filter(
     (row) =>
-      typeof row.verifiedCompletedAt === "number" && !row.hasWebhookEvidence,
+      typeof row.verifiedCompletedAt === "number" &&
+      !row.hasWebhookEvidence &&
+      now - getCheckoutSessionReviewAnchor(row) < CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const webhookPending = sessions.filter(
     (row) =>
@@ -699,8 +701,8 @@ function splitPendingWebhookCheckoutSessions(
   );
   const stale = sessions.filter(
     (row) =>
-      row.hasWebhookEvidence &&
-      now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
+      now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS &&
+      (row.hasWebhookEvidence || typeof row.verifiedCompletedAt === "number"),
   );
   const abandoned = sessions.filter(
     (row) =>
@@ -708,7 +710,7 @@ function splitPendingWebhookCheckoutSessions(
       !row.hasWebhookEvidence &&
       now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS,
   );
-  return { pending: [...pending, ...webhookPending], stale, abandoned };
+  return { pending: [...verifiedPending, ...webhookPending], stale, abandoned };
 }
 
 function listRetryableIgnoredBillingIssueCodes(
