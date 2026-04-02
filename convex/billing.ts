@@ -171,6 +171,7 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
 
 const PREMIUM_TTS_PREVIEW_FEATURE = "premium_tts";
 const CHECKOUT_WEBHOOK_GRACE_MS = 2 * 60_000;
+const VERIFIED_CHECKOUT_WEBHOOK_GRACE_MS = 15 * 60_000;
 const SUPPORT_OPERATOR_EMAILS = new Set([
   "amanmamgain9@gmail.com",
   "support@example.com",
@@ -692,7 +693,7 @@ function splitPendingWebhookCheckoutSessions(
     (row) =>
       typeof row.verifiedCompletedAt === "number" &&
       !row.hasWebhookEvidence &&
-      now - getCheckoutSessionReviewAnchor(row) < CHECKOUT_WEBHOOK_GRACE_MS,
+      now - getCheckoutSessionReviewAnchor(row) < VERIFIED_CHECKOUT_WEBHOOK_GRACE_MS,
   );
   const webhookPending = sessions.filter(
     (row) =>
@@ -701,8 +702,11 @@ function splitPendingWebhookCheckoutSessions(
   );
   const stale = sessions.filter(
     (row) =>
-      now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS &&
-      (row.hasWebhookEvidence || typeof row.verifiedCompletedAt === "number"),
+      (row.hasWebhookEvidence &&
+        now - getCheckoutSessionReviewAnchor(row) >= CHECKOUT_WEBHOOK_GRACE_MS) ||
+      (typeof row.verifiedCompletedAt === "number" &&
+        !row.hasWebhookEvidence &&
+        now - getCheckoutSessionReviewAnchor(row) >= VERIFIED_CHECKOUT_WEBHOOK_GRACE_MS),
   );
   const abandoned = sessions.filter(
     (row) =>
@@ -744,14 +748,27 @@ function listPendingCheckoutIssueCodes(
 
 function listRecoverableSubscriptionIssueCodes(
   subscriptions: Array<
-    Pick<Doc<"subscriptions">, "status" | "requiresPriceMappingReview">
+    Pick<
+      Doc<"subscriptions">,
+      "status" | "requiresPriceMappingReview" | "currentPeriodEndsAt" | "nextBilledAt"
+    >
   >,
 ) {
   const issueCodes = new Set<string>();
   for (const row of subscriptions) {
     const normalizedStatus = row.status?.trim().toLowerCase() ?? null;
+    const storedPeriodEndsAt = row.currentPeriodEndsAt ?? row.nextBilledAt ?? null;
     if (row.requiresPriceMappingReview) {
       issueCodes.add("price_mapping_review");
+      continue;
+    }
+    if (
+      (normalizedStatus === "active" ||
+        normalizedStatus === "trialing" ||
+        normalizedStatus === "canceled") &&
+      typeof storedPeriodEndsAt !== "number"
+    ) {
+      issueCodes.add("missing_period_dates");
       continue;
     }
     if (normalizedStatus === "past_due") {

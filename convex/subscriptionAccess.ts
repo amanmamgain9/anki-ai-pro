@@ -17,6 +17,22 @@ function getStoredPeriodEndsAt(
   return currentPeriodEndsAt ?? nextBilledAt ?? null;
 }
 
+function hasMissingStoredPeriodDates(
+  status: string | null | undefined,
+  currentPeriodEndsAt: number | null | undefined,
+  nextBilledAt: number | null | undefined,
+) {
+  const normalized = normalizeStatus(status);
+  if (
+    normalized !== "active" &&
+    normalized !== "trialing" &&
+    normalized !== "canceled"
+  ) {
+    return false;
+  }
+  return typeof getStoredPeriodEndsAt(currentPeriodEndsAt, nextBilledAt) !== "number";
+}
+
 function resolveFreeProPlusTrialDays() {
   const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
   const parsed = Number(raw);
@@ -108,13 +124,14 @@ export function subscriptionRequiresBillingManagement(
   requiresPriceMappingReview = false,
   _now = Date.now(),
 ) {
-  void currentPeriodEndsAt;
-  void nextBilledAt;
   void _now;
   if (requiresPriceMappingReview) return true;
   const normalized = normalizeStatus(status);
   if (!normalized) return false;
   if (normalized === "expired") return false;
+  if (hasMissingStoredPeriodDates(status, currentPeriodEndsAt, nextBilledAt)) {
+    return true;
+  }
   if (
     normalized === "active" ||
     normalized === "trialing" ||
