@@ -129,7 +129,9 @@ export function subscriptionRequiresBillingManagement(
   return false;
 }
 
-export function subscriptionCanSelfServeManage<
+// Support-managed billing: this helper only means we have enough linked billing
+// identifiers to recover the subscription safely in support flows.
+export function subscriptionHasRecoverableBillingLinkage<
   T extends {
     status?: string | null;
     currentPeriodEndsAt?: number | null;
@@ -183,7 +185,7 @@ export function subscriptionNeedsMerchantReview<
       row.nextBilledAt,
       row.requiresPriceMappingReview === true,
       now,
-    ) && !subscriptionCanSelfServeManage(row, now)
+    ) && !subscriptionHasRecoverableBillingLinkage(row, now)
   );
 }
 

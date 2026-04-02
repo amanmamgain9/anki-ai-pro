@@ -29,7 +29,7 @@ import { isRecognizedSubscription, resolvePaidPlanAccess } from "./paidPlanAcces
 import {
   pickEffectiveSubscription,
   isSubscriptionEntitled,
-  subscriptionCanSelfServeManage,
+  subscriptionHasRecoverableBillingLinkage,
   subscriptionNeedsMerchantReview,
   subscriptionRequiresBillingManagement,
 } from "./subscriptionAccess";
@@ -773,7 +773,7 @@ function listRecoverableCustomerIds(
   return Array.from(
     new Set(
       subscriptions
-        .filter((row) => subscriptionCanSelfServeManage(row, now))
+        .filter((row) => subscriptionHasRecoverableBillingLinkage(row, now))
         .map((row) => row.paddleCustomerId)
         .filter((value): value is string => typeof value === "string" && value.length > 0),
     ),
@@ -786,8 +786,8 @@ function buildMerchantReviewContext(
   pendingCheckoutSessions: Doc<"paddleCheckoutSessions">[],
   now: number,
 ) {
-  const portalManageableSubscriptions = subscriptions.filter((row) =>
-    subscriptionCanSelfServeManage(row, now),
+  const recoverableSubscriptions = subscriptions.filter((row) =>
+    subscriptionHasRecoverableBillingLinkage(row, now),
   );
   const merchantReviewSubscriptions = subscriptions.filter((row) =>
     subscriptionNeedsMerchantReview(row, now),
@@ -797,7 +797,7 @@ function buildMerchantReviewContext(
   const reviewSubscriptions = hasRecoverableCustomerConflict
     ? Array.from(
         new Map(
-          [...merchantReviewSubscriptions, ...portalManageableSubscriptions].map((row) => [
+          [...merchantReviewSubscriptions, ...recoverableSubscriptions].map((row) => [
             row._id,
             row,
           ]),
@@ -814,7 +814,7 @@ function buildMerchantReviewContext(
   );
 
   return {
-    portalManageableSubscriptions,
+    recoverableSubscriptions,
     merchantReviewSubscriptions,
     recoverableCustomerIds,
     hasRecoverableCustomerConflict,
@@ -1314,7 +1314,7 @@ export const getMyBilling = queryGeneric({
       pendingCheckoutSessions,
       now,
     );
-    const portalManageableSubscriptions = merchantReview.portalManageableSubscriptions;
+    const recoverableSubscriptions = merchantReview.recoverableSubscriptions;
     const merchantReviewSubscriptions = merchantReview.merchantReviewSubscriptions;
     const merchantReviewRequired = merchantReview.merchantReviewRequired;
     const openRecoveryCase = merchantReviewRequired
@@ -1327,7 +1327,7 @@ export const getMyBilling = queryGeneric({
       : null;
     const recoverableCustomerIds = merchantReview.recoverableCustomerIds;
     const billingManagementCustomerId =
-      portalManageableSubscriptions.length === 0
+      recoverableSubscriptions.length === 0
         ? effectivePaddleCustomerId
         : recoverableCustomerIds.length === 1
           ? recoverableCustomerIds[0]
@@ -1341,7 +1341,7 @@ export const getMyBilling = queryGeneric({
             if (!row.paddleSubscriptionId) return false;
             if (!billingManagementCustomerId) return false;
             return (
-              subscriptionCanSelfServeManage(row, now) &&
+              subscriptionHasRecoverableBillingLinkage(row, now) &&
               (!row.paddleCustomerId || row.paddleCustomerId === billingManagementCustomerId)
             );
           })
@@ -1350,7 +1350,7 @@ export const getMyBilling = queryGeneric({
     );
     const blockingSubscriptionIds = Array.from(
       new Set(
-        [...portalManageableSubscriptions, ...merchantReviewSubscriptions, ...pendingIgnoredEvents]
+        [...recoverableSubscriptions, ...merchantReviewSubscriptions, ...pendingIgnoredEvents]
           .filter((row) => {
             if (!row.paddleSubscriptionId) return false;
             return true;
@@ -1641,8 +1641,8 @@ export const createCheckoutSession = mutationGeneric({
       }
       throw new ConvexError("Active access already exists");
     }
-    const portalManageableSubscriptions = subscriptions.filter((row) =>
-      subscriptionCanSelfServeManage(row, now),
+    const recoverableSubscriptions = subscriptions.filter((row) =>
+      subscriptionHasRecoverableBillingLinkage(row, now),
     );
     const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
       userId: user._id,
@@ -1663,7 +1663,7 @@ export const createCheckoutSession = mutationGeneric({
     if (checkoutPendingConfirmationSessions.length > 0) {
       throw new ConvexError("Checkout confirmation pending");
     }
-    if (portalManageableSubscriptions.length > 0) {
+    if (recoverableSubscriptions.length > 0) {
       await reconcileBillingRecoveryCases(
         ctx.db,
         user,

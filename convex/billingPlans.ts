@@ -40,6 +40,8 @@ const BILLING_PLAN_CONFIGS: Record<
     trialEligible: true,
     envVars: ["PADDLE_PRICE_ID_PRO_MONTHLY"],
     legacyEnvVars: ["PADDLE_PRICE_ID_MONTHLY"],
+    // Required for returning users and any no-trial checkout path.
+    // We intentionally do not fall back to the trial price for trial-ineligible users.
     noTrialEnvVars: ["PADDLE_PRICE_ID_PRO_MONTHLY_NO_TRIAL"],
   },
 };
