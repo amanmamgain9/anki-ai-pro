@@ -5,6 +5,8 @@ export type BillingUiStateInput = {
   billingPortalAvailable?: boolean;
   blockingSubscriptionIds?: string[] | null;
   merchantReviewRequired?: boolean;
+  subscriptionStatus?: string | null;
+  paddleSubscriptionId?: string | null;
 };
 
 export function deriveBillingUiState(billing: BillingUiStateInput | null | undefined) {
@@ -14,10 +16,17 @@ export function deriveBillingUiState(billing: BillingUiStateInput | null | undef
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
   const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
+  const hasLinkedSubscription = Boolean(
+    typeof billing?.paddleSubscriptionId === "string" && billing.paddleSubscriptionId.length > 0,
+  );
+  const hasSubscriptionWithoutPortal = Boolean(
+    isActive && hasLinkedSubscription && !billingPortalAvailable,
+  );
 
   const requiresSupport = Boolean(
     hasManualAccess ||
       merchantReviewRequired ||
+      hasSubscriptionWithoutPortal ||
       (!billingPortalAvailable && !isActive && hasBlockingSubscriptions),
   );
   const canManageInPortal = Boolean(!requiresSupport && billingPortalAvailable);
@@ -34,6 +43,7 @@ export function deriveBillingUiState(billing: BillingUiStateInput | null | undef
     hasBlockingSubscriptions,
     merchantReviewRequired,
     billingPortalAvailable,
+    hasSubscriptionWithoutPortal,
     requiresSupport,
     canManageInPortal,
     requiresBillingPortal,

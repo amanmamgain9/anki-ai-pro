@@ -238,7 +238,7 @@ export default function BillingStartView() {
             disabled={
               busyAction !== null ||
               checkoutPendingConfirmation ||
-              (!requiresBillingPortal && !requiresSupport && !checkoutEnabled)
+              (!requiresBillingPortal && !requiresSupport && checkoutUnavailable)
             }
           >
             {busyAction !== null || checkoutPendingConfirmation
