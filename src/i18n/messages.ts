@@ -867,6 +867,8 @@ export const dictionaries = {
         contactSupport: "Contact support",
         checkoutSuccess:
           "Checkout completed. Your trial or subscription status should update within a few seconds.",
+        checkoutConfirming:
+          "We're confirming your checkout with Paddle. This can take a few more seconds.",
         choosePlan: "Choose your plan",
         continueToCheckout:
           "Continue to Paddle checkout. Trial checkout saves your payment method now and charges after the trial unless canceled.",
@@ -1759,6 +1761,7 @@ export const dictionaries = {
         manageBilling: "管理账单",
         contactSupport: "联系支持",
         checkoutSuccess: "结账已完成。试用或订阅状态通常会在几秒内更新。",
+        checkoutConfirming: "我们正在与 Paddle 确认你的结账结果。这可能还需要几秒钟。",
         choosePlan: "选择套餐",
         continueToCheckout: "确认后将跳转到 Paddle 结账页面。试用会先保存付款方式，若未在试用期结束前取消，将在试用结束后扣费。",
         continueToCheckoutNoTrial: "确认后将跳转到 Paddle 结账页面。结账完成后会立即开始计费。",

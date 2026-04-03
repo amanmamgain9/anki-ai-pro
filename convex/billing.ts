@@ -2190,13 +2190,7 @@ async function applyVerifiedSubscriptionSnapshot(
   const currentVersionTime =
     existingSubscription?.lastSubscriptionUpdatedAt ??
     existingSubscription?.lastEventOccurredAt;
-  if (
-    currentVersionTime !== undefined &&
-    (incomingVersionTime < currentVersionTime ||
-      (incomingVersionTime === currentVersionTime &&
-        existingSubscription?.lastEventType &&
-        existingSubscription.lastEventType !== "transaction.verified"))
-  ) {
+  if (currentVersionTime !== undefined && incomingVersionTime < currentVersionTime) {
     const currentShouldComplete = existingSubscription
       ? webhookFinalizesCheckoutSession(
           existingSubscription.status,

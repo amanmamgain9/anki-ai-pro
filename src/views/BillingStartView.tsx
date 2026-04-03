@@ -76,6 +76,11 @@ export default function BillingStartView() {
     typeof searchParams.get("checkoutSessionId") === "string" &&
     typeof searchParams.get("transactionId") === "string";
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
+  const checkoutConfirmationInFlight =
+    billingSuccess &&
+    hasCheckoutCompletionContext &&
+    !Boolean(billing?.isActive) &&
+    !checkoutPendingConfirmation;
   const uiState = deriveBillingUiState(billing);
   const hasBlockingSubscriptions = uiState.hasBlockingSubscriptions;
   const merchantReviewRequired = uiState.merchantReviewRequired;
@@ -238,10 +243,11 @@ export default function BillingStartView() {
             disabled={
               busyAction !== null ||
               checkoutPendingConfirmation ||
+              checkoutConfirmationInFlight ||
               (!requiresBillingPortal && !requiresSupport && checkoutUnavailable)
             }
           >
-            {busyAction !== null || checkoutPendingConfirmation
+            {busyAction !== null || checkoutPendingConfirmation || checkoutConfirmationInFlight
               ? t("app.settings.opening")
               : requiresBillingPortal
                 ? t("app.settings.manageBilling")
@@ -285,12 +291,14 @@ export default function BillingStartView() {
           </p>
         ) : null}
 
-        {billingSuccess &&
-        (Boolean(billing?.isActive) ||
-          checkoutPendingConfirmation ||
-          hasCheckoutCompletionContext) ? (
+        {billingSuccess && (Boolean(billing?.isActive) || checkoutPendingConfirmation) ? (
           <p className="mt-4 text-sm text-[var(--color-accent)]">
             {t("app.settings.checkoutSuccess")}
+          </p>
+        ) : null}
+        {checkoutConfirmationInFlight ? (
+          <p className="mt-4 text-sm text-[var(--color-accent)]">
+            {t("app.settings.checkoutConfirming")}
           </p>
         ) : null}
         {billingError ? (

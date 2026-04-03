@@ -74,7 +74,7 @@ test("protected app route redirects unauthenticated users to sign-in", async ({ 
 test("magic-link full sign-in flow shows upgrade controls before checkout", async ({ page, request }) => {
   await signInWithMagicLink(page, request, "/cards");
 
-  await page.waitForURL(/\/cards/);
+  await page.waitForURL(/\/start-trial/);
   await expect(page).not.toHaveURL(/\/sign-in/);
 
   await page.goto("/start-trial");
@@ -87,7 +87,7 @@ test("magic-link full sign-in flow shows upgrade controls before checkout", asyn
   await expect(page.getByText(/Add your payment details now|现在添加付款方式即可开始/)).toBeVisible();
 
   await page.goto("/cards");
-  await page.waitForURL(/\/cards/);
+  await page.waitForURL(/\/start-trial/);
 });
 
 test("authenticated checkout validates plan input", async ({ page, request }) => {
