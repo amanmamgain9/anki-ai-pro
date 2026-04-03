@@ -1,5 +1,7 @@
 "use client";
 
+import { useQuery } from "convex/react";
+import { anyApi } from "convex/server";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +19,8 @@ import BulkUploadView from "@/views/BulkUploadView";
 import SettingsView from "@/views/SettingsView";
 import GenerateCardsView from "@/views/GenerateCardsView";
 import BillingStartView from "@/views/BillingStartView";
+
+const api = anyApi;
 
 const navItems = [
   { href: "/study", labelKey: "app.nav.study", icon: StudyIcon },
@@ -80,14 +84,22 @@ function AppShell({
   children: React.ReactNode;
   showUpgradeCta: boolean;
 }) {
-  const { pathname, back, navigate } = useAppRouter();
+  const { pathname, searchParams, back, navigate, replace } = useAppRouter();
   const { t } = useI18n();
+  const billing = useQuery(api.billing.getMyBilling) as { isActive?: boolean } | undefined;
   const isGenerateFocusRoute =
     pathname === "/cards/generate" || pathname.startsWith("/cards/generate?");
   const isBillingStartRoute =
     pathname === "/start-trial" || pathname.startsWith("/start-trial?");
   const isStudyRoute = pathname === "/study" || pathname.startsWith("/study?");
   const isFocusRoute = isGenerateFocusRoute || isBillingStartRoute;
+  const currentPath = searchParams.size > 0 ? `${pathname}?${searchParams.toString()}` : pathname;
+
+  useEffect(() => {
+    if (billing?.isActive !== false) return;
+    if (isBillingStartRoute) return;
+    replace(`/start-trial?from=${encodeURIComponent(currentPath)}`);
+  }, [billing?.isActive, currentPath, isBillingStartRoute, replace]);
 
   return (
     <div className="flex h-dvh overflow-hidden flex-col lg:flex-row">

@@ -1374,6 +1374,10 @@ export const getMyBilling = queryGeneric({
 
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
+    const unresolvedCreatedSubscriptions = listUnresolvedCreatedSubscriptions(
+      subscriptions,
+      now,
+    );
     const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
       userId: user._id,
       externalId: user.externalId,
@@ -1480,7 +1484,9 @@ export const getMyBilling = queryGeneric({
       user,
       subscriptions,
     );
-    const checkoutPendingConfirmation = checkoutPendingConfirmationSessions.length > 0;
+    const checkoutPendingConfirmation =
+      checkoutPendingConfirmationSessions.length > 0 ||
+      unresolvedCreatedSubscriptions.length > 0;
     const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
     const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
     const manualAccessEndsAt = hasEffectiveManualAccess ? user.manualAccessEndsAt ?? null : null;

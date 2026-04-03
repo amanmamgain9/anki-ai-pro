@@ -15,6 +15,7 @@ type BillingState = {
   manualAccessTier?: string | null;
   blockingSubscriptionIds?: string[] | null;
   merchantReviewRequired?: boolean;
+  billingPortalAvailable?: boolean;
 };
 
 type OnboardingState = {
@@ -98,17 +99,22 @@ export default async function AppCatchAllPage({
   const hasManualAccess =
     billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
   const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
+  const requiresBillingPortal = Boolean(
+    billing?.billingPortalAvailable &&
+      (hasProAccess || Boolean(billing?.merchantReviewRequired) || hasBlockingSubscriptions),
+  );
   const requiresSupport =
-    hasManualAccess ||
-    Boolean(billing?.merchantReviewRequired) ||
-    (!hasProAccess && hasBlockingSubscriptions);
+    !requiresBillingPortal &&
+    (hasManualAccess ||
+      Boolean(billing?.merchantReviewRequired) ||
+      (!hasProAccess && hasBlockingSubscriptions));
   const returnPath = sanitizeInternalReturnPath(
     typeof query.from === "string" ? query.from : null,
   );
 
   if (checkoutCompletionSessionId || checkoutCompletionTransactionId) {
     const shouldShowCheckoutSuccess = checkoutCompletionVerified || hasProAccess;
-    if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresSupport) {
+    if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresSupport && !requiresBillingPortal) {
       redirect(returnPath);
     }
     if (currentPath === "/settings" || currentPath.startsWith("/settings?")) {
@@ -127,7 +133,7 @@ export default async function AppCatchAllPage({
     redirect(`/start-trial?from=${encodeURIComponent(currentPath)}`);
   }
 
-  if (isBillingStartRoute && hasProAccess && !requiresSupport) {
+  if (isBillingStartRoute && hasProAccess && !requiresSupport && !requiresBillingPortal) {
     redirect(returnPath);
   }
 
