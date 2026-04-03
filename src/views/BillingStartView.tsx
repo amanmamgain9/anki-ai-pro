@@ -243,8 +243,7 @@ export default function BillingStartView() {
             disabled={
               busyAction !== null ||
               checkoutPendingConfirmation ||
-              checkoutConfirmationInFlight ||
-              (!requiresBillingPortal && !requiresSupport && checkoutUnavailable)
+              checkoutConfirmationInFlight
             }
           >
             {busyAction !== null || checkoutPendingConfirmation || checkoutConfirmationInFlight

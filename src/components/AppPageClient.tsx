@@ -87,15 +87,29 @@ function AppShell({
 }) {
   const { pathname, searchParams, back, navigate, replace } = useAppRouter();
   const { t } = useI18n();
-  const billing = useQuery(api.billing.getMyBilling) as { isActive?: boolean } | undefined;
+  const billing = useQuery(api.billing.getMyBilling) as
+    | { isActive?: boolean; checkoutPendingConfirmation?: boolean }
+    | undefined;
   const isGenerateFocusRoute =
     pathname === "/cards/generate" || pathname.startsWith("/cards/generate?");
   const isBillingStartRoute =
     pathname === "/start-trial" || pathname.startsWith("/start-trial?");
+  const isSettingsRoute = pathname === "/settings" || pathname.startsWith("/settings?");
   const isStudyRoute = pathname === "/study" || pathname.startsWith("/study?");
   const isFocusRoute = isGenerateFocusRoute || isBillingStartRoute;
   const currentPath = searchParams.size > 0 ? `${pathname}?${searchParams.toString()}` : pathname;
   const checkoutRecoveryAttemptedRef = useRef(false);
+  const billingSuccess = searchParams.get("billing") === "success";
+  const hasCheckoutCompletionContext = Boolean(
+    searchParams.get("checkoutSessionId") && searchParams.get("transactionId"),
+  );
+  const canStayOnSettingsDuringCheckoutConfirmation =
+    isSettingsRoute &&
+    (Boolean(billing?.checkoutPendingConfirmation) ||
+      (billingSuccess &&
+        hasCheckoutCompletionContext &&
+        billing?.isActive === false &&
+        !billing?.checkoutPendingConfirmation));
 
   useEffect(() => {
     if (checkoutRecoveryAttemptedRef.current) return;
@@ -111,8 +125,15 @@ function AppShell({
   useEffect(() => {
     if (billing?.isActive !== false) return;
     if (isBillingStartRoute) return;
+    if (canStayOnSettingsDuringCheckoutConfirmation) return;
     replace(`/start-trial?from=${encodeURIComponent(currentPath)}`);
-  }, [billing?.isActive, currentPath, isBillingStartRoute, replace]);
+  }, [
+    billing?.isActive,
+    canStayOnSettingsDuringCheckoutConfirmation,
+    currentPath,
+    isBillingStartRoute,
+    replace,
+  ]);
 
   return (
     <div className="flex h-dvh overflow-hidden flex-col lg:flex-row">
