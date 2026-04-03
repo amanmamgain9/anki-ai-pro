@@ -1444,14 +1444,20 @@ export const getMyBilling = queryGeneric({
           .map((row) => row.paddleSubscriptionId),
       ),
     );
-    const billingPortalSubscriptionIds =
-      subscription?.paddleSubscriptionId &&
-      billingManagementCustomerId &&
-      subscription.requiresPriceMappingReview !== true &&
-      (!subscription.paddleCustomerId ||
-        subscription.paddleCustomerId === billingManagementCustomerId)
-        ? [subscription.paddleSubscriptionId]
-        : [];
+    const billingPortalSubscriptionIds = Array.from(
+      new Set(
+        [
+          subscription?.paddleSubscriptionId &&
+          billingManagementCustomerId &&
+          subscription.requiresPriceMappingReview !== true &&
+          (!subscription.paddleCustomerId ||
+            subscription.paddleCustomerId === billingManagementCustomerId)
+            ? subscription.paddleSubscriptionId
+            : null,
+          ...paddleSubscriptionIds,
+        ].filter((value): value is string => typeof value === "string" && value.length > 0),
+      ),
+    );
     const billingPortalAvailable =
       typeof billingManagementCustomerId === "string" &&
       billingManagementCustomerId.length > 0 &&

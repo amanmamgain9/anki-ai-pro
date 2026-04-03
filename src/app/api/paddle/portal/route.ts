@@ -40,6 +40,7 @@ export async function POST() {
 
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
+    await convex.mutation(api.billing.syncCurrentUser, {});
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
     const customerId =
       typeof billing?.paddleCustomerId === "string" && billing.paddleCustomerId.length > 0
