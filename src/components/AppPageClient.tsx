@@ -19,6 +19,7 @@ import BulkUploadView from "@/views/BulkUploadView";
 import SettingsView from "@/views/SettingsView";
 import GenerateCardsView from "@/views/GenerateCardsView";
 import BillingStartView from "@/views/BillingStartView";
+import { recoverPendingCheckoutCompletion } from "@/lib/paddle-checkout-client";
 
 const api = anyApi;
 
@@ -94,6 +95,18 @@ function AppShell({
   const isStudyRoute = pathname === "/study" || pathname.startsWith("/study?");
   const isFocusRoute = isGenerateFocusRoute || isBillingStartRoute;
   const currentPath = searchParams.size > 0 ? `${pathname}?${searchParams.toString()}` : pathname;
+  const checkoutRecoveryAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (checkoutRecoveryAttemptedRef.current) return;
+    checkoutRecoveryAttemptedRef.current = true;
+    void (async () => {
+      const recovered = await recoverPendingCheckoutCompletion();
+      if (recovered) {
+        window.location.reload();
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (billing?.isActive !== false) return;

@@ -2,14 +2,100 @@ import { getPublicPaddleClientToken, getPublicPaddleEnvironment } from "@/lib/pa
 
 const PADDLE_CLIENT_TOKEN = getPublicPaddleClientToken();
 const PADDLE_ENV = getPublicPaddleEnvironment();
+const PENDING_CHECKOUT_COMPLETION_KEY = "aianki:paddle-pending-checkout-completion";
+
+type PendingCheckoutCompletion = {
+  sessionId: string;
+  transactionId: string;
+  recordedAt: number;
+};
 
 async function postJson(url: string, body: Record<string, string>) {
-  await fetch(url, {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     keepalive: true,
   });
+  if (!response.ok) {
+    throw new Error(`Request failed with ${response.status}`);
+  }
+}
+
+function persistPendingCheckoutCompletion(sessionId: string, transactionId: string) {
+  try {
+    localStorage.setItem(
+      PENDING_CHECKOUT_COMPLETION_KEY,
+      JSON.stringify({
+        sessionId,
+        transactionId,
+        recordedAt: Date.now(),
+      } satisfies PendingCheckoutCompletion),
+    );
+  } catch {
+    // Best effort only.
+  }
+}
+
+function readPendingCheckoutCompletion() {
+  try {
+    const raw = localStorage.getItem(PENDING_CHECKOUT_COMPLETION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingCheckoutCompletion | null;
+    if (
+      !parsed ||
+      typeof parsed.sessionId !== "string" ||
+      parsed.sessionId.length === 0 ||
+      typeof parsed.transactionId !== "string" ||
+      parsed.transactionId.length === 0
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingCheckoutCompletion() {
+  try {
+    localStorage.removeItem(PENDING_CHECKOUT_COMPLETION_KEY);
+  } catch {
+    // Best effort only.
+  }
+}
+
+function sendCompletionBeacon(sessionId: string, transactionId: string) {
+  if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+    return false;
+  }
+  try {
+    const blob = new Blob([JSON.stringify({ sessionId, transactionId })], {
+      type: "application/json",
+    });
+    return navigator.sendBeacon("/api/paddle/checkout/complete", blob);
+  } catch {
+    return false;
+  }
+}
+
+export async function recoverPendingCheckoutCompletion() {
+  const pending = readPendingCheckoutCompletion();
+  if (!pending) return false;
+  if (Date.now() - pending.recordedAt > 24 * 60 * 60_000) {
+    clearPendingCheckoutCompletion();
+    return false;
+  }
+  try {
+    await postJson("/api/paddle/checkout/complete", {
+      sessionId: pending.sessionId,
+      transactionId: pending.transactionId,
+    });
+    clearPendingCheckoutCompletion();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function abandonCheckoutSession(sessionId: string) {
@@ -60,16 +146,17 @@ export function initializePaddleForBilling(successUrl: string) {
           }
         })();
         clearActiveCheckoutSession();
-        void (async () => {
-          if (sessionId && transactionId) {
-            try {
-              await postJson("/api/paddle/checkout/complete", { sessionId, transactionId });
-            } catch {
-              // Best effort: server-side reconciliation still relies on webhook or support.
-            }
+        if (sessionId && transactionId) {
+          persistPendingCheckoutCompletion(sessionId, transactionId);
+          if (!sendCompletionBeacon(sessionId, transactionId)) {
+            void postJson("/api/paddle/checkout/complete", { sessionId, transactionId }).catch(
+              () => {
+                // Best effort: next app load retries from durable local state.
+              },
+            );
           }
-          window.location.replace(target);
-        })();
+        }
+        window.location.replace(target);
         return;
       }
       if (event?.name === "checkout.closed") {

@@ -18,6 +18,8 @@ export type BillingState = {
   isActive: boolean;
   plan: "inactive" | "pro" | "pro_plus";
   hasPremiumVoice?: boolean;
+  premiumVoiceSource?: "none" | "trial" | "pro_preview" | "pro_plus";
+  proPreviewRemainingChars?: number | null;
   trialActive?: boolean;
   trialEndsAt?: number | null;
 };

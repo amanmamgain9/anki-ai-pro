@@ -578,7 +578,11 @@ function StudyPage({
     applyRating,
     sendTutorMessage,
     ratingLabelByQuality,
-    usePremiumTts: Boolean(billing?.hasPremiumVoice),
+    usePremiumTts: Boolean(
+      billing?.hasPremiumVoice ||
+        (billing?.premiumVoiceSource === "pro_preview" &&
+          (billing?.proPreviewRemainingChars ?? 0) > 0),
+    ),
   });
 
   const setMode = useCallback(

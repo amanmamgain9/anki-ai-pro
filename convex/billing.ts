@@ -283,6 +283,20 @@ function webhookFinalizesCheckoutSession(
   requiresPriceMappingReview: boolean,
   now: number,
 ) {
+  const normalizedStatus =
+    typeof status === "string" ? status.trim().toLowerCase() : null;
+  const hasStoredPeriodEnd =
+    typeof currentPeriodEndsAt === "number" || typeof nextBilledAt === "number";
+  if (
+    (normalizedStatus === "active" ||
+      normalizedStatus === "trialing" ||
+      normalizedStatus === "canceled" ||
+      normalizedStatus === "past_due" ||
+      normalizedStatus === "paused") &&
+    !hasStoredPeriodEnd
+  ) {
+    return false;
+  }
   return (
     isSubscriptionEntitled(status, currentPeriodEndsAt, nextBilledAt, now) ||
     subscriptionRequiresBillingManagement(
