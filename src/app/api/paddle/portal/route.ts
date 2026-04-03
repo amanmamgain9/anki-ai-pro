@@ -3,13 +3,17 @@ import { anyApi } from "convex/server";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { deriveBillingUiState } from "@/lib/billing-ui-state";
 import { getPaddleClient } from "@/lib/paddle";
 
 const api = anyApi;
 
 type BillingState = {
+  isActive?: boolean;
   billingPortalAvailable?: boolean;
   billingPortalSubscriptionIds?: string[] | null;
+  blockingSubscriptionIds?: string[] | null;
+  merchantReviewRequired?: boolean;
   paddleCustomerId?: string | null;
   manualAccessTier?: string | null;
   accessSource?: "none" | "manual" | "subscription" | "subscription_trial";
@@ -42,6 +46,7 @@ export async function POST() {
     convex.setAuth(session.convexToken);
     await convex.mutation(api.billing.syncCurrentUser, {});
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
+    const uiState = deriveBillingUiState(billing);
     const customerId =
       typeof billing?.paddleCustomerId === "string" && billing.paddleCustomerId.length > 0
         ? billing.paddleCustomerId
@@ -52,7 +57,13 @@ export async function POST() {
         )
       : [];
 
-    if (!billing?.billingPortalAvailable || !customerId || subscriptionIds.length === 0) {
+    if (
+      uiState.requiresSupport ||
+      !uiState.canManageInPortal ||
+      !uiState.settingsShouldOpenBillingPortal ||
+      !customerId ||
+      subscriptionIds.length === 0
+    ) {
       return NextResponse.json(
         {
           error:

@@ -102,6 +102,31 @@ test("authenticated checkout validates plan input", async ({ page, request }) =>
   expect(payload.error ?? "").toContain("Invalid plan");
 });
 
+test("returning-user checkout follows the no-trial billing config", async ({ page, request }) => {
+  await signInWithMagicLink(page, request, "/start-trial");
+  await page.waitForURL(/\/start-trial/);
+
+  await billingAction(page.request, { action: "reset" });
+  await billingAction(page.request, {
+    action: "setTrialEligibility",
+    state: "redeemed",
+  });
+
+  const response = await page.request.post("/api/paddle/checkout", {
+    data: { plan: "pro_monthly" },
+  });
+
+  if (process.env.PADDLE_PRICE_ID_PRO_MONTHLY_NO_TRIAL) {
+    expect(response.status()).toBe(200);
+    const payload = (await response.json()) as { priceId?: string };
+    expect(payload.priceId).toBe(process.env.PADDLE_PRICE_ID_PRO_MONTHLY_NO_TRIAL);
+  } else {
+    expect(response.status()).toBe(503);
+    const payload = (await response.json()) as { error?: string };
+    expect(payload.error ?? "").toContain("Returning Pro checkout is temporarily unavailable");
+  }
+});
+
 test("magic-link token cannot be reused", async ({ browser, request }) => {
   const email = `playwright-onetime-${Date.now()}@example.com`;
   const magicLink = await createMagicLink(request, email, "/cards");

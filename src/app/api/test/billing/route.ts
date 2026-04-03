@@ -46,6 +46,10 @@ const actionSchema = z.discriminatedUnion("action", [
     tier: z.union([z.literal("pro_plus"), z.null()]).default("pro_plus"),
     endsInDays: z.number().int().min(-3650).max(3650).nullable().optional(),
   }),
+  z.object({
+    action: z.literal("setTrialEligibility"),
+    state: z.enum(["eligible", "redeemed", "ineligible"]),
+  }),
 ]);
 
 type SyncUserResult = {
@@ -170,6 +174,14 @@ export async function POST(request: Request) {
           parsed.tier && parsed.endsInDays !== null
             ? Date.now() + (parsed.endsInDays ?? 30) * DAY_MS
             : null,
+      });
+      return NextResponse.json(await getState(convex, testSecret));
+    }
+
+    if (parsed.action === "setTrialEligibility") {
+      await convex.mutation(api.billing.setMyTrialEligibilityForTesting, {
+        testSecret,
+        state: parsed.state,
       });
       return NextResponse.json(await getState(convex, testSecret));
     }

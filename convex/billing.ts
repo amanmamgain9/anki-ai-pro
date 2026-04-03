@@ -1034,6 +1034,62 @@ function splitUnresolvedCreatedSubscriptions(
   return { pending, recoverable, review };
 }
 
+function buildEffectiveRecoveryState(
+  subscriptions: Doc<"subscriptions">[],
+  pendingIgnoredEvents: Doc<"billingEvents">[],
+  pendingCheckoutSessions: Doc<"paddleCheckoutSessions">[],
+  now: number,
+) {
+  const unresolvedCreated = splitUnresolvedCreatedSubscriptions(subscriptions, now);
+  const merchantReview = buildMerchantReviewContext(
+    subscriptions,
+    pendingIgnoredEvents,
+    pendingCheckoutSessions,
+    now,
+  );
+  const recoverableSubscriptions = [
+    ...merchantReview.recoverableSubscriptions,
+    ...unresolvedCreated.recoverable,
+  ];
+  const merchantReviewSubscriptions = [
+    ...merchantReview.merchantReviewSubscriptions,
+    ...unresolvedCreated.review,
+  ];
+  const reviewSubscriptions = Array.from(
+    new Map(
+      [...merchantReview.reviewSubscriptions, ...unresolvedCreated.review].map((row) => [
+        row._id,
+        row,
+      ]),
+    ).values(),
+  );
+  const recoverableCustomerIds = Array.from(
+    new Set(
+      recoverableSubscriptions
+        .map((row) => row.paddleCustomerId)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+  const merchantReviewRequired =
+    merchantReview.merchantReviewRequired || unresolvedCreated.review.length > 0;
+  const issueCodes = Array.from(
+    new Set([
+      ...merchantReview.issueCodes,
+      ...(unresolvedCreated.review.length > 0 ? ["created_subscription_review"] : []),
+    ]),
+  );
+
+  return {
+    unresolvedCreated,
+    recoverableSubscriptions,
+    merchantReviewSubscriptions,
+    reviewSubscriptions,
+    recoverableCustomerIds,
+    merchantReviewRequired,
+    issueCodes,
+  };
+}
+
 export const syncCurrentUser = mutationGeneric({
   handler: async (ctx) => {
     const identity = await requireIdentity(ctx);
@@ -1064,7 +1120,7 @@ export const syncCurrentUser = mutationGeneric({
     const {
       stale: pendingCheckoutSessions,
     } = splitPendingWebhookCheckoutSessions(allPendingCheckoutSessions, now);
-    const merchantReview = buildMerchantReviewContext(
+    const recoveryState = buildEffectiveRecoveryState(
       subscriptions,
       pendingIgnoredEvents,
       pendingCheckoutSessions,
@@ -1073,10 +1129,10 @@ export const syncCurrentUser = mutationGeneric({
     await reconcileBillingRecoveryCases(
       ctx.db,
       user,
-      merchantReview.reviewSubscriptions,
+      recoveryState.reviewSubscriptions,
       pendingIgnoredEvents,
       pendingCheckoutSessions,
-      merchantReview.issueCodes,
+      recoveryState.issueCodes,
       now,
     );
     return {
@@ -1332,6 +1388,35 @@ export const setMyManualAccessForTesting = mutationGeneric({
   },
 });
 
+export const setMyTrialEligibilityForTesting = mutationGeneric({
+  args: {
+    testSecret: v.string(),
+    state: v.union(v.literal("eligible"), v.literal("redeemed"), v.literal("ineligible")),
+  },
+  handler: async (ctx, { testSecret, state }) => {
+    ensureTestingAllowed(testSecret);
+    const identity = await requireIdentity(ctx);
+    const user = await findUserForIdentity(ctx.db, identity);
+
+    if (!user) {
+      throw new ConvexError("User not found. Run syncCurrentUser first.");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, {
+      trialRedeemedAt: state === "redeemed" ? now : undefined,
+      trialIneligibleAt: state === "ineligible" ? now : undefined,
+      updatedAt: now,
+      lastSeenAt: now,
+    });
+
+    return {
+      userId: user._id,
+      state,
+    };
+  },
+});
+
 export const getMyBilling = queryGeneric({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -1405,10 +1490,6 @@ export const getMyBilling = queryGeneric({
 
     const subscriptions = await listManagedSubscriptionsForUser(ctx.db, user._id);
     const now = Date.now();
-    const unresolvedCreatedSubscriptions = splitUnresolvedCreatedSubscriptions(
-      subscriptions,
-      now,
-    );
     const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
       userId: user._id,
       externalId: user.externalId,
@@ -1435,22 +1516,15 @@ export const getMyBilling = queryGeneric({
       pickEffectiveSubscription(subscriptions, now),
       subscriptions,
     );
-    const merchantReview = buildMerchantReviewContext(
+    const recoveryState = buildEffectiveRecoveryState(
       subscriptions,
       pendingIgnoredEvents,
       pendingCheckoutSessions,
       now,
     );
-    const recoverableSubscriptions = [
-      ...merchantReview.recoverableSubscriptions,
-      ...unresolvedCreatedSubscriptions.recoverable,
-    ];
-    const merchantReviewSubscriptions = [
-      ...merchantReview.merchantReviewSubscriptions,
-      ...unresolvedCreatedSubscriptions.review,
-    ];
-    const merchantReviewRequired =
-      merchantReview.merchantReviewRequired || unresolvedCreatedSubscriptions.review.length > 0;
+    const recoverableSubscriptions = recoveryState.recoverableSubscriptions;
+    const merchantReviewSubscriptions = recoveryState.merchantReviewSubscriptions;
+    const merchantReviewRequired = recoveryState.merchantReviewRequired;
     const openRecoveryCase = merchantReviewRequired
       ? (
           await ctx.db
@@ -1459,13 +1533,7 @@ export const getMyBilling = queryGeneric({
             .collect()
         ).find((row) => row.status === "open") ?? null
       : null;
-    const recoverableCustomerIds = Array.from(
-      new Set(
-        recoverableSubscriptions
-          .map((row) => row.paddleCustomerId)
-          .filter((value): value is string => typeof value === "string" && value.length > 0),
-      ),
-    );
+    const recoverableCustomerIds = recoveryState.recoverableCustomerIds;
     const billingManagementCustomerId =
       recoverableSubscriptions.length === 0
         ? effectivePaddleCustomerId
@@ -1533,7 +1601,7 @@ export const getMyBilling = queryGeneric({
     );
     const checkoutPendingConfirmation =
       checkoutPendingConfirmationSessions.length > 0 ||
-      unresolvedCreatedSubscriptions.pending.length > 0;
+      recoveryState.unresolvedCreated.pending.length > 0;
     const hasEffectiveManualAccess = paidAccess.accessSource === "manual";
     const manualAccessTier = hasEffectiveManualAccess ? user.manualAccessTier ?? null : null;
     const manualAccessEndsAt = hasEffectiveManualAccess ? user.manualAccessEndsAt ?? null : null;
@@ -1582,16 +1650,7 @@ export const getMyBilling = queryGeneric({
       premiumVoiceSource,
       merchantReviewRequired,
       merchantReviewCaseId: openRecoveryCase?._id ?? null,
-      merchantReviewIssueCodes: merchantReviewRequired
-        ? Array.from(
-            new Set([
-              ...merchantReview.issueCodes,
-              ...(unresolvedCreatedSubscriptions.review.length > 0
-                ? ["created_subscription_review"]
-                : []),
-            ]),
-          )
-        : [],
+      merchantReviewIssueCodes: merchantReviewRequired ? recoveryState.issueCodes : [],
       manualAccessTier,
       manualAccessEndsAt,
       manualAccessReason,
@@ -1809,13 +1868,6 @@ export const createCheckoutSession = mutationGeneric({
       }
       throw new ConvexError("Active access already exists");
     }
-    const unresolvedCreatedSubscriptions = splitUnresolvedCreatedSubscriptions(
-      subscriptions,
-      now,
-    );
-    const recoverableSubscriptions = subscriptions.filter((row) =>
-      subscriptionHasRecoverableBillingLinkage(row, now),
-    );
     const pendingIgnoredEvents = await listRetryableIgnoredBillingEvents(ctx.db, {
       userId: user._id,
       externalId: user.externalId,
@@ -1826,7 +1878,7 @@ export const createCheckoutSession = mutationGeneric({
       pending: checkoutPendingConfirmationSessions,
       stale: pendingCheckoutSessions,
     } = splitPendingWebhookCheckoutSessions(allPendingCheckoutSessions, now);
-    const merchantReview = buildMerchantReviewContext(
+    const recoveryState = buildEffectiveRecoveryState(
       subscriptions,
       pendingIgnoredEvents,
       pendingCheckoutSessions,
@@ -1835,36 +1887,22 @@ export const createCheckoutSession = mutationGeneric({
     if (checkoutPendingConfirmationSessions.length > 0) {
       throw new ConvexError("Checkout confirmation pending");
     }
-    if (unresolvedCreatedSubscriptions.pending.length > 0) {
+    if (recoveryState.unresolvedCreated.pending.length > 0) {
       throw new ConvexError("Checkout confirmation pending");
     }
-    if (
-      recoverableSubscriptions.length > 0 ||
-      unresolvedCreatedSubscriptions.recoverable.length > 0
-    ) {
+    if (recoveryState.recoverableSubscriptions.length > 0) {
       throw new ConvexError("Subscription requires billing management");
     }
     if (
-      merchantReview.merchantReviewRequired ||
-      unresolvedCreatedSubscriptions.review.length > 0
+      recoveryState.merchantReviewRequired
     ) {
       await reconcileBillingRecoveryCases(
         ctx.db,
         user,
-        [
-          ...merchantReview.reviewSubscriptions,
-          ...unresolvedCreatedSubscriptions.review,
-        ],
+        recoveryState.reviewSubscriptions,
         pendingIgnoredEvents,
         pendingCheckoutSessions,
-        Array.from(
-          new Set([
-            ...merchantReview.issueCodes,
-            ...(unresolvedCreatedSubscriptions.review.length > 0
-              ? ["created_subscription_review"]
-              : []),
-          ]),
-        ),
+        recoveryState.issueCodes,
         now,
       );
       throw new ConvexError("Subscription requires merchant review");
