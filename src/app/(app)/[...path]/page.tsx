@@ -77,6 +77,9 @@ export default async function AppCatchAllPage({
       ? query.transactionId
       : null;
   let checkoutCompletionVerified = false;
+  const hasCheckoutCompletionContext = Boolean(
+    billingSuccess && checkoutCompletionSessionId && checkoutCompletionTransactionId,
+  );
   if (billingSuccess && checkoutCompletionSessionId && checkoutCompletionTransactionId) {
     try {
       await verifyAndRecordCheckoutCompletion(session, {
@@ -101,20 +104,42 @@ export default async function AppCatchAllPage({
   const returnPath = sanitizeInternalReturnPath(
     typeof query.from === "string" ? query.from : null,
   );
+  const checkoutCompletionPending =
+    hasCheckoutCompletionContext && !checkoutCompletionVerified && !hasProAccess;
 
   if (checkoutCompletionSessionId || checkoutCompletionTransactionId) {
-    const shouldShowCheckoutSuccess = checkoutCompletionVerified || hasProAccess;
+    const shouldShowCheckoutSuccess =
+      checkoutCompletionVerified || hasProAccess || checkoutCompletionPending;
     if (isBillingStartRoute && billingSuccess && uiState.startTrialShouldRedirectToApp) {
       redirect(returnPath);
     }
     if (currentPath === "/settings" || currentPath.startsWith("/settings?")) {
-      redirect(shouldShowCheckoutSuccess ? "/settings?billing=success" : "/settings");
+      redirect(
+        shouldShowCheckoutSuccess
+          ? `/settings?billing=success${
+              checkoutCompletionPending && checkoutCompletionSessionId && checkoutCompletionTransactionId
+                ? `&checkoutSessionId=${encodeURIComponent(checkoutCompletionSessionId)}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId)}`
+                : ""
+            }`
+          : "/settings",
+      );
     }
     if (isBillingStartRoute) {
       redirect(
         shouldShowCheckoutSuccess
-          ? `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}`
+          ? `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}${
+              checkoutCompletionPending && checkoutCompletionSessionId && checkoutCompletionTransactionId
+                ? `&checkoutSessionId=${encodeURIComponent(checkoutCompletionSessionId)}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId)}`
+                : ""
+            }`
           : `/start-trial?from=${encodeURIComponent(returnPath)}`,
+      );
+    }
+    if (checkoutCompletionPending) {
+      redirect(
+        `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}&checkoutSessionId=${encodeURIComponent(
+          checkoutCompletionSessionId ?? "",
+        )}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId ?? "")}`,
       );
     }
   }

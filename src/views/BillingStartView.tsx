@@ -72,6 +72,9 @@ export default function BillingStartView() {
   const [paddleReady, setPaddleReady] = useState(false);
   const from = sanitizeInternalReturnPath(searchParams.get("from"));
   const billingSuccess = searchParams.get("billing") === "success";
+  const hasCheckoutCompletionContext =
+    typeof searchParams.get("checkoutSessionId") === "string" &&
+    typeof searchParams.get("transactionId") === "string";
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
   const uiState = deriveBillingUiState(billing);
   const hasBlockingSubscriptions = uiState.hasBlockingSubscriptions;
@@ -282,7 +285,10 @@ export default function BillingStartView() {
           </p>
         ) : null}
 
-        {billingSuccess && (Boolean(billing?.isActive) || checkoutPendingConfirmation) ? (
+        {billingSuccess &&
+        (Boolean(billing?.isActive) ||
+          checkoutPendingConfirmation ||
+          hasCheckoutCompletionContext) ? (
           <p className="mt-4 text-sm text-[var(--color-accent)]">
             {t("app.settings.checkoutSuccess")}
           </p>

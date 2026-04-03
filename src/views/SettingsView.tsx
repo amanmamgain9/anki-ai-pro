@@ -93,6 +93,9 @@ export default function SettingsView() {
   const trialEligible = Boolean(checkoutOffer?.trialEligible) && trialDays > 0;
   const checkoutEnabled = checkoutOffer?.checkoutEnabled ?? true;
   const billingSuccess = searchParams.get("billing") === "success";
+  const hasCheckoutCompletionContext =
+    typeof searchParams.get("checkoutSessionId") === "string" &&
+    typeof searchParams.get("transactionId") === "string";
   const successUrl = getSettingsBillingSuccessUrl();
 
   useEffect(() => {
@@ -269,7 +272,10 @@ export default function SettingsView() {
                   : t("app.upgradeCta")}
           </button>
         </div>
-        {billingSuccess && (Boolean(billing?.isActive) || checkoutPendingConfirmation) && (
+        {billingSuccess &&
+          (Boolean(billing?.isActive) ||
+            checkoutPendingConfirmation ||
+            hasCheckoutCompletionContext) && (
           <p className="mt-3 text-sm text-[var(--color-accent)]">
             {t("app.settings.checkoutSuccess")}
           </p>
