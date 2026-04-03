@@ -1,6 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
-import { resolveFreeProPlusTrialDays } from "@/lib/trials";
 
 const api = anyApi;
 
@@ -22,6 +21,6 @@ export async function getPublicProMonthlyTrialDays() {
     const publicOffer = payload.plans.find((row) => row.plan === "pro_monthly");
     return publicOffer?.checkoutEnabled && publicOffer.trialEligible ? payload.trialDays : 0;
   } catch {
-    return resolveFreeProPlusTrialDays();
+    return 0;
   }
 }

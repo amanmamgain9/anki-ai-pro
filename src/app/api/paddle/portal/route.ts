@@ -41,19 +41,6 @@ export async function POST() {
     const convex = new ConvexHttpClient(convexUrl);
     convex.setAuth(session.convexToken);
     const billing = (await convex.query(api.billing.getMyBilling, {})) as BillingState;
-    const hasManualOnlyAccess =
-      billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
-
-    if (hasManualOnlyAccess) {
-      return NextResponse.json(
-        {
-          error:
-            "This account currently has manual access. Contact support if you need billing changes.",
-        },
-        { status: 409 },
-      );
-    }
-
     const customerId =
       typeof billing?.paddleCustomerId === "string" && billing.paddleCustomerId.length > 0
         ? billing.paddleCustomerId

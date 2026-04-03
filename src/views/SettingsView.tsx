@@ -85,14 +85,12 @@ export default function SettingsView() {
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
   const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
   const requiresBillingPortal = Boolean(
-    !hasManualAccess &&
-      billingPortalAvailable &&
+    billingPortalAvailable &&
       (billing?.isActive || merchantReviewRequired || hasBlockingSubscriptions),
   );
   const primaryActionNeedsSupport = Boolean(
-    hasManualAccess ||
-      (!requiresBillingPortal &&
-        (merchantReviewRequired || (!billing?.isActive && hasBlockingSubscriptions))),
+    !requiresBillingPortal &&
+      (hasManualAccess || merchantReviewRequired || (!billing?.isActive && hasBlockingSubscriptions)),
   );
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
@@ -244,7 +242,7 @@ export default function SettingsView() {
             })}
           </p>
         )}
-        {hasManualAccess ? (
+        {hasManualAccess && !requiresBillingPortal ? (
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             {t("app.settings.manualAccessNote")}
           </p>

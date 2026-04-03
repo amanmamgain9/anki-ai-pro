@@ -77,14 +77,14 @@ export default function BillingStartView() {
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
   const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
   const requiresBillingPortal = Boolean(
-    !hasManualAccess &&
-      billingPortalAvailable &&
+    billingPortalAvailable &&
       (billing?.isActive || merchantReviewRequired || hasBlockingSubscriptions),
   );
   const requiresSupport =
-    hasManualAccess ||
-    (!requiresBillingPortal &&
-      (merchantReviewRequired || (!billing?.isActive && hasBlockingSubscriptions)));
+    !requiresBillingPortal &&
+    (hasManualAccess ||
+      merchantReviewRequired ||
+      (!billing?.isActive && hasBlockingSubscriptions));
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
