@@ -43,6 +43,25 @@ function buildAppPath(
   return search ? `${normalizedPath}?${search}` : normalizedPath;
 }
 
+function normalizeAppPathForComparison(path: string) {
+  const url = new URL(path, "https://app.local");
+  const entries = Array.from(url.searchParams.entries()).sort(([aKey, aValue], [bKey, bValue]) =>
+    aKey === bKey ? aValue.localeCompare(bValue) : aKey.localeCompare(bKey),
+  );
+  const normalizedQuery = new URLSearchParams();
+  for (const [key, value] of entries) {
+    normalizedQuery.append(key, value);
+  }
+  const search = normalizedQuery.toString();
+  return search ? `${url.pathname}?${search}` : url.pathname;
+}
+
+function redirectIfChanged(currentPath: string, targetPath: string) {
+  if (normalizeAppPathForComparison(currentPath) !== normalizeAppPathForComparison(targetPath)) {
+    redirect(targetPath);
+  }
+}
+
 export default async function AppCatchAllPage({
   params,
   searchParams,
@@ -106,6 +125,9 @@ export default async function AppCatchAllPage({
   );
   const checkoutCompletionPending =
     hasCheckoutCompletionContext && !checkoutCompletionVerified && !hasProAccess;
+  const isSettingsRoute = currentPath === "/settings" || currentPath.startsWith("/settings?");
+  const canRenderCheckoutCompletionState =
+    checkoutCompletionPending && (isBillingStartRoute || isSettingsRoute);
 
   if (checkoutCompletionSessionId || checkoutCompletionTransactionId) {
     const shouldShowCheckoutSuccess =
@@ -113,38 +135,35 @@ export default async function AppCatchAllPage({
     if (isBillingStartRoute && billingSuccess && uiState.startTrialShouldRedirectToApp) {
       redirect(returnPath);
     }
-    if (currentPath === "/settings" || currentPath.startsWith("/settings?")) {
-      redirect(
-        shouldShowCheckoutSuccess
-          ? `/settings?billing=success${
-              checkoutCompletionPending && checkoutCompletionSessionId && checkoutCompletionTransactionId
-                ? `&checkoutSessionId=${encodeURIComponent(checkoutCompletionSessionId)}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId)}`
-                : ""
-            }`
-          : "/settings",
-      );
+    if (isSettingsRoute) {
+      const targetPath = shouldShowCheckoutSuccess
+        ? `/settings?billing=success${
+            checkoutCompletionPending && checkoutCompletionSessionId && checkoutCompletionTransactionId
+              ? `&checkoutSessionId=${encodeURIComponent(checkoutCompletionSessionId)}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId)}`
+              : ""
+          }`
+        : "/settings";
+      redirectIfChanged(currentPath, targetPath);
     }
     if (isBillingStartRoute) {
-      redirect(
-        shouldShowCheckoutSuccess
-          ? `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}${
-              checkoutCompletionPending && checkoutCompletionSessionId && checkoutCompletionTransactionId
-                ? `&checkoutSessionId=${encodeURIComponent(checkoutCompletionSessionId)}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId)}`
-                : ""
-            }`
-          : `/start-trial?from=${encodeURIComponent(returnPath)}`,
-      );
+      const targetPath = shouldShowCheckoutSuccess
+        ? `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}${
+            checkoutCompletionPending && checkoutCompletionSessionId && checkoutCompletionTransactionId
+              ? `&checkoutSessionId=${encodeURIComponent(checkoutCompletionSessionId)}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId)}`
+              : ""
+          }`
+        : `/start-trial?from=${encodeURIComponent(returnPath)}`;
+      redirectIfChanged(currentPath, targetPath);
     }
     if (checkoutCompletionPending) {
-      redirect(
-        `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}&checkoutSessionId=${encodeURIComponent(
-          checkoutCompletionSessionId ?? "",
-        )}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId ?? "")}`,
-      );
+      const targetPath = `/start-trial?billing=success&from=${encodeURIComponent(returnPath)}&checkoutSessionId=${encodeURIComponent(
+        checkoutCompletionSessionId ?? "",
+      )}&transactionId=${encodeURIComponent(checkoutCompletionTransactionId ?? "")}`;
+      redirectIfChanged(currentPath, targetPath);
     }
   }
 
-  if (!hasProAccess && !isBillingStartRoute) {
+  if (!hasProAccess && !isBillingStartRoute && !canRenderCheckoutCompletionState) {
     redirect(`/start-trial?from=${encodeURIComponent(currentPath)}`);
   }
 
