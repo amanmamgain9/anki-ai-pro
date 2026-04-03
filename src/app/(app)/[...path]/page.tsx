@@ -6,6 +6,7 @@ import AppPageClient from "@/components/AppPageClient";
 import { authOptions } from "@/lib/auth";
 import { verifyAndRecordCheckoutCompletion } from "@/lib/paddle-checkout-verification";
 import { sanitizeInternalReturnPath } from "@/lib/return-path";
+import { deriveBillingUiState } from "@/lib/billing-ui-state";
 
 const api = anyApi;
 
@@ -96,25 +97,14 @@ export default async function AppCatchAllPage({
   const isBillingStartRoute =
     currentPath === "/start-trial" || currentPath.startsWith("/start-trial?");
   const hasProAccess = Boolean(billing?.isActive);
-  const hasManualAccess =
-    billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
-  const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const requiresBillingPortal = Boolean(
-    billing?.billingPortalAvailable &&
-      (hasProAccess || Boolean(billing?.merchantReviewRequired) || hasBlockingSubscriptions),
-  );
-  const requiresSupport =
-    !requiresBillingPortal &&
-    (hasManualAccess ||
-      Boolean(billing?.merchantReviewRequired) ||
-      (!hasProAccess && hasBlockingSubscriptions));
+  const uiState = deriveBillingUiState(billing);
   const returnPath = sanitizeInternalReturnPath(
     typeof query.from === "string" ? query.from : null,
   );
 
   if (checkoutCompletionSessionId || checkoutCompletionTransactionId) {
     const shouldShowCheckoutSuccess = checkoutCompletionVerified || hasProAccess;
-    if (isBillingStartRoute && billingSuccess && hasProAccess && !requiresSupport && !requiresBillingPortal) {
+    if (isBillingStartRoute && billingSuccess && uiState.startTrialShouldRedirectToApp) {
       redirect(returnPath);
     }
     if (currentPath === "/settings" || currentPath.startsWith("/settings?")) {
@@ -133,7 +123,7 @@ export default async function AppCatchAllPage({
     redirect(`/start-trial?from=${encodeURIComponent(currentPath)}`);
   }
 
-  if (isBillingStartRoute && hasProAccess && !requiresSupport && !requiresBillingPortal) {
+  if (isBillingStartRoute && uiState.startTrialShouldRedirectToApp) {
     redirect(returnPath);
   }
 

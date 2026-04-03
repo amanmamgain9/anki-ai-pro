@@ -15,6 +15,7 @@ import {
 } from "@/lib/paddle-checkout-client";
 import { getPublicPaddleClientToken } from "@/lib/paddle-client";
 import { openBillingPortal } from "@/lib/paddle-portal-client";
+import { deriveBillingUiState } from "@/lib/billing-ui-state";
 
 const api = anyApi;
 type CheckoutPlan =
@@ -79,19 +80,12 @@ export default function SettingsView() {
   const [billingError, setBillingError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [paddleReady, setPaddleReady] = useState(false);
-  const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
-  const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
-  const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
-  const requiresBillingPortal = Boolean(
-    billingPortalAvailable &&
-      (billing?.isActive || merchantReviewRequired || hasBlockingSubscriptions),
-  );
-  const primaryActionNeedsSupport = Boolean(
-    !requiresBillingPortal &&
-      (hasManualAccess || merchantReviewRequired || (!billing?.isActive && hasBlockingSubscriptions)),
-  );
+  const uiState = deriveBillingUiState(billing);
+  const hasManualAccess = uiState.hasManualAccess;
+  const merchantReviewRequired = uiState.merchantReviewRequired;
+  const requiresBillingPortal = uiState.settingsShouldOpenBillingPortal;
+  const primaryActionNeedsSupport = uiState.requiresSupport;
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));

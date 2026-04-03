@@ -16,6 +16,7 @@ import {
 import { getPublicPaddleClientToken } from "@/lib/paddle-client";
 import { openBillingPortal } from "@/lib/paddle-portal-client";
 import { sanitizeInternalReturnPath } from "@/lib/return-path";
+import { deriveBillingUiState } from "@/lib/billing-ui-state";
 
 const api = anyApi;
 type CheckoutPlan = "pro_monthly";
@@ -71,20 +72,12 @@ export default function BillingStartView() {
   const [paddleReady, setPaddleReady] = useState(false);
   const from = sanitizeInternalReturnPath(searchParams.get("from"));
   const billingSuccess = searchParams.get("billing") === "success";
-  const hasManualAccess = billing?.accessSource === "manual" || Boolean(billing?.manualAccessTier);
-  const hasBlockingSubscriptions = (billing?.blockingSubscriptionIds?.length ?? 0) > 0;
-  const merchantReviewRequired = Boolean(billing?.merchantReviewRequired);
   const checkoutPendingConfirmation = Boolean(billing?.checkoutPendingConfirmation);
-  const billingPortalAvailable = Boolean(billing?.billingPortalAvailable);
-  const requiresBillingPortal = Boolean(
-    billingPortalAvailable &&
-      (billing?.isActive || merchantReviewRequired || hasBlockingSubscriptions),
-  );
-  const requiresSupport =
-    !requiresBillingPortal &&
-    (hasManualAccess ||
-      merchantReviewRequired ||
-      (!billing?.isActive && hasBlockingSubscriptions));
+  const uiState = deriveBillingUiState(billing);
+  const hasBlockingSubscriptions = uiState.hasBlockingSubscriptions;
+  const merchantReviewRequired = uiState.merchantReviewRequired;
+  const requiresBillingPortal = uiState.requiresBillingPortal;
+  const requiresSupport = uiState.requiresSupport;
   const trialEndsAt = typeof billing?.trialEndsAt === "number" ? billing.trialEndsAt : null;
   const trialDaysLeft =
     trialEndsAt === null ? 0 : Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86_400_000));
