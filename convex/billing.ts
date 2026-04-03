@@ -336,7 +336,7 @@ async function requireSupportOperator(ctx: AuthCtx) {
   return { identity, email };
 }
 
-const OPEN_CHECKOUT_SESSION_WINDOW_MS = 10 * 60_000;
+const OPEN_CHECKOUT_SESSION_WINDOW_MS = 2 * 60_000;
 
 async function setUserPaddleCustomerId(
   db: BillingWriteDb,
@@ -866,14 +866,7 @@ function buildMerchantReviewContext(
           ]),
         ).values(),
       )
-    : Array.from(
-        new Map(
-          [...merchantReviewSubscriptions, ...recoverableSubscriptions].map((row) => [
-            row._id,
-            row,
-          ]),
-        ).values(),
-      );
+    : merchantReviewSubscriptions;
   const issueCodes = Array.from(
     new Set([
       ...listMerchantReviewIssueCodes(merchantReviewSubscriptions, now),
@@ -892,7 +885,7 @@ function buildMerchantReviewContext(
     reviewSubscriptions,
     issueCodes,
     merchantReviewRequired:
-      reviewSubscriptions.length > 0 ||
+      merchantReviewSubscriptions.length > 0 ||
       pendingIgnoredEvents.length > 0 ||
       pendingCheckoutSessions.length > 0 ||
       hasRecoverableCustomerConflict,
@@ -1789,16 +1782,7 @@ export const createCheckoutSession = mutationGeneric({
       throw new ConvexError("Checkout confirmation pending");
     }
     if (recoverableSubscriptions.length > 0) {
-      await reconcileBillingRecoveryCases(
-        ctx.db,
-        user,
-        merchantReview.reviewSubscriptions,
-        pendingIgnoredEvents,
-        pendingCheckoutSessions,
-        merchantReview.issueCodes,
-        now,
-      );
-      throw new ConvexError("Subscription requires merchant review");
+      throw new ConvexError("Subscription requires billing management");
     }
     if (merchantReview.merchantReviewRequired) {
       await reconcileBillingRecoveryCases(

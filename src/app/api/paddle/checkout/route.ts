@@ -207,6 +207,16 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
+      if (message.includes("Subscription requires billing management")) {
+        return NextResponse.json(
+          {
+            error:
+              "This account already has a subscription that needs billing changes. Open Manage billing before starting a new checkout.",
+            code: "billing_portal_required",
+          },
+          { status: 409 },
+        );
+      }
       if (message.includes("Checkout confirmation pending")) {
         return NextResponse.json(
           {
