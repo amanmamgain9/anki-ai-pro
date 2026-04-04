@@ -859,6 +859,33 @@ function listRecoverableCustomerIds(
   );
 }
 
+function listSimultaneouslyEntitledSubscriptions<
+  T extends {
+    _id: Id<"subscriptions">;
+    paddleSubscriptionId?: string | null;
+    status?: string | null;
+    currentPeriodEndsAt?: number | null;
+    nextBilledAt?: number | null;
+    lastSubscriptionUpdatedAt?: number | null;
+    lastEventOccurredAt?: number | null;
+    updatedAt?: number | null;
+    createdAt?: number | null;
+  },
+>(
+  subscriptions: T[],
+  now: number,
+) {
+  const entitled = subscriptions.filter(
+    (row) =>
+      typeof row.paddleSubscriptionId === "string" &&
+      row.paddleSubscriptionId.length > 0 &&
+      isSubscriptionEntitled(row.status, row.currentPeriodEndsAt, row.nextBilledAt, now),
+  );
+  return Array.from(
+    new Map(entitled.map((row) => [row.paddleSubscriptionId as string, row])).values(),
+  );
+}
+
 function buildMerchantReviewContext(
   subscriptions: Doc<"subscriptions">[],
   pendingIgnoredEvents: Doc<"billingEvents">[],
@@ -873,16 +900,23 @@ function buildMerchantReviewContext(
   );
   const recoverableCustomerIds = listRecoverableCustomerIds(subscriptions, now);
   const hasRecoverableCustomerConflict = recoverableCustomerIds.length > 1;
-  const reviewSubscriptions = hasRecoverableCustomerConflict
-    ? Array.from(
-        new Map(
-          [...merchantReviewSubscriptions, ...recoverableSubscriptions].map((row) => [
-            row._id,
-            row,
-          ]),
-        ).values(),
-      )
-    : merchantReviewSubscriptions;
+  const simultaneouslyEntitledSubscriptions = listSimultaneouslyEntitledSubscriptions(
+    subscriptions,
+    now,
+  );
+  const hasMultipleEntitledSubscriptions = simultaneouslyEntitledSubscriptions.length > 1;
+  const reviewSubscriptions =
+    hasRecoverableCustomerConflict || hasMultipleEntitledSubscriptions
+      ? Array.from(
+          new Map(
+            [
+              ...merchantReviewSubscriptions,
+              ...(hasRecoverableCustomerConflict ? recoverableSubscriptions : []),
+              ...(hasMultipleEntitledSubscriptions ? simultaneouslyEntitledSubscriptions : []),
+            ].map((row) => [row._id, row]),
+          ).values(),
+        )
+      : merchantReviewSubscriptions;
   const issueCodes = Array.from(
     new Set([
       ...listMerchantReviewIssueCodes(merchantReviewSubscriptions, now),
@@ -890,6 +924,7 @@ function buildMerchantReviewContext(
       ...listRetryableIgnoredBillingIssueCodes(pendingIgnoredEvents),
       ...listPendingCheckoutIssueCodes(pendingCheckoutSessions),
       ...(hasRecoverableCustomerConflict ? ["multiple_recoverable_customer_ids"] : []),
+      ...(hasMultipleEntitledSubscriptions ? ["multiple_active_subscriptions"] : []),
     ]),
   );
 
@@ -898,13 +933,16 @@ function buildMerchantReviewContext(
     merchantReviewSubscriptions,
     recoverableCustomerIds,
     hasRecoverableCustomerConflict,
+    simultaneouslyEntitledSubscriptions,
+    hasMultipleEntitledSubscriptions,
     reviewSubscriptions,
     issueCodes,
     merchantReviewRequired:
       merchantReviewSubscriptions.length > 0 ||
       pendingIgnoredEvents.length > 0 ||
       pendingCheckoutSessions.length > 0 ||
-      hasRecoverableCustomerConflict,
+      hasRecoverableCustomerConflict ||
+      hasMultipleEntitledSubscriptions,
   };
 }
 
