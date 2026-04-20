@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
+import { createAiChatModel, getAiProviderErrorMessage } from "@/lib/ai-provider";
 import { authOptions } from "@/lib/auth";
 import { cardAuthoringRules, normalizeCardMarkdown } from "@/lib/card-markdown";
 import { ensureProAccess } from "@/lib/server-entitlements";
@@ -52,34 +52,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const apiKey = process.env.GROQ_API_KEY ?? process.env.KIMI_API_KEY;
-  const baseURL =
-    process.env.GROQ_BASE_URL ??
-    process.env.KIMI_BASE_URL ??
-    "https://api.groq.com/openai/v1";
-  const model =
-    process.env.GROQ_MODEL ??
-    process.env.KIMI_MODEL ??
-    "moonshotai/kimi-k2-instruct-0905";
-
-  if (!apiKey) {
+  let llm;
+  let model: string;
+  try {
+    ({ llm, model } = createAiChatModel({
+      temperature: 0.2,
+      timeout: 45_000,
+      maxRetries: 1,
+    }));
+  } catch (error) {
     return NextResponse.json(
-      {
-        error:
-          "Missing GROQ_API_KEY in server environment. Set GROQ_API_KEY, GROQ_BASE_URL, and GROQ_MODEL.",
-      },
+      { error: getAiProviderErrorMessage(error) },
       { status: 500 },
     );
   }
-
-  const llm = new ChatOpenAI({
-    apiKey,
-    model,
-    temperature: 0.2,
-    timeout: 45_000,
-    maxRetries: 1,
-    configuration: { baseURL },
-  });
 
   const structured = llm.withStructuredOutput(responseSchema, {
     name: "anki_single_card_edit_result",
@@ -132,7 +118,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Single card edit failed", error);
     return NextResponse.json(
-      { error: "Failed to edit card from LLM" },
+      { error: `Failed to edit card from LLM: ${getAiProviderErrorMessage(error)}` },
       { status: 502 },
     );
   }

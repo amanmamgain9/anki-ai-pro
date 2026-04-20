@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { createAiChatModel, getAiProviderErrorMessage } from "@/lib/ai-provider";
 import { aiFallbackFeedback } from "@/i18n/non-ui-text";
 import { ensureProAccess } from "@/lib/server-entitlements";
 
@@ -32,9 +32,16 @@ function contentToText(content: unknown) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((part: any) => {
+      .map((part: unknown) => {
         if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
+        if (
+          typeof part === "object" &&
+          part !== null &&
+          "text" in part &&
+          typeof part.text === "string"
+        ) {
+          return part.text;
+        }
         return "";
       })
       .join("\n")
@@ -63,34 +70,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const apiKey = process.env.GROQ_API_KEY ?? process.env.KIMI_API_KEY;
-  const baseURL =
-    process.env.GROQ_BASE_URL ??
-    process.env.KIMI_BASE_URL ??
-    "https://api.groq.com/openai/v1";
-  const model =
-    process.env.GROQ_MODEL ??
-    process.env.KIMI_MODEL ??
-    "moonshotai/kimi-k2-instruct-0905";
-
-  if (!apiKey) {
+  let llm;
+  try {
+    ({ llm } = createAiChatModel({
+      temperature: 0.1,
+      timeout: 30_000,
+      maxRetries: 1,
+    }));
+  } catch (error) {
     return NextResponse.json(
-      {
-        error:
-          "Missing GROQ_API_KEY in server environment. Set GROQ_API_KEY, GROQ_BASE_URL, and GROQ_MODEL.",
-      },
+      { error: getAiProviderErrorMessage(error) },
       { status: 500 },
     );
   }
-
-  const llm = new ChatOpenAI({
-    apiKey,
-    model,
-    temperature: 0.1,
-    timeout: 30_000,
-    maxRetries: 1,
-    configuration: { baseURL },
-  });
 
   const cardFront = clampText(parsed.card.front, 500);
   const cardBack = clampText(parsed.card.back, 2_200);
@@ -135,6 +127,7 @@ export async function POST(req: Request) {
         quality: 2,
         confidence: 0.55,
         feedback: isZh ? aiFallbackFeedback.zh : aiFallbackFeedback.en,
+        error: getAiProviderErrorMessage(error),
       },
       { status: 200 },
     );
