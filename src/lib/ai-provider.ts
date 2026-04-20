@@ -8,11 +8,9 @@ type ChatModelOptions = {
 
 type ResolvedAiProvider = {
   apiKey: string;
-  baseURL: string | null;
-  model: string;
 };
 
-const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929";
+const ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929";
 
 function readEnv(name: string) {
   const value = process.env[name];
@@ -27,8 +25,6 @@ export function resolveAiProvider(): ResolvedAiProvider {
 
   return {
     apiKey: anthropicApiKey,
-    baseURL: readEnv("ANTHROPIC_BASE_URL"),
-    model: readEnv("ANTHROPIC_MODEL") ?? DEFAULT_ANTHROPIC_MODEL,
   };
 }
 
@@ -36,15 +32,14 @@ export function createAiChatModel(options: ChatModelOptions) {
   const provider = resolveAiProvider();
   const llm = new ChatAnthropic({
     apiKey: provider.apiKey,
-    model: provider.model,
+    model: ANTHROPIC_MODEL,
     temperature: options.temperature,
     maxRetries: options.maxRetries,
     clientOptions: {
-      ...(provider.baseURL ? { baseURL: provider.baseURL } : {}),
       timeout: options.timeout,
     },
   });
-  return { llm, model: provider.model };
+  return { llm, model: ANTHROPIC_MODEL };
 }
 
 export function getAiProviderErrorMessage(error: unknown) {
