@@ -15,6 +15,7 @@ import {
   resolveBillingTierByPriceId,
   resolveBillingTierByPlan,
   resolveCheckoutPlanPriceId,
+  isSupportOperatorEmail,
 } from "./billingPlans";
 import {
   findCanonicalSubscriptionByPaddleSubscriptionId,
@@ -172,11 +173,6 @@ function normalizeSubscriptionStatus(eventType: string, status?: string): string
 const PREMIUM_TTS_PREVIEW_FEATURE = "premium_tts";
 const CHECKOUT_WEBHOOK_GRACE_MS = 2 * 60_000;
 const VERIFIED_CHECKOUT_WEBHOOK_GRACE_MS = 15 * 60_000;
-const SUPPORT_OPERATOR_EMAILS = new Set([
-  "amanmamgain9@gmail.com",
-  "support@example.com",
-  "planmyworkday@gmail.com",
-]);
 
 function resolveFreeProPlusTrialDays() {
   const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
@@ -344,7 +340,7 @@ async function getUserTrialEligibilityState(
 async function requireSupportOperator(ctx: AuthCtx) {
   const identity = await requireIdentity(ctx);
   const email = sanitizeEmail(typeof identity.email === "string" ? identity.email : undefined);
-  if (!email || !SUPPORT_OPERATOR_EMAILS.has(email)) {
+  if (!email || !isSupportOperatorEmail(email)) {
     throw new ConvexError("Unauthorized");
   }
   return { identity, email };

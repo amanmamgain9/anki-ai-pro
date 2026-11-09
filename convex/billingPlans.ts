@@ -48,11 +48,13 @@ const BILLING_PLAN_CONFIGS: Record<
 const BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly"];
 const PUBLIC_BILLING_PLAN_ORDER: BillingPlan[] = ["pro_monthly"];
 
-const SUPPORT_OPERATOR_EMAILS = new Set([
-  "amanmamgain9@gmail.com",
-  "support@example.com",
-  "planmyworkday@gmail.com",
-]);
+export function isSupportOperatorEmail(email: string) {
+  const operators = (process.env.SUPPORT_OPERATOR_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return operators.includes(email.toLowerCase());
+}
 
 function resolveFreeProPlusTrialDays() {
   const raw = process.env.FREE_PRO_PLUS_TRIAL_DAYS ?? "3";
@@ -90,7 +92,7 @@ async function requireSupportOperator(ctx: AuthCtx) {
     throw new ConvexError("Unauthorized");
   }
   const email = typeof identity.email === "string" ? identity.email.toLowerCase() : "";
-  if (!SUPPORT_OPERATOR_EMAILS.has(email)) {
+  if (!isSupportOperatorEmail(email)) {
     throw new ConvexError("Unauthorized");
   }
   return identity;
